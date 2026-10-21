@@ -93,7 +93,7 @@ bool checkPdfSelection(QString *error)
         painter.end();
     }
     auto manager = UBPersistenceManager::persistenceManager();
-    auto doc = manager->createNewDocument("", "PDF selection regression", false);
+    auto doc = manager->createNewDocument(UBPersistenceManager::myDocumentsName, "PDF selection regression", false);
     if (!doc) { *error = "Cannot create PDF test document"; return false; }
     const QUuid uuid = QUuid::createUuid();
     QDir().mkpath(doc->persistencePath() + "/objects");
@@ -146,6 +146,14 @@ bool checkPdfSelection(QString *error)
         for (int test = 0; test < selections.size(); ++test) {
             thumbnails->clearSelection();
             for (int index : selections[test]) thumbnails->selectItemAt(index, true);
+            UBApplication::documentController->pageSelectionChanged();
+            if (UBApplication::documentController->selectedDocumentProxy() != doc || !exporter->associatedAction()->isEnabled()) {
+                *error = QString("PDF test selection unavailable: correct document=%1, enabled=%2, pages=%3, selected=%4")
+                    .arg(UBApplication::documentController->selectedDocumentProxy() == doc)
+                    .arg(exporter->associatedAction()->isEnabled()).arg(doc->pageCount()).arg(thumbnails->selectedItems().size());
+                return false;
+            }
+            qWarning() << "Teaching PDF export" << merge << test << doc->pageCount() << thumbnails->selectedItems().size();
             const QString file = output.filePath(QString("pdf-%1-%2.pdf").arg(merge ? "merge" : "render").arg(test));
             QFile::remove(file);
             QTimer dialogTimer;
