@@ -1,6 +1,6 @@
 # OpenBoard Teaching
 
-Status: the first Windows x64 test installer is built. Automated native checks, installation on a runner without the Qt SDK, and uninstallation passed. Physical Huion/projector and full PDF/document regression testing remain outstanding.
+Status: Windows x64 test installer 1.7.7.2 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -37,6 +37,21 @@ GraphDesk opens inside its own tab. Insert adds the current graph to the lesson.
 To revise an inserted graph, select it on the Lesson tab, open GraphDesk, use
 Load selected graph for editing, make changes, then Update loaded graph on lesson.
 
+## PDF export and document storage
+
+In Documents, select page thumbnails before choosing Export to PDF to export only
+those pages, in document order. With no selected page thumbnails, the whole
+document is exported. This applies to both PDF export engines, including original
+PDF backgrounds and annotations.
+
+Preferences → Documents → Browse selects the My Documents directory. Choose
+Move existing documents or Use folder without moving; the change takes effect
+on the next launch. Cancel pending change keeps the current directory. Moving
+requires an empty destination, verifies copied file contents before activation,
+and retains the original documents if migration fails. Using a folder without
+moving leaves the old documents in place and accepts an empty folder or an
+existing document repository. Parent/child directory choices are rejected.
+
 ## Implemented features
 
 - Ten pen/highlighter toolbar swatches. Existing short custom palettes are padded,
@@ -68,18 +83,27 @@ Load selected graph for editing, make changes, then Update loaded graph on lesso
 
 ## Test installer provenance
 
-Compiled source: `e1518aabdee4bbf068fa5581ab9f4ab2b361927d`.
+Compiled source: `373b4e10267699fcede77d706030cbc691201f19`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39648974503
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39649077368
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39664790055
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39664833255
 - Setup filename: `OpenBoard-Teaching-Windows-x64-Setup.exe`
-- Setup SHA-256: `eb3ac30a4f270b88311c985a950f5d5ea46c3d5e88d81030321019517c11d74a`
+- Setup SHA-256: `2b1ae6df92bb02c171ffe7c2e46c8ea05da4ec819ba2d4a1e92581ec6c1f5fb8`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
 all document import/export paths have not been verified by these automated checks.
 
 ## Validation completed
+
+- Documents Export to PDF through its actual menu action: selected pages 3–6,
+  no selected pages (whole document), and one selected page, with both PDF engines.
+  Verified page counts, document order, original PDF backgrounds and annotation pixels.
+- Noncontiguous and duplicate page-selection indexes through the simple exporter.
+- Preferences Documents tab is visible and its current folder is displayed.
+- Moving documents from C: to D: across restart, with a file-content hash check.
+- Switching to a new folder without moving across restart; old documents retained.
+- Unsafe occupied-destination and same-folder migration choices rejected.
 
 - Git diff whitespace validation.
 - Qt resource XML and UI form XML parse; all referenced resource files exist.
