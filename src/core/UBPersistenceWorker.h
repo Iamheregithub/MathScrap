@@ -40,13 +40,13 @@ typedef enum{
     FlushWrites
 }ActionType;
 
-typedef struct{
+struct PersistenceInformation {
     ActionType action;
     std::shared_ptr<UBDocumentProxy> proxy;
     UBGraphicsScene* scene;
     int sceneIndex;
     QSemaphore* barrier = nullptr;
-}PersistenceInformation;
+};
 
 class UBPersistenceWorker : public QObject
 {
