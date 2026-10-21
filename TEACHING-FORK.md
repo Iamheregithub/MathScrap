@@ -1,12 +1,43 @@
-# OpenBoard teaching fork — source checkpoint
+# OpenBoard Teaching
 
-Status: initial source implementation, not a tested release or Windows installer.
+Status: Windows compilation has succeeded. A startup crash was found during native validation; its fix is being tested. Do not treat the current source as a validated release.
 
-Based on OpenBoard master commit 30d120c. The complete base commit is recorded in
-the source checkpoint's UPSTREAM.txt. Upstream:
+Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
 
-## Implemented in source
+## Windows build and installation
+
+The Windows workflow builds x64 with MSVC 2022 and Qt 6.8.3, runs native checks,
+and creates a per-user Inno Setup installer. Successful builds publish
+`OpenBoard-Teaching-Windows-x64` in the repository's Actions artifacts.
+The separate installer-validation workflow installs the package on a runner
+without the Qt SDK, repeats native checks, then uninstalls it.
+
+OpenBoard Teaching uses its own executable, shortcuts, settings and lesson
+folder. Existing OpenBoard installations are kept separate. Export/import UBZ
+files to transfer lessons. The installer is currently unsigned.
+
+For HDMI projection of both Lesson and GraphDesk, use Windows' Duplicate display
+mode. OpenBoard's separate extended-display board view shows the lesson; it does
+not yet mirror the GraphDesk tab.
+
+## Teaching controls
+
+Right-click any colour swatch to change it. Right-click the top toolbar, or use
+Customize Toolbars, to choose visible controls and reorder them. Defaults are
+P for pen, E for eraser, L for line, Ctrl++ / Ctrl+- for zoom, and Ctrl+0 for
+reset zoom. Change these in the existing keyboard shortcut editor and bind the
+same keys in the Huion driver.
+
+Use Shapes to insert a shape; select it with the selection tool to move, resize
+or rotate it. Use Shapes again to edit its outline/fill. Drag a selected
+triangle's three circular handles to move its vertices.
+
+GraphDesk opens inside its own tab. Insert adds the current graph to the lesson.
+To revise an inserted graph, select it on the Lesson tab, open GraphDesk, use
+Load selected graph for editing, make changes, then Update loaded graph on lesson.
+
+## Implemented features
 
 - Ten pen/highlighter toolbar swatches. Existing short custom palettes are padded,
   preserving their saved colours. Right-click a swatch to edit its current
@@ -49,11 +80,9 @@ handwriting, Qt WebEngine, native selection handles, PDF output, or pixels.
 
 ## Outstanding validation
 
-No native build has completed. This environment has no Windows toolchain or Qt
-SDK. Attempts to obtain Qt dependencies encountered failed/502 downloads.
-The Playwright browser download also failed. Native C++ compile errors and
-runtime issues may therefore remain. Do not treat this checkpoint as a working
-Windows application.
+Windows compilation completed on GitHub Actions. Native startup and installer
+validation are in progress. Local DOM tests do not replace Windows checks or
+physical tablet/projector testing.
 
 Required next checks on a configured build host:
 

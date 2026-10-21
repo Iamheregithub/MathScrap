@@ -33,9 +33,23 @@ jobs:
           arch: win64_msvc2022_64
           modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
           cache: true
+      - name: Restore native compilation
+        uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-
       - name: Build and stage application
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - name: Save native compilation
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: OpenBoard/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Native startup, drawing, and GraphDesk checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-windows.ps1

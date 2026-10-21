@@ -28,6 +28,7 @@
 
 
 #include "UBGraphicsSvgItem.h"
+#include "UBUndoCommand.h"
 
 #include <QtGui>
 #include <QDomDocument>
@@ -267,7 +268,7 @@ QList<QPointF> trianglePoints(const QByteArray &data) {
     for (int i = 0; i < 6; i += 2) points << QPointF(coords[i].toDouble(), coords[i+1].toDouble());
     return points;
 }
-class TeachingSvgUndo : public QUndoCommand {
+class TeachingSvgUndo : public UBUndoCommand {
 public:
     TeachingSvgUndo(UBGraphicsSvgItem *item, const QByteArray &before, const QByteArray &after)
         : mItem(item), mBefore(before), mAfter(after) { setText(QObject::tr("Edit shape or graph")); }

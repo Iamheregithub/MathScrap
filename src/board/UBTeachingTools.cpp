@@ -16,6 +16,7 @@
 #include "core/UBShortcutManager.h"
 #include "board/UBBoardController.h"
 #include "board/UBBoardView.h"
+#include "board/UBBoardPaletteManager.h"
 #include "board/UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
@@ -77,9 +78,44 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         connect(source, &QAction::changed, proxy, sync);
         connect(proxy, &QAction::triggered, source, [source] { source->trigger(); });
         sync();
-        toolbar->insertAction(source, proxy);
+        QAction *presentation = proxy;
+        // These native buttons carry menus or press/long-press behaviour on
+        // the widget itself. Keep a stable owned widget when changing order.
+        if (source == window->actionMenu || source == window->actionPages || source == window->actionErase) {
+            auto oldButton = qobject_cast<QToolButton*>(toolbar->widgetForAction(source));
+            auto button = new QToolButton;
+            button->setObjectName("teaching-" + id);
+            if (oldButton && !oldButton->objectName().isEmpty())
+                button->setObjectName(oldButton->objectName());
+            button->setDefaultAction(proxy);
+            button->setAutoRaise(true);
+            button->setIconSize(toolbar->iconSize());
+            button->setToolButtonStyle(toolbar->toolButtonStyle());
+            connect(toolbar, &QToolBar::iconSizeChanged, button, &QToolButton::setIconSize);
+            connect(toolbar, &QToolBar::toolButtonStyleChanged, button, &QToolButton::setToolButtonStyle);
+            if (oldButton && oldButton->menu()) {
+                button->setMenu(oldButton->menu());
+                button->setPopupMode(oldButton->popupMode());
+            }
+            auto palette = UBApplication::boardController->paletteManager();
+            if (source == window->actionPages) {
+                connect(button, SIGNAL(pressed()), palette, SLOT(pagePaletteButtonPressed()));
+                connect(button, SIGNAL(released()), palette, SLOT(pagePaletteButtonReleased()));
+            } else if (source == window->actionErase) {
+                connect(button, SIGNAL(pressed()), palette, SLOT(erasePaletteButtonPressed()));
+                connect(button, SIGNAL(released()), palette, SLOT(erasePaletteButtonReleased()));
+            }
+            auto wrapper = new QWidgetAction(this);
+            wrapper->setObjectName("teaching-presentation-" + id);
+            wrapper->setDefaultWidget(button);
+            connect(source, &QAction::changed, wrapper, [source, wrapper] {
+                wrapper->setVisible(source->isVisible() && !source->property("teachingHiddenTop").toBool());
+            });
+            presentation = wrapper;
+        }
+        toolbar->insertAction(source, presentation);
         toolbar->removeAction(source);
-        mProxies[source] = proxy;
+        mProxies[source] = presentation;
     }
     const QList<QAction*> tools = {window->actionPen, window->actionEraser, window->actionMarker,
         window->actionSelector, window->actionPlay, window->actionHand, window->actionZoomIn,
@@ -211,7 +247,8 @@ void UBTeachingTools::customize()
 
 void UBTeachingTools::openGraphDesk()
 {
-    UBApplication::applicationController->showBoard();
+    if (UBApplication::applicationController->displayMode() != UBApplicationController::Board)
+        UBApplication::applicationController->showBoard();
     if (!mGraph) {
         mGraphTab = new QWidget;
         auto layout = new QVBoxLayout(mGraphTab);

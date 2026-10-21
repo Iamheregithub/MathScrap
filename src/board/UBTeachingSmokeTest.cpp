@@ -13,6 +13,7 @@
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
 #include "domain/UBGraphicsStrokesGroup.h"
+#include "document/UBDocumentProxy.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -85,6 +86,17 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
         }
+        auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
+        auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
+        auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");
+        if (!menuButton || !menuButton->menu() || !menuButton->menu()->actions().contains(UBApplication::mainWindow->actionPreferences) || !pageButton) {
+            finish(false, "Native toolbar menu/page controls were lost"); return;
+        }
+        const int oldPageCount = board->selectedDocument()->pageCount();
+        pageButton->click();
+        if (board->selectedDocument()->pageCount() != oldPageCount + 1) {
+            finish(false, "New Page toolbar behaviour was lost"); return;
+        }
         const QString reportPath = qEnvironmentVariable("TEACHING_SMOKE_REPORT");
         UBApplication::mainWindow->grab().save(QFileInfo(reportPath).dir().filePath("lesson-window.png"));
         auto scene = board->activeScene();
@@ -132,6 +144,8 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (shape->fileData() != before) { finish(false,"Shape undo failed"); return; }
         UBApplication::undoStack->redo();
         if (shape->fileData() != edited) { finish(false,"Shape redo failed"); return; }
+        board->persistCurrentScene(false, true);
+        board->setActiveDocumentScene(board->activeSceneIndex());
         if (UBSettings::settings()->penColors(false).size() < 10) { finish(false,"Ten colour palette unavailable"); return; }
         auto window = UBApplication::mainWindow;
         auto graphAction = window->findChild<QAction*>("actionTeachingGraphDesk");

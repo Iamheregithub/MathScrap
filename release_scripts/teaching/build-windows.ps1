@@ -7,6 +7,27 @@ function Run-Native([string]$Executable, [string[]]$Arguments) {
     & $Executable @Arguments
     if ($LASTEXITCODE -ne 0) { throw "$Executable failed with exit code $LASTEXITCODE" }
 }
+# Restore timestamps only when source contents match the cached compilation.
+# This lets nmake reuse unchanged objects across fresh GitHub checkouts.
+$stampPath = Join-Path $project 'build\teaching-source-stamps.json'
+$previous = @{}
+if (Test-Path $stampPath) { $previous = Get-Content $stampPath -Raw | ConvertFrom-Json -AsHashtable }
+$stamps = @{}
+Push-Location $project
+try {
+    $tracked = & git ls-files
+    foreach ($relative in $tracked) {
+        $file = Get-Item $relative -ErrorAction SilentlyContinue
+        if (!$file -or $file.PSIsContainer) { continue }
+        $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash
+        if ($previous.ContainsKey($relative) -and $previous[$relative].hash -eq $hash) {
+            $file.LastWriteTimeUtc = [DateTime]::new([long]$previous[$relative].ticks, [DateTimeKind]::Utc)
+        }
+        $stamps[$relative] = @{ hash = $hash; ticks = $file.LastWriteTimeUtc.Ticks }
+    }
+} finally { Pop-Location }
+New-Item -ItemType Directory -Force (Split-Path $stampPath) | Out-Null
+$stamps | ConvertTo-Json -Depth 4 | Set-Content $stampPath
 # Build the upstream Qt-compatible QuaZip rather than reusing a Qt ABI-specific library.
 Push-Location (Join-Path $thirdParty 'quazip')
 try {
@@ -29,9 +50,9 @@ Run-Native "$qtbin\windeployqt.exe" @('--release','--compiler-runtime',"$stage\O
 foreach ($folder in @('library','fonts','customizations','startupHints')) {
     Copy-Item (Join-Path $project "resources\$folder") $stage -Recurse -Force
 }
-Copy-Item (Join-Path $project 'resources\etc\*') $stage -Recurse -Force
-Copy-Item "$stage\OpenBoard.config" "$stage\OpenBoardTeaching.config"
-Copy-Item "$stage\OpenBoard.css" "$stage\OpenBoardTeaching.css"
+Copy-Item (Join-Path $project 'resources\etc') $stage -Recurse -Force
+Copy-Item "$stage\etc\OpenBoard.config" "$stage\etc\OpenBoardTeaching.config"
+Copy-Item "$stage\etc\OpenBoard.css" "$stage\etc\OpenBoardTeaching.css"
 New-Item -ItemType Directory -Force "$stage\i18n" | Out-Null
 Copy-Item (Join-Path $project 'resources\i18n\*.qm') "$stage\i18n" -Force
 Copy-Item (Join-Path $thirdParty 'poppler\bin\*.dll') $stage -Force
