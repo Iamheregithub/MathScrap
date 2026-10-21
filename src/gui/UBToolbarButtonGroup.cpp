@@ -51,9 +51,6 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
 {
     Q_ASSERT(actions.size() > 0);
 
-    mToolButton = qobject_cast<QToolButton*>(toolBar->layout()->itemAt(0)->widget());
-    Q_ASSERT(mToolButton);
-
     QVBoxLayout *verticalLayout = new QVBoxLayout(this);
     QHBoxLayout *horizontalLayout = new QHBoxLayout();
     horizontalLayout->setSpacing(0);
@@ -227,17 +224,20 @@ void UBToolbarButtonGroup::paintEvent(QPaintEvent *)
     emptyPixmap.fill(Qt::transparent);
     QIcon emptyIcon(emptyPixmap);
 
-    option.initFrom(mToolButton);
+    // Use an owned button: toolbar customization can delete and recreate
+    // the toolbar's original QToolButtons.
+    auto labelButton = mButtons.first();
+    option.initFrom(labelButton);
 
     option.text = mLabel;
-    option.font = mToolButton->font();
+    option.font = labelButton->font();
 
-    int pointSize = mToolButton->font().pointSize();
+    int pointSize = labelButton->font().pointSize();
     if (pointSize > 0)
         option.font.setPointSize(pointSize);
     else
     {
-        int pixelSize = mToolButton->font().pixelSize();
+        int pixelSize = labelButton->font().pixelSize();
         if (pixelSize > 0)
             option.font.setPixelSize(pixelSize);
     }
