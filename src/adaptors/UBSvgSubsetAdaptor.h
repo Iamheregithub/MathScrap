@@ -289,6 +289,7 @@ class UBSvgSubsetAdaptor
                 QXmlStreamWriter mXmlWriter;
                 QString mDocumentPath;
                 int mPageIndex;
+                bool mAssetSaveFailed = false;
 
         };
 };

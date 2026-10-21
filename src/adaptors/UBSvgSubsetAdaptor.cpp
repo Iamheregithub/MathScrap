@@ -1553,6 +1553,8 @@ bool UBSvgSubsetAdaptor::UBSvgSubsetWriter::persistScene(std::shared_ptr<UBDocum
     }
 
     mXmlWriter.writeEndDocument();
+    if (mAssetSaveFailed || mXmlWriter.hasError())
+        return false;
     QString fileName = mDocumentPath + UBFileSystemUtils::digitFileFormat("/page%1.svg", mPageIndex);
     QSaveFile file(fileName);
 
@@ -2209,8 +2211,10 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
         QSaveFile asset(mDocumentPath + "/" + fileName);
         if (!asset.open(QIODevice::WriteOnly)
                 || asset.write(svgItem->fileData()) != svgItem->fileData().size()
-                || !asset.commit())
+                || !asset.commit()) {
+            mAssetSaveFailed = true;
             qWarning() << "Cannot persist editable SVG asset" << asset.fileName();
+        }
     }
     mXmlWriter.writeAttribute(nsXLink, "href", fileName);
 
