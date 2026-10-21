@@ -3183,6 +3183,8 @@ void UBDocumentController::exportDocument()
     if (thumbnails->document() && thumbnails->document()->proxy() == proxy)
         for (auto item : thumbnails->selectedItems())
             if (auto thumbnail = dynamic_cast<UBThumbnail*>(item)) pages << thumbnail->sceneIndex();
+    if (!qEnvironmentVariable("TEACHING_SMOKE_REPORT").isEmpty())
+        qWarning() << "Teaching export document" << proxy->name() << proxy->pageCount() << pages;
     selectedExportAdaptor->setPageSelection(pages);
     selectedExportAdaptor->persist(proxy);
     selectedExportAdaptor->setPageSelection({});

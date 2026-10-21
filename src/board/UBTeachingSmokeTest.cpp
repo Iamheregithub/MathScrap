@@ -162,6 +162,7 @@ bool checkPdfSelection(QString *error)
                 for (auto widget : QApplication::topLevelWidgets())
                     if (auto dialog = qobject_cast<QFileDialog*>(widget); dialog && dialog->isVisible()) {
                         dialog->selectFile(file);
+                        qWarning() << "Teaching save dialog files" << dialog->selectedFiles();
                         QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
                     }
             });

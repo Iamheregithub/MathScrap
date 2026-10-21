@@ -68,6 +68,7 @@ QString UBExportAdaptor::askForFileName(std::shared_ptr<UBDocumentProxy> pDocume
 
     QString filename = QFileDialog::getSaveFileName(UBApplication::mainWindow, pDialogTitle, defaultPath, QString());
 
+    if (!qEnvironmentVariable("TEACHING_SMOKE_REPORT").isEmpty()) qWarning() << "Teaching export filename" << filename;
     if (filename.size() == 0)
     {
         return filename;
