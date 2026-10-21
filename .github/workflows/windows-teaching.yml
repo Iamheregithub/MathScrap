@@ -41,6 +41,7 @@ jobs:
           key: native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
           restore-keys: |
             native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-
+            native-${{ env.VCToolsVersion }}-qt683-
       - name: Build and stage application
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
