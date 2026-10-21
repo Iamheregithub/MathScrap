@@ -1,6 +1,6 @@
 # OpenBoard Teaching
 
-Status: Windows compilation and native startup/drawing/GraphDesk checks have passed. Installer packaging and installation validation are in progress. This is a test build.
+Status: the first Windows x64 test installer is built. Automated native checks, installation on a runner without the Qt SDK, and uninstallation passed. Physical Huion/projector and full PDF/document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -27,7 +27,7 @@ Right-click any colour swatch to change it. Right-click the top toolbar, or use
 Customize Toolbars, to choose visible controls and reorder them. Defaults are
 P for pen, E for eraser, L for line, Ctrl++ / Ctrl+- for zoom, and Ctrl+0 for
 reset zoom. Change these in the existing keyboard shortcut editor and bind the
-same keys in the Huion driver.
+same keys in a Huion driver profile for `OpenBoardTeaching.exe`.
 
 Use Shapes to insert a shape; select it with the selection tool to move, resize
 or rotate it. Use Shapes again to edit its outline/fill. Drag a selected
@@ -66,6 +66,19 @@ Load selected graph for editing, make changes, then Update loaded graph on lesso
   selected graph for editing, then Update loaded graph on lesson. Graph data
   is embedded in SVG metadata and content edits enter the undo stack.
 
+## Test installer provenance
+
+Compiled source: `e1518aabdee4bbf068fa5581ab9f4ab2b361927d`.
+
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39648974503
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39649077368
+- Setup filename: `OpenBoard-Teaching-Windows-x64-Setup.exe`
+- Setup SHA-256: `eb3ac30a4f270b88311c985a950f5d5ea46c3d5e88d81030321019517c11d74a`
+
+The package is unsigned and is intended for initial testing. Test on copies of
+lessons before using it in class. Hardware pressure, projector behaviour and
+all document import/export paths have not been verified by these automated checks.
+
 ## Validation completed
 
 - Git diff whitespace validation.
@@ -82,7 +95,8 @@ handwriting, Qt WebEngine, native selection handles, PDF output, or pixels.
 
 Windows compilation and native startup, toolbar, ink/highlight layering and
 pixels, triangle undo/redo, scene switching, ten colours, and GraphDesk export/restore
-checks passed on GitHub Actions. Installer validation is in progress. Local DOM tests do not replace Windows checks or
+checks passed on GitHub Actions. Installation, installed native checks and
+uninstallation also passed on a separate Windows runner without the Qt SDK. Local DOM tests do not replace Windows checks or
 physical tablet/projector testing.
 
 Required next checks on a configured build host:
