@@ -1123,7 +1123,7 @@ bool copyDocumentStorage(const QString &source, const QString &target, QString *
 QString UBSettings::userDocumentDirectory()
 {
     const QString configured = settings()->value(documentDirectoryKey).toString();
-    const QString directory = configured.isEmpty() ? userDataDirectory() + "/document" : configured;
+    QString directory = configured.isEmpty() ? userDataDirectory() + "/document" : configured;
     checkDirectory(directory);
     return directory;
 }
