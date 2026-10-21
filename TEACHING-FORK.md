@@ -1,6 +1,6 @@
-# OpenBoard Teaching
+# LessonBoard
 
-Status: Windows x64 test installer 1.7.7.2 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Physical Huion/projector and broader document regression testing remain outstanding.
+Status: LessonBoard Windows x64 test installer 1.7.7.3 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7 and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -9,13 +9,16 @@ https://github.com/OpenBoard-org/OpenBoard
 
 The Windows workflow builds x64 with MSVC 2022 and Qt 6.8.3, runs native checks,
 and creates a per-user Inno Setup installer. Successful builds publish
-`OpenBoard-Teaching-Windows-x64` in the repository's Actions artifacts.
-The separate installer-validation workflow installs the package on a runner
-without the Qt SDK, repeats native checks, then uninstalls it.
+`LessonBoard-Windows-x64` in the repository's Actions artifacts.
+The separate installer-validation workflow upgrades the previously delivered package
+on a runner without the Qt SDK, verifies the retained lesson location and data,
+repeats native checks, then uninstalls it.
 
-OpenBoard Teaching uses its own executable, shortcuts, settings and lesson
+LessonBoard uses its own executable, shortcuts, settings and lesson
 folder. Existing OpenBoard installations are kept separate. Export/import UBZ
-files to transfer lessons. The installer is currently unsigned.
+files to transfer lessons. The stable internal OpenBoardTeaching profile identifier
+is retained so upgrading to LessonBoard preserves existing settings and lessons.
+The installer is currently unsigned.
 
 For HDMI projection of both Lesson and GraphDesk, use Windows' Duplicate display
 mode. OpenBoard's separate extended-display board view shows the lesson; it does
@@ -27,7 +30,7 @@ Right-click any colour swatch to change it. Right-click the top toolbar, or use
 Customize Toolbars, to choose visible controls and reorder them. Defaults are
 P for pen, E for eraser, L for line, Ctrl++ / Ctrl+- for zoom, and Ctrl+0 for
 reset zoom. Change these in the existing keyboard shortcut editor and bind the
-same keys in a Huion driver profile for `OpenBoardTeaching.exe`.
+same keys in a Huion driver profile for `LessonBoard.exe`.
 
 Use Shapes to insert a shape; select it with the selection tool to move, resize
 or rotate it. Use Shapes again to edit its outline/fill. Drag a selected
@@ -81,14 +84,50 @@ existing document repository. Parent/child directory choices are rejected.
   selected graph for editing, then Update loaded graph on lesson. Graph data
   is embedded in SVG metadata and content edits enter the undo stack.
 
+## Compatibility with original OpenBoard
+
+The document format remains OpenBoard's UBZ format and file version 4.8.0.
+Native Windows round-trip tests against the official v1.7.7 source passed:
+
+1. Create and export a three-page lesson using original OpenBoard.
+2. Import into LessonBoard, add a dashed line, filled/outlined shapes and an SVG
+   graph carrying four-function GraphDesk project metadata; save and export.
+3. Import into original OpenBoard, add editable text, move/rotate/scale the graph,
+   then save and export again.
+4. Reopen and save in LessonBoard, including recognition of shape and graph metadata.
+
+The checks compare freshly read files rather than cached scenes: page counts,
+PDF page indexes and file hashes, editable text, handwriting/dashed-line geometry
+and colours, SVG file hashes and object transforms. Every source UBZ archive and
+the original lesson directory remain unchanged during cross-application import.
+Archive CRC checks and nine cross-application rendered-page comparisons also pass.
+
+The original test build adds only an automated test entry point and isolated
+executable/profile identity (plus startup preferences). Its document readers,
+writers, graphics and persistence implementations are unchanged. This is a test
+against original 1.7.7 source with the same compiler/Qt runtime, not an automated
+UI test of the official distributed Windows installer.
+
+These are generated fixtures, not the user's existing lessons. Older OpenBoard
+versions, every possible asset type, and unusual/damaged documents are untested.
+Original OpenBoard handles new shapes and graphs as ordinary SVG objects;
+triangle-vertex controls and GraphDesk editing require LessonBoard. Highlighter
+compositing remains application-specific; rendering differences are measured in
+compatibility-summary.json in the validation artifact. Some initial scene snapshots
+capture the asynchronous PDF Processing placeholder. All four completed PDF exports
+were separately rendered with Poppler: all twelve pages retain the blue PDF mark,
+and the renders were visually reviewed. Original-resaved versus LessonBoard-reopened
+exports differ in about 0.19%, 0.33%, and 0.33% of pixels above a 12-level threshold;
+exact pixel identity is not claimed. These results are included with the installer.
+
 ## Test installer provenance
 
-Compiled source: `373b4e10267699fcede77d706030cbc691201f19`.
+Compiled source: `104ee8d0c4d8528a0b1956e5dcab84bb935d3dec`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39664790055
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39664833255
-- Setup filename: `OpenBoard-Teaching-Windows-x64-Setup.exe`
-- Setup SHA-256: `2b1ae6df92bb02c171ffe7c2e46c8ea05da4ec819ba2d4a1e92581ec6c1f5fb8`
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39673963194
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39674027268
+- Setup filename: `LessonBoard-Windows-x64-Setup.exe`
+- Setup SHA-256: `4471c683b99ddf13344cb8020e74f1cae2f93088027a7b8560cae7c2615e3bda`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
