@@ -128,6 +128,7 @@ bool checkPdfSelection(QString *error)
         auto renderer = PDFRenderer::rendererForUuid(QUuid::createUuid(), file, true);
         renderer->attach();
         bool good = renderer->isValid() && renderer->pageCount() == expected.size();
+        qWarning() << "Teaching PDF verification" << file << renderer->isValid() << renderer->pageCount() << expected;
         renderer->setDPI(72);
         for (int i = 0; good && i < expected.size(); ++i) {
             good = qAbs(renderer->pointSizeF(i+1).width() - (400 + expected[i]*20)) < 3;
@@ -135,6 +136,7 @@ bool checkPdfSelection(QString *error)
             QPainter painter(&image); renderer->render(&painter, i+1, false); painter.end();
             const auto blue = image.pixelColor(20,20), red = image.pixelColor(70,20);
             good = good && blue.blue() > 200 && blue.red() < 60 && red.red() > 200 && red.blue() < 60;
+            if (!good) qWarning() << "Teaching PDF mismatch page" << i << renderer->pointSizeF(i+1) << blue << red;
         }
         renderer->detach();
         if (!good) *error = "PDF page count/order/background/annotation mismatch: " + file;
@@ -161,7 +163,10 @@ bool checkPdfSelection(QString *error)
             QObject::connect(&dialogTimer, &QTimer::timeout, [file] {
                 for (auto widget : QApplication::topLevelWidgets())
                     if (auto dialog = qobject_cast<QFileDialog*>(widget); dialog && dialog->isVisible()) {
-                        dialog->selectFile(file);
+                        const QFileInfo target(file);
+                        dialog->setDirectory(target.absolutePath());
+                        dialog->selectFile(target.fileName());
+                        if (auto edit = dialog->findChild<QLineEdit*>("fileNameEdit")) edit->setText(target.fileName());
                         qWarning() << "Teaching save dialog files" << dialog->selectedFiles();
                         QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
                     }
