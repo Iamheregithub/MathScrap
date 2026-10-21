@@ -21,3 +21,6 @@ SOURCES += src/board/UBTeachingTools.cpp
 
 HEADERS += src/board/UBTeachingSmokeTest.h
 SOURCES += src/board/UBTeachingSmokeTest.cpp
+
+HEADERS += src/board/UBFileCompatibilityTest.h
+SOURCES += src/board/UBFileCompatibilityTest.cpp

@@ -106,7 +106,9 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
     setOrganizationName("Open Education Foundation");
     setOrganizationDomain("oe-f.org");
 #ifdef UB_TEACHING_FORK
+    // Keep the existing profile identity so renaming does not strand lessons or settings.
     setApplicationName("OpenBoardTeaching");
+    setApplicationDisplayName("LessonBoard");
 #else
     setApplicationName("OpenBoard");
 #endif

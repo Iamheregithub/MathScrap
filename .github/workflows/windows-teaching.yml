@@ -53,6 +53,36 @@ jobs:
       - name: Native startup, drawing, and GraphDesk checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Fetch original OpenBoard 1.7.7 for file compatibility
+        uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard
+          ref: v1.7.7
+          path: OpenBoardOriginal
+      - name: Prepare original test entry point
+        shell: pwsh
+        run: |
+          python OpenBoard/release_scripts/teaching/prepare-original-compat.py OpenBoardOriginal
+          git -C OpenBoardOriginal diff --stat
+          git -C OpenBoardOriginal diff --name-only | Set-Content OpenBoard/dist/original-instrumentation.txt
+      - name: Restore original native compilation
+        uses: actions/cache@v4
+        with:
+          path: OpenBoardOriginal/build
+          key: original-compat-${{ env.VCToolsVersion }}-qt683-v177-${{ hashFiles('OpenBoard/src/board/UBFileCompatibilityTest.*', 'OpenBoard/release_scripts/teaching/prepare-original-compat.py', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}
+          restore-keys: |
+            original-compat-${{ env.VCToolsVersion }}-qt683-v177-
+      - name: Build original OpenBoard with test entry point
+        shell: pwsh
+        run: |
+          ./OpenBoardOriginal/release_scripts/teaching/build-windows.ps1
+          Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.config OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.config
+          Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.css OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.css
+      - name: Round trip original OpenBoard and LessonBoard files
+        shell: pwsh
+        run: |
+          python -m pip install Pillow
+          ./OpenBoard/release_scripts/teaching/test-compatibility.ps1
       - name: Create installer
         shell: pwsh
         run: |
@@ -69,7 +99,7 @@ jobs:
       - name: Upload installer and checksums
         uses: actions/upload-artifact@v4
         with:
-          name: OpenBoard-Teaching-Windows-x64
+          name: LessonBoard-Windows-x64
           path: |
             OpenBoard/dist/*Setup.exe
             OpenBoard/dist/SHA256SUMS.txt
@@ -85,6 +115,8 @@ jobs:
             OpenBoard/dist/*.log
             OpenBoard/dist/*window.png
             OpenBoard/dist/pdf-*.pdf
+            OpenBoard/dist/original-instrumentation.txt
+            OpenBoard/dist/compatibility/**
           if-no-files-found: ignore
       - name: Preserve staged application for diagnostics
         if: failure()

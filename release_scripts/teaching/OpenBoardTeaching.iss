@@ -1,23 +1,23 @@
 #define AppRoot "..\..\dist\app"
-#define AppVersion "1.7.7.2"
+#define AppVersion "1.7.7.3"
 [Setup]
 AppId={{2269D566-C066-4763-8D2D-48EE7AE1C83C}
-AppName=OpenBoard Teaching
+AppName=LessonBoard
 AppVersion={#AppVersion}
-AppPublisher=OpenBoard Teaching fork
+AppPublisher=LessonBoard fork
 DefaultDirName={localappdata}\Programs\OpenBoardTeaching
-DefaultGroupName=OpenBoard Teaching
+DefaultGroupName=LessonBoard
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
-OutputBaseFilename=OpenBoard-Teaching-Windows-x64-Setup
+OutputBaseFilename=LessonBoard-Windows-x64-Setup
 SetupIconFile=..\..\resources\win\OpenBoard.ico
 LicenseFile=..\..\LICENSE
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\OpenBoardTeaching.exe
+UninstallDisplayIcon={app}\LessonBoard.exe
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
@@ -26,10 +26,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "..\..\dist\vc_redist.x64.exe"; Flags: dontcopy
 Source: "{#AppRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{group}\OpenBoard Teaching"; Filename: "{app}\OpenBoardTeaching.exe"
-Name: "{autodesktop}\OpenBoard Teaching"; Filename: "{app}\OpenBoardTeaching.exe"; Tasks: desktopicon
+Name: "{group}\LessonBoard"; Filename: "{app}\LessonBoard.exe"
+Name: "{autodesktop}\LessonBoard"; Filename: "{app}\LessonBoard.exe"; Tasks: desktopicon
 [Run]
-Filename: "{app}\OpenBoardTeaching.exe"; Description: "Open OpenBoard Teaching"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\LessonBoard.exe"; Description: "Open LessonBoard"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function NextVersionPart(var Value: String): Integer;
@@ -82,3 +82,8 @@ begin
     Result := 'Microsoft Visual C++ runtime installation failed (' + IntToStr(ExitCode) + ').';
   if ExitCode = 3010 then NeedsRestart := True;
 end;
+
+[InstallDelete]
+Type: files; Name: "{app}\OpenBoardTeaching.exe"
+Type: files; Name: "{group}\OpenBoard Teaching.lnk"
+Type: files; Name: "{autodesktop}\OpenBoard Teaching.lnk"

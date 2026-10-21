@@ -44,9 +44,9 @@ $exe = Join-Path $project 'build\win32\release\product\OpenBoardTeaching.exe'
 if (!(Test-Path $exe)) { throw "Expected application executable is missing: $exe" }
 $stage = Join-Path $project 'dist\app'
 New-Item -ItemType Directory -Force $stage | Out-Null
-Copy-Item $exe $stage
+Copy-Item $exe "$stage\LessonBoard.exe"
 Get-ChildItem (Split-Path $exe) -Filter *.pdb | Copy-Item -Destination $stage
-Run-Native "$qtbin\windeployqt.exe" @('--release','--compiler-runtime',"$stage\OpenBoardTeaching.exe")
+Run-Native "$qtbin\windeployqt.exe" @('--release','--compiler-runtime',"$stage\LessonBoard.exe")
 foreach ($folder in @('library','fonts','customizations','startupHints')) {
     Copy-Item (Join-Path $project "resources\$folder") $stage -Recurse -Force
 }

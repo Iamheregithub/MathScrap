@@ -55,7 +55,7 @@ UBMainWindow::UBMainWindow(QWidget *parent, Qt::WindowFlags flags)
 {
     Ui::MainWindow::setupUi(this);
 #ifdef UB_TEACHING_FORK
-    setWindowTitle(tr("OpenBoard Teaching"));
+    setWindowTitle(tr("LessonBoard"));
 #endif
 
     mpDownloadWidget = new UBDownloadWidget();
