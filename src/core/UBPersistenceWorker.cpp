@@ -54,33 +54,45 @@ void UBPersistenceWorker::saveMetadata(std::shared_ptr<UBDocumentProxy> proxy)
     mSemaphore.release();
 }
 
+void UBPersistenceWorker::flush()
+{
+    QSemaphore barrier;
+    {
+        QMutexLocker locker(&mMutex);
+        saves.append({FlushWrites, nullptr, nullptr, 0, &barrier});
+    }
+    mSemaphore.release();
+    barrier.acquire();
+}
+
 void UBPersistenceWorker::applicationWillClose()
 {
-    qDebug() << "application Will close signal received";
-    mReceivedApplicationClosing = true;
+    { QMutexLocker locker(&mMutex); mReceivedApplicationClosing = true; }
     mSemaphore.release();
 }
 
 void UBPersistenceWorker::process()
 {
-    qDebug() << "process starts";
-    mSemaphore.acquire();
-    do{
+    for (;;) {
+        mSemaphore.acquire();
         PersistenceInformation info;
         {
             QMutexLocker locker(&mMutex);
+            if (saves.isEmpty()) {
+                if (mReceivedApplicationClosing) break;
+                continue;
+            }
             info = saves.takeFirst();
         }
-        if(info.action == WriteScene){
-            UBSvgSubsetAdaptor::persistScene(info.proxy, info.scene->shared_from_this(), info.sceneIndex);
+        if (info.action == WriteScene) {
+            if (!UBSvgSubsetAdaptor::persistScene(info.proxy, info.scene->shared_from_this(), info.sceneIndex)) emit error(tr("Could not save a lesson page."));
             emit scenePersisted(info.scene);
-        }
-        else if (info.action == WriteMetadata) {
-            UBMetadataDcSubsetAdaptor::persist(info.proxy);
+        } else if (info.action == WriteMetadata) {
+            if (!UBMetadataDcSubsetAdaptor::persist(info.proxy)) emit error(tr("Could not save lesson metadata."));
             emit metadataPersisted(info.proxy);
+        } else if (info.barrier) {
+            info.barrier->release();
         }
-        mSemaphore.acquire();
-    }while(!mReceivedApplicationClosing);
-    qDebug() << "process will stop";
+    }
     emit finished();
 }

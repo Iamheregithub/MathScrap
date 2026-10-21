@@ -37,6 +37,7 @@ for name in ['original.ubz','lessonboard.ubz','original-resaved.ubz','lessonboar
         if name!='original.ubz':
             assert sum(b'id="teaching-shape"' in v for v in svgs)==4,(name,'shape metadata')
             assert sum(b'id="graphdesk-project"' in v for v in svgs)==1,(name,'graph metadata')
+            assert sum(b'id="lessonboard-cover"' in v for v in svgs)==1,(name,'cover metadata')
         assert any(n.endswith('.pdf') for n in z.namelist()),(name,'original PDF')
 checks.append('All four UBZ archives pass CRC validation and retain their PDF assets; new SVG metadata survives')
 visual=[]

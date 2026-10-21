@@ -113,6 +113,7 @@ QByteArray UBGraphicsSvgItem::fileData() const
 QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant &value)
 {
     QVariant newValue = Delegate()->itemChange(change, value);
+    if (change == QGraphicsItem::ItemZValueChange && isLessonCover()) newValue = 2000000.0;
     auto result = QGraphicsSvgItem::itemChange(change, newValue);
     if (change == QGraphicsItem::ItemSelectedHasChanged) refreshTeachingHandles();
     return result;
@@ -322,6 +323,12 @@ bool UBGraphicsSvgItem::isTeachingShape() const
 
 void UBGraphicsSvgItem::initTeachingHandles()
 {
+    if (isLessonCover()) {
+        setData(UBGraphicsItemData::itemLayerType, int(itemLayerType::ToolItem));
+        Delegate()->setUBFlags(Delegate()->ubflags() & ~UBGraphicsFlags(GF_RESPECT_RATIO));
+        setZValue(2000000.0);
+        return;
+    }
     if (!isTeachingShape()) return;
     const bool triangle = trianglePoints(mFileData).size() == 3;
     auto doc = shapeDocument(mFileData);
@@ -363,4 +370,9 @@ void UBGraphicsSvgItem::commitTeachingSvg(const QByteArray &before)
 {
     if (before != mFileData && UBApplication::undoStack)
         UBApplication::undoStack->push(new TeachingSvgUndo(this, before, mFileData));
+}
+
+bool UBGraphicsSvgItem::isLessonCover() const
+{
+    return mFileData.contains("lessonboard-cover");
 }

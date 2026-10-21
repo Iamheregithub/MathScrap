@@ -60,6 +60,8 @@ QJsonObject manifest(std::shared_ptr<UBDocumentProxy> doc, const QString &prefix
             page["pdfPage"]=pdf->pageNumber();
             page["pdfSha256"]=QString(hashFile(doc->persistencePath()+"/objects/"+pdf->fileUuid().toString()+".pdf"));
         }
+        scene->setRenderingQuality(UBItem::RenderingQualityHigh, UBItem::CacheNotAllowed);
+        scene->setRenderingContext(UBGraphicsScene::NonScreen);
         QImage image(1000,750,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);
         scene->clearSelection();QPainter painter(&image);scene->render(&painter,QRectF(0,0,1000,750),scene->normalizedSceneRect());painter.end();
         image.save(prefix+QString("-page-%1.png").arg(i+1));pages.append(page);
@@ -125,17 +127,21 @@ void run() {
             const QByteArray state=QByteArray("{\"plots\":[{\"expr\":\"x^2\"},{\"expr\":\"2x+1\"},{\"expr\":\"sin(x)\"},{\"expr\":\"-x+3\"}]}").toBase64();
             const QByteArray graph="<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\"><metadata id=\"graphdesk-project\">"+state+"</metadata><path d=\"M0 90L200 10 M0 50L200 50\" stroke=\"red\" stroke-dasharray=\"5 3\" fill=\"none\"/></svg>";
             if(!scene->addSvg(QUrl(),QPointF(150,-100),graph)){fail("Cannot insert graph");return;}
+            // Ordinary SVG reveal cover: original OpenBoard must preserve its asset and z-order.
+            const QByteArray cover="<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" height=\"70\"><metadata id=\"lessonboard-cover\">covered</metadata><rect width=\"160\" height=\"70\" fill=\"#334155\"/></svg>";
+            if(!scene->addSvg(QUrl(),QPointF(-150,-20),cover)){fail("Cannot insert cover");return;}
         } else if(mode=="original-edit") {
             scene->addText("Edited and saved in original OpenBoard",QPointF(-200,-160));
             bool moved=false;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("graphdesk-project")){svg->moveBy(10,5);svg->setRotation(svg->rotation()+15);svg->setScale(svg->scale()*1.1);moved=true;}
             if(!moved){fail("Original OpenBoard did not load the graph as an editable SVG object");return;}
         } else if(mode=="lessonboard-reopen") {
 #ifdef UB_TEACHING_FORK
-            int shapes=0,graphs=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item)) {
+            int shapes=0,graphs=0,covers=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item)) {
                 if(svg->isTeachingShape())++shapes;
+                if(svg->isLessonCover())++covers;
                 if(svg->fileData().contains("graphdesk-project")){QDomDocument xml;xml.setContent(svg->fileData());const auto nodes=xml.elementsByTagName("metadata");for(int j=0;j<nodes.size();++j)if(nodes.at(j).toElement().attribute("id")=="graphdesk-project")if(QJsonDocument::fromJson(QByteArray::fromBase64(nodes.at(j).toElement().text().toUtf8())).object().value("plots").toArray().size()==4)++graphs;}
             }
-            if(shapes!=4 || graphs!=1){fail("Shape identity or GraphDesk project metadata did not survive original OpenBoard");return;}
+            if(shapes!=4 || graphs!=1 || covers!=1){fail("Shape identity or GraphDesk project metadata did not survive original OpenBoard");return;}
 #endif
         } else {fail("Unknown compatibility mode");return;}
     }

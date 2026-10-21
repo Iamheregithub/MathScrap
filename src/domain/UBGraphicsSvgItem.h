@@ -52,6 +52,7 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
 
         QByteArray fileData() const;
         bool isTeachingShape() const;
+        bool isLessonCover() const;
         void setTeachingSvg(const QByteArray &data);
         void commitTeachingSvg(const QByteArray &before);
         void refreshTeachingHandles();

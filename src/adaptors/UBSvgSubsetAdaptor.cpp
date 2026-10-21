@@ -1554,17 +1554,17 @@ bool UBSvgSubsetAdaptor::UBSvgSubsetWriter::persistScene(std::shared_ptr<UBDocum
 
     mXmlWriter.writeEndDocument();
     QString fileName = mDocumentPath + UBFileSystemUtils::digitFileFormat("/page%1.svg", mPageIndex);
-    QFile file(fileName);
+    QSaveFile file(fileName);
 
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    if (!file.open(QIODevice::WriteOnly))
     {
         qCritical() << "cannot open " << fileName << " for writing. Error : " << file.errorString();
         return false;
     }
-    file.write(buffer.data());
-    file.flush();
-    file.close();
-
+    if (file.write(buffer.data()) != buffer.size() || !file.commit()) {
+        qCritical() << "Cannot commit lesson page" << fileName;
+        return false;
+    }
     return true;
 }
 
@@ -2203,7 +2203,7 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
     QString fileName = UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg";
 
 
-    if (svgItem->isTeachingShape() || svgItem->fileData().contains("graphdesk-project"))
+    if (svgItem->isTeachingShape() || svgItem->isLessonCover() || svgItem->fileData().contains("graphdesk-project"))
     {
         QDir().mkpath(mDocumentPath + "/" + UBPersistenceManager::imageDirectory);
         QSaveFile asset(mDocumentPath + "/" + fileName);

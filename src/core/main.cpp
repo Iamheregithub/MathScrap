@@ -36,6 +36,7 @@
 #include "UBSettings.h"
 #include "board/UBTeachingSmokeTest.h"
 #include "board/UBFileCompatibilityTest.h"
+#include "board/UBLessonToolsTest.h"
 
 /* Uncomment this for memory leaks detection */
 /*
@@ -142,6 +143,7 @@ int main(int argc, char *argv[])
     QStringList args = app.arguments();
     if (args.contains("--teaching-smoke-test")) scheduleTeachingSmokeTest(&app);
     if (args.contains("--file-compatibility-test")) scheduleFileCompatibilityTest(&app);
+    if (args.contains("--lesson-tools-test")) scheduleLessonToolsTest(&app);
 
     QString dumpPath = UBSettings::userDataDirectory() + "/log";
     QDir logDir(dumpPath);

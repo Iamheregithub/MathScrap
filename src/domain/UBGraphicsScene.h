@@ -189,6 +189,7 @@ class UBGraphicsScene: public UBCoreGraphicsScene, public UBItem, public std::en
         QGraphicsItem *itemForUuid(QUuid uuid);
 
         void moveTo(const QPointF& pPoint);
+        bool isInputDevicePressed() const { return mInputDeviceIsPressed; }
         void drawLineTo(const QPointF& pEndPoint, const qreal& pWidth, bool bLineStyle);
         void drawLineTo(const QPointF& pEndPoint, const qreal& pStartWidth, const qreal& endWidth, bool bLineStyle);
         void eraseLineTo(const QPointF& pEndPoint, const qreal& pWidth);

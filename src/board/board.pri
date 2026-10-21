@@ -24,3 +24,9 @@ SOURCES += src/board/UBTeachingSmokeTest.cpp
 
 HEADERS += src/board/UBFileCompatibilityTest.h
 SOURCES += src/board/UBFileCompatibilityTest.cpp
+
+HEADERS += src/board/UBLessonTools.h
+SOURCES += src/board/UBLessonTools.cpp
+
+HEADERS += src/board/UBLessonToolsTest.h
+SOURCES += src/board/UBLessonToolsTest.cpp

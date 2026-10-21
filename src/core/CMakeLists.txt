@@ -1,4 +1,6 @@
 target_sources(${PROJECT_NAME} PRIVATE
+    UBLessonHistory.cpp
+    UBLessonHistory.h
     main.cpp
     UB.h
     UBApplication.cpp

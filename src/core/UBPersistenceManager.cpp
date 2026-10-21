@@ -1116,6 +1116,11 @@ void UBPersistenceManager::reassignDocProxy(std::shared_ptr<UBDocumentProxy> new
     return mSceneCache.reassignDocProxy(newDocument, oldDocument);
 }
 
+void UBPersistenceManager::flushPendingWrites()
+{
+    if (mWorker && !mIsApplicationClosing) mWorker->flush();
+}
+
 void UBPersistenceManager::persistDocumentScene(std::shared_ptr<UBDocumentProxy> pDocumentProxy, std::shared_ptr<UBGraphicsScene> pScene, const int pSceneIndex, bool isAnAutomaticBackup, bool forceImmediateSaving)
 {
     checkIfDocumentRepositoryExists();

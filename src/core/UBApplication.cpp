@@ -122,7 +122,7 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
     if(version.endsWith("."))
         version = version.left(version.length()-1);
 #ifdef UB_TEACHING_FORK
-    setApplicationVersion("1.7.7.3");
+    setApplicationVersion("1.7.7.4");
 #else
     setApplicationVersion(version);
 #endif

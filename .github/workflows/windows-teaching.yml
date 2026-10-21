@@ -53,6 +53,9 @@ jobs:
       - name: Native startup, drawing, and GraphDesk checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Favourites, reveal covers, versions and crash recovery checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-lesson-tools.ps1
       - name: Fetch original OpenBoard 1.7.7 for file compatibility
         uses: actions/checkout@v4
         with:
@@ -121,6 +124,7 @@ jobs:
             OpenBoard/dist/*report.json
             OpenBoard/dist/*.log
             OpenBoard/dist/*window.png
+            OpenBoard/dist/cover-*.png
             OpenBoard/dist/pdf-*.pdf
             OpenBoard/dist/original-instrumentation.txt
             OpenBoard/dist/compatibility/**

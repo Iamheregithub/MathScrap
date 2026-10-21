@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingTools.h"
+#include "UBLessonTools.h"
 #include <QtWidgets>
 #include <QWebEngineView>
 #include <QWebEnginePage>
@@ -52,6 +53,8 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     connect(zoomOut, &QAction::triggered, this, [] { UBApplication::boardController->zoomOut(); });
     connect(reset, &QAction::triggered, this, [] { UBApplication::boardController->zoomRestore(); });
     UBShortcutManager::shortcutManager()->addActions(tr("Teaching"), {dash, shapes, graph, zoomIn, zoomOut, reset}, window);
+
+    new UBLessonTools(window);
 
     // Keep real actions registered and visible for shortcuts. Only toolbar
     // presentation proxies are hidden; this also preserves disabled states.

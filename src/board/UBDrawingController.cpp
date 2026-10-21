@@ -103,6 +103,7 @@ void UBDrawingController::setStylusTool(int tool)
 {
     if (tool != mStylusTool)
     {
+        mFavouriteColor = QColor();
         UBApplication::boardController->activeScene()->deselectAllItems();
         if (mStylusTool == UBStylusTool::Pen || mStylusTool == UBStylusTool::Marker
                 || mStylusTool == UBStylusTool::Line)
@@ -258,6 +259,7 @@ QColor UBDrawingController::currentToolColor()
 
 QColor UBDrawingController::toolColor(bool onDarkBackground)
 {
+    if (mFavouriteColor.isValid() && isDrawingTool()) return mFavouriteColor;
     if (stylusTool() == UBStylusTool::Pen || stylusTool() == UBStylusTool::Line)
     {
         return UBSettings::settings()->penColor(onDarkBackground);
@@ -283,6 +285,7 @@ QColor UBDrawingController::toolColor(bool onDarkBackground)
 
 void UBDrawingController::setColorIndex(int index)
 {
+    mFavouriteColor = QColor();
     Q_ASSERT(index >= 0 && index < UBSettings::settings()->colorPaletteSize);
 
     if (stylusTool() == UBStylusTool::Marker)
@@ -446,3 +449,9 @@ void UBDrawingController::captureToolSelected(bool checked)
         setStylusTool(UBStylusTool::Capture);
 }
 
+
+void UBDrawingController::setFavouriteColor(const QColor &color)
+{
+    mFavouriteColor = color;
+    emit colorIndexChanged(currentToolColorIndex());
+}

@@ -81,20 +81,20 @@ UBMetadataDcSubsetAdaptor::~UBMetadataDcSubsetAdaptor()
 }
 
 
-void UBMetadataDcSubsetAdaptor::persist(std::shared_ptr<UBDocumentProxy> proxy)
+bool UBMetadataDcSubsetAdaptor::persist(std::shared_ptr<UBDocumentProxy> proxy)
 {
     if(!QDir(proxy->persistencePath()).exists()){
         //In this case the a document is an empty document so we do not persist it
-        return;
+        return false;
     }
     QString fileName = proxy->persistencePath() + "/" + metadataFilename;
     qInfo() << "Persisting document metadata; path is" << fileName;
-    QFile file(fileName);
+    QSaveFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
     {
         qCritical() << "cannot open " << fileName << " for writing ...";
         qCritical() << "error : "  << file.errorString();
-        return;
+        return false;
     }
 
     QXmlStreamWriter xmlWriter(&file);
@@ -130,8 +130,8 @@ void UBMetadataDcSubsetAdaptor::persist(std::shared_ptr<UBDocumentProxy> proxy)
 
     xmlWriter.writeEndDocument();
 
-    file.flush();
-    file.close();
+    if (!file.commit()) { qCritical() << "Cannot commit document metadata" << fileName; return false; }
+    return true;
 }
 
 

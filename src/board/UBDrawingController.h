@@ -60,6 +60,7 @@ class UBDrawingController : public QObject
         int currentToolColorIndex();
         QColor currentToolColor();
         QColor toolColor(bool onDarkBackground);
+        void setFavouriteColor(const QColor &color);
 
         void setPenColor(bool onDarkBackground, const QColor& color, int pIndex);
         void setMarkerColor(bool onDarkBackground, const QColor& color, int pIndex);
@@ -91,6 +92,7 @@ class UBDrawingController : public QObject
         void colorIndexChanged(int index);
 
     private:
+        QColor mFavouriteColor;
         QPointer<UBAbstractDrawRuler> mActiveRuler;
         UBStylusTool::Enum mStylusTool;
         UBStylusTool::Enum mLatestDrawingTool;
