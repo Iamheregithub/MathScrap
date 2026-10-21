@@ -9,6 +9,15 @@ def compare(a,b,label):
     for index,(x,y) in enumerate(zip(a['pages'],b['pages'])):
         for key in ['pdfPage','pdfSha256','strokeGroups','polygons']:
             assert x.get(key)==y.get(key),(label,index,key,x.get(key),y.get(key))
+        def normalized_ink(items):
+            return sorted(items,key=lambda v:(v['color'],round(min(p[0] for p in v['points']),2),round(min(p[1] for p in v['points']),2),len(v['points'])))
+        xi=normalized_ink(x['ink']);yi=normalized_ink(y['ink'])
+        assert len(xi)==len(yi),(label,index,'ink polygon count')
+        for left,right in zip(xi,yi):
+            assert left['color']==right['color'],(label,index,'ink colour/opacity')
+            assert len(left['points'])==len(right['points']),(label,index,'ink polygon vertices')
+            for lp,rp in zip(left['points'],right['points']):
+                assert all(math.isclose(a,b,abs_tol=.02) for a,b in zip(lp,rp)),(label,index,'ink geometry',lp,rp)
         assert sorted(x['texts'])==sorted(y['texts']),(label,index,'text')
         xs={v['uuid']:v for v in x['svg']};ys={v['uuid']:v for v in y['svg']}
         assert xs.keys()==ys.keys(),(label,index,'SVG object identifiers')
@@ -16,7 +25,7 @@ def compare(a,b,label):
             assert xs[uuid]['sha256']==ys[uuid]['sha256'],(label,index,'SVG bytes',uuid)
             for key in ['dx','dy','m11','m12','m21','m22']:
                 assert math.isclose(xs[uuid][key],ys[uuid][key],abs_tol=.02),(label,index,key,xs[uuid][key],ys[uuid][key])
-    checks.append(label+': page count, PDF bytes/page indexes, text, stroke counts, SVG bytes and transformations preserved')
+    checks.append(label+': page count, PDF bytes/page indexes, text, handwriting/dashed-line geometry and colours, SVG bytes and transformations preserved')
 compare(read('original-create-saved.json'),read('lessonboard-edit-import.json'),'OpenBoard to LessonBoard')
 compare(read('lessonboard-edit-saved.json'),read('original-edit-import.json'),'LessonBoard to OpenBoard')
 compare(read('original-edit-saved.json'),read('lessonboard-reopen-import.json'),'OpenBoard resave to LessonBoard')

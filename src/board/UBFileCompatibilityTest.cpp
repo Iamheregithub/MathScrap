@@ -37,7 +37,7 @@ QJsonObject manifest(std::shared_ptr<UBDocumentProxy> doc, const QString &prefix
     auto manager = UBPersistenceManager::persistenceManager();
     for (int i=0;i<doc->pageCount();++i) {
         auto scene=manager->loadDocumentScene(doc,i);
-        QJsonArray svgs,texts; int strokes=0, polygons=0;
+        QJsonArray svgs,texts,ink; int strokes=0, polygons=0;
         for (auto item:scene->items()) {
             if (auto svg=dynamic_cast<UBGraphicsSvgItem*>(item)) {
                 QJsonObject o; o["uuid"]=svg->uuid().toString();
@@ -47,9 +47,13 @@ QJsonObject manifest(std::shared_ptr<UBDocumentProxy> doc, const QString &prefix
             }
             if (auto text=dynamic_cast<UBGraphicsTextItem*>(item)) texts.append(text->toPlainText());
             if (dynamic_cast<UBGraphicsStrokesGroup*>(item)) ++strokes;
-            if (dynamic_cast<UBGraphicsPolygonItem*>(item)) ++polygons;
+            if (auto polygon=dynamic_cast<UBGraphicsPolygonItem*>(item)) {
+                ++polygons; QJsonArray points;
+                for(const auto &point:polygon->mapToScene(polygon->polygon())) {QJsonArray xy;xy.append(point.x());xy.append(point.y());points.append(xy);}
+                QJsonObject stroke;stroke["points"]=points;stroke["color"]=polygon->color().name(QColor::HexArgb);ink.append(stroke);
+            }
         }
-        QJsonObject page;page["svg"]=svgs;page["texts"]=texts;page["strokeGroups"]=strokes;page["polygons"]=polygons;
+        QJsonObject page;page["svg"]=svgs;page["texts"]=texts;page["strokeGroups"]=strokes;page["polygons"]=polygons;page["ink"]=ink;
         if (auto pdf=dynamic_cast<UBGraphicsPDFItem*>(scene->backgroundObject())) {
             page["pdfPage"]=pdf->pageNumber();
             page["pdfSha256"]=QString(hashFile(doc->persistencePath()+"/objects/"+pdf->fileUuid().toString()+".pdf"));
@@ -106,6 +110,12 @@ void run() {
         if(!writeJson(root.filePath(mode+"-import.json"),manifest(doc,root.filePath(mode+"-import")))){fail("Cannot save import manifest");return;}
         auto scene=board->activeScene();
         if(mode=="lessonboard-edit") {
+#ifdef UB_TEACHING_FORK
+            UBSettings::settings()->setValue("Teaching/DashedLines",true);
+            auto dc=UBDrawingController::drawingController();dc->setStylusTool(UBStylusTool::Line);dc->setColorIndex(0);
+            scene->inputDevicePress(QPointF(-180,70));scene->inputDeviceMove(QPointF(180,70));scene->inputDeviceRelease();
+            dc->setStylusTool(UBStylusTool::Selector);UBSettings::settings()->setValue("Teaching/DashedLines",false);
+#endif
             const QStringList geometry={"<rect x=\"10\" y=\"20\" width=\"160\" height=\"80\"/>","<rect x=\"20\" y=\"20\" width=\"100\" height=\"100\"/>","<circle cx=\"80\" cy=\"80\" r=\"60\"/>","<polygon points=\"10,130 75,5 150,125\"/>"};
             for(int i=0;i<4;++i){const auto data=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"180\" height=\"160\"><metadata id=\"teaching-shape\">%1</metadata><g stroke=\"#800080\" fill=\"%2\" stroke-width=\"3\">%3</g></svg>").arg(i).arg(i%2?"none":"#33cc66").arg(geometry[i]).toUtf8();
                 auto svg=scene->addSvg(QUrl(),QPointF(-210+i*140,130),data);if(!svg){fail("Cannot insert shape");return;}svg->setRotation(i*10);svg->setScale(0.7);

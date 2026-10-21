@@ -66,7 +66,8 @@ jobs:
           git -C OpenBoardOriginal diff --stat
           git -C OpenBoardOriginal diff --name-only | Set-Content OpenBoard/dist/original-instrumentation.txt
       - name: Restore original native compilation
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
+        id: original-cache
         with:
           path: OpenBoardOriginal/build
           key: original-compat-${{ env.VCToolsVersion }}-qt683-v177-${{ hashFiles('OpenBoard/src/board/UBFileCompatibilityTest.*', 'OpenBoard/release_scripts/teaching/prepare-original-compat.py', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}
@@ -78,6 +79,12 @@ jobs:
           ./OpenBoardOriginal/release_scripts/teaching/build-windows.ps1
           Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.config OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.config
           Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.css OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.css
+      - name: Save original native compilation
+        if: always() && steps.original-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: OpenBoardOriginal/build
+          key: ${{ steps.original-cache.outputs.cache-primary-key }}
       - name: Round trip original OpenBoard and LessonBoard files
         shell: pwsh
         run: |
