@@ -147,9 +147,9 @@ bool checkPdfSelection(QString *error)
             thumbnails->clearSelection();
             for (int index : selections[test]) thumbnails->selectItemAt(index, true);
             UBApplication::documentController->pageSelectionChanged();
-            if (UBApplication::documentController->selectedDocumentProxy() != doc || !exporter->associatedAction()->isEnabled()) {
+            if (thumbnails->document()->proxy() != doc || !exporter->associatedAction()->isEnabled()) {
                 *error = QString("PDF test selection unavailable: correct document=%1, enabled=%2, pages=%3, selected=%4")
-                    .arg(UBApplication::documentController->selectedDocumentProxy() == doc)
+                    .arg(thumbnails->document()->proxy() == doc)
                     .arg(exporter->associatedAction()->isEnabled()).arg(doc->pageCount()).arg(thumbnails->selectedItems().size());
                 return false;
             }
