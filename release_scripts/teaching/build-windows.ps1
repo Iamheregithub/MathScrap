@@ -15,7 +15,7 @@ try {
 } finally { Pop-Location }
 Push-Location $project
 try {
-    Run-Native "$qtbin\qmake.exe" @('OpenBoard.pro','-after','CONFIG+=release','CONFIG-=debug','CONFIG-=debug_and_release')
+    Run-Native "$qtbin\qmake.exe" @('OpenBoard.pro','-after','CONFIG+=release','CONFIG-=debug','CONFIG-=debug_and_release','QMAKE_LFLAGS_RELEASE+=/DEBUG')
     Run-Native 'nmake.exe' @('/NOLOGO')
     Run-Native "$qtbin\lrelease.exe" @('OpenBoard.pro')
 } finally { Pop-Location }
