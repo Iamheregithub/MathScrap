@@ -20,6 +20,7 @@
 #include "adaptors/UBImportDocument.h"
 #include "adaptors/UBImportPDF.h"
 #include "adaptors/UBExportPDF.h"
+#include "adaptors/UBMetadataDcSubsetAdaptor.h"
 namespace {
 QByteArray hashFile(const QString &path) {
     QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {};
@@ -59,10 +60,17 @@ QJsonObject manifest(std::shared_ptr<UBDocumentProxy> doc, const QString &prefix
     }
     QJsonObject o;o["pageCount"]=doc->pageCount();o["pages"]=pages;o["documentPath"]=doc->persistencePath();return o;
 }
-void saveAll(std::shared_ptr<UBDocumentProxy> doc) {
+bool saveAll(std::shared_ptr<UBDocumentProxy> doc) {
     auto manager=UBPersistenceManager::persistenceManager();
-    for(int i=0;i<doc->pageCount();++i) manager->persistDocumentScene(doc,manager->loadDocumentScene(doc,i),i,false,true);
+    // A unique queued name is a FIFO barrier for earlier asynchronous scene saves.
     manager->persistDocumentMetadata(doc);
+    QElapsedTimer timer;timer.start();
+    while(UBMetadataDcSubsetAdaptor::load(doc->persistencePath()).value(UBSettings::documentName)!=doc->metaData(UBSettings::documentName)) {
+        if(timer.elapsed()>15000) return false;
+        QCoreApplication::processEvents(QEventLoop::AllEvents,20);QThread::msleep(10);
+    }
+    for(int i=0;i<doc->pageCount();++i) manager->persistDocumentScene(doc,manager->loadDocumentScene(doc,i),i,false,true);
+    manager->persistDocumentMetadata(doc,true);return true;
 }
 void run() {
     const QDir root(qEnvironmentVariable("LESSONBOARD_COMPAT_DIR"));
@@ -120,7 +128,7 @@ void run() {
         } else {fail("Unknown compatibility mode");return;}
     }
     doc->setMetaData(UBSettings::documentName, QString("Compatibility %1 lesson").arg(mode));
-    saveAll(doc);
+    if(!saveAll(doc)){fail("Pending document saves did not finish");return;}
     const QString name=mode=="original-create"?"original":mode=="lessonboard-edit"?"lessonboard":mode=="original-edit"?"original-resaved":"lessonboard-reopened";
     UBExportDocument exporter;if(!exporter.persistsDocument(doc,root.filePath(name+".ubz"))){fail("UBZ export failed");return;}
     if(!writeJson(root.filePath(mode+"-saved.json"),manifest(doc,root.filePath(mode+"-saved")))){fail("Cannot save output manifest");return;}
