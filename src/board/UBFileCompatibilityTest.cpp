@@ -21,6 +21,7 @@
 #include "adaptors/UBImportPDF.h"
 #include "adaptors/UBExportPDF.h"
 #include "adaptors/UBMetadataDcSubsetAdaptor.h"
+#include "adaptors/UBSvgSubsetAdaptor.h"
 namespace {
 QByteArray hashFile(const QString &path) {
     QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {};
@@ -36,7 +37,8 @@ QJsonObject manifest(std::shared_ptr<UBDocumentProxy> doc, const QString &prefix
     QJsonArray pages;
     auto manager = UBPersistenceManager::persistenceManager();
     for (int i=0;i<doc->pageCount();++i) {
-        auto scene=manager->loadDocumentScene(doc,i);
+        // Inspect the saved bytes through a fresh reader, bypassing the scene cache.
+        auto scene=UBSvgSubsetAdaptor::loadScene(doc,i);
         QJsonArray svgs,texts,ink; int strokes=0, polygons=0;
         for (auto item:scene->items()) {
             if (auto svg=dynamic_cast<UBGraphicsSvgItem*>(item)) {
