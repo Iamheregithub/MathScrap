@@ -8,14 +8,14 @@ permissions:
 jobs:
   install:
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 65
     steps:
       - name: Wait for the application build
         uses: actions/github-script@v7
         with:
           script: |
-            const runId = 39664790055;
-            for (let attempt = 0; attempt < 100; attempt++) {
+            const runId = 39671057801;
+            for (let attempt = 0; attempt < 240; attempt++) {
               const {data} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: runId});
               if (data.status === 'completed') {
                 if (data.conclusion !== 'success') throw new Error('Application build failed: ' + data.conclusion);
@@ -26,11 +26,17 @@ jobs:
             throw new Error('Application build did not complete in time');
       - uses: actions/download-artifact@v4
         with:
+          name: LessonBoard-Windows-x64
+          run-id: 39671057801
+          github-token: ${{ github.token }}
+          path: package
+      - uses: actions/download-artifact@v4
+        with:
           name: OpenBoard-Teaching-Windows-x64
           run-id: 39664790055
           github-token: ${{ github.token }}
-          path: package
-      - name: Install, launch native checks, and uninstall
+          path: previous-package
+      - name: Install, upgrade, launch native checks, and uninstall
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -40,11 +46,25 @@ jobs:
           $expected = ((Get-Content package/SHA256SUMS.txt -Raw).Trim() -split '\s+')[0]
           if ((Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Installer checksum mismatch' }
           $installed = Join-Path $env:LOCALAPPDATA 'Programs\OpenBoardTeachingTest'
+          # Start with the previously delivered installer, then upgrade in place.
+          $oldSetup = Get-Item previous-package/*Setup.exe
+          $oldExpected = ((Get-Content previous-package/SHA256SUMS.txt -Raw).Trim() -split '\s+')[0]
+          if ((Get-FileHash $oldSetup.FullName -Algorithm SHA256).Hash.ToLower() -ne $oldExpected) { throw 'Previous installer checksum mismatch' }
+          $oldArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"")
+          $oldProcess = Start-Process $oldSetup.FullName -ArgumentList $oldArgs -PassThru -Wait
+          if ($oldProcess.ExitCode -ne 0) { throw 'Previous installation failed' }
+          $probeFolder = Join-Path $env:LOCALAPPDATA 'OpenBoardTeaching\document'
+          New-Item -ItemType Directory -Force $probeFolder | Out-Null
+          $probe = Join-Path $probeFolder 'lessonboard-upgrade-probe.dat'
+          'Existing lesson location survives the LessonBoard rename.' | Set-Content $probe
+          $probeHash = (Get-FileHash $probe -Algorithm SHA256).Hash
           $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"","/LOG=`"$dist\install.log`"")
           $process = Start-Process $setup.FullName -ArgumentList $args -PassThru -Wait
           if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
-          $exe = Join-Path $installed 'OpenBoardTeaching.exe'
+          $exe = Join-Path $installed 'LessonBoard.exe'
           if (!(Test-Path $exe)) { throw 'Installed application missing' }
+          if (Test-Path (Join-Path $installed 'OpenBoardTeaching.exe')) { throw 'Previous executable was not cleaned up' }
+          if ((Get-FileHash $probe -Algorithm SHA256).Hash -ne $probeHash) { throw 'Upgrade changed existing lesson data' }
           $env:TEACHING_SMOKE_REPORT = Join-Path $dist 'installed-native-report.json'
           $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
           # Exercise the installed deployment without an installed Qt SDK.
@@ -54,9 +74,10 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Installed application failed: $($process.ExitCode)" }
           $report = Get-Content $env:TEACHING_SMOKE_REPORT -Raw | ConvertFrom-Json
           if (!$report.passed) { throw 'Installed native checks failed' }
+          if ($report.documentDirectory -ne $probeFolder.Replace('\','/')) { throw 'Renamed application lost the existing document location' }
           $process = Start-Process "$installed\unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
           if ($process.ExitCode -ne 0 -or (Test-Path $exe)) { throw 'Uninstallation failed' }
-          'Installer checksum, silent installation, installed native drawing/GraphDesk checks, and uninstallation passed.' | Set-Content "$dist\installer-result.log"
+          'Installer checksum, upgrade from the previous package, preserved lesson location/data, installed native/PDF checks, and uninstallation passed.' | Set-Content "$dist\installer-result.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
