@@ -105,7 +105,11 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
 
     setOrganizationName("Open Education Foundation");
     setOrganizationDomain("oe-f.org");
+#ifdef UB_TEACHING_FORK
+    setApplicationName("OpenBoardTeaching");
+#else
     setApplicationName("OpenBoard");
+#endif
 
 #ifdef Q_OS_OSX
     // With Qt 6.9 on macOS 15 (at least), icons aren't shown in menus. This forces their display.

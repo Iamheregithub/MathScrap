@@ -30,6 +30,7 @@
 #include <QtGui>
 #include <QToolTip>
 #include <QStackedLayout>
+#include <QTabWidget>
 
 #include "UBMainWindow.h"
 #include "core/UBApplication.h"
@@ -53,6 +54,9 @@ UBMainWindow::UBMainWindow(QWidget *parent, Qt::WindowFlags flags)
     , mpDownloadWidget(NULL)
 {
     Ui::MainWindow::setupUi(this);
+#ifdef UB_TEACHING_FORK
+    setWindowTitle(tr("OpenBoard Teaching"));
+#endif
 
     mpDownloadWidget = new UBDownloadWidget();
     mpDownloadWidget->setWindowModality(Qt::ApplicationModal);
@@ -78,6 +82,9 @@ UBMainWindow::UBMainWindow(QWidget *parent, Qt::WindowFlags flags)
     actionQuit->setShortcut(QKeySequence(Qt::ALT | Qt::Key_F4));
 #endif
 
+    actionPen->setShortcut(QKeySequence("P"));
+    actionEraser->setShortcut(QKeySequence("E"));
+    actionLine->setShortcut(QKeySequence("L"));
     UBShortcutManager::shortcutManager()->addMainActions(this);
 }
 
@@ -94,7 +101,9 @@ void UBMainWindow::addBoardWidget(QWidget *pWidget)
 {
     if (!mBoardWidget)
     {
-        mBoardWidget = pWidget;
+        mTeachingTabs = new QTabWidget(this);
+        mTeachingTabs->addTab(pWidget, tr("Lesson"));
+        mBoardWidget = mTeachingTabs;
         mStackedLayout->addWidget(mBoardWidget);
     }
 }

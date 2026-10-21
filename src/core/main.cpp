@@ -34,6 +34,7 @@
 
 #include "UBApplication.h"
 #include "UBSettings.h"
+#include "board/UBTeachingSmokeTest.h"
 
 /* Uncomment this for memory leaks detection */
 /*
@@ -135,6 +136,7 @@ int main(int argc, char *argv[])
     UBApplication app("OpenBoard", argc, argv);
 
     QStringList args = app.arguments();
+    if (args.contains("--teaching-smoke-test")) scheduleTeachingSmokeTest(&app);
 
     QString dumpPath = UBSettings::userDataDirectory() + "/log";
     QDir logDir(dumpPath);

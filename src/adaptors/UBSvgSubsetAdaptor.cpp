@@ -38,6 +38,7 @@
 #include <QElapsedTimer>
 
 #include "domain/UBGraphicsSvgItem.h"
+#include <QSaveFile>
 #include "domain/UBGraphicsPixmapItem.h"
 #include "domain/UBGraphicsPolygonItem.h"
 #include "domain/UBGraphicsMediaItem.h"
@@ -2202,6 +2203,15 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
     QString fileName = UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg";
 
 
+    if (svgItem->isTeachingShape() || svgItem->fileData().contains("graphdesk-project"))
+    {
+        QDir().mkpath(mDocumentPath + "/" + UBPersistenceManager::imageDirectory);
+        QSaveFile asset(mDocumentPath + "/" + fileName);
+        if (!asset.open(QIODevice::WriteOnly)
+                || asset.write(svgItem->fileData()) != svgItem->fileData().size()
+                || !asset.commit())
+            qWarning() << "Cannot persist editable SVG asset" << asset.fileName();
+    }
     mXmlWriter.writeAttribute(nsXLink, "href", fileName);
 
     graphicsItemToSvg(svgItem);

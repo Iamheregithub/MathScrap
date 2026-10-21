@@ -93,7 +93,8 @@ UBZLayerController::UBZLayerController(QGraphicsScene *scene) :
     scopeMap.insert(itemLayerType::BackgroundItem, ItemLayerTypeData(-1000000.0, -1000000.0 ));
     // DEFAULT_Z_VALUE isn't used because it allows to easily identify new objects
     scopeMap.insert(itemLayerType::ObjectItem,     ItemLayerTypeData(-1000000.0,  DEFAULT_Z_VALUE - 1.0));
-    scopeMap.insert(itemLayerType::DrawingItem,    ItemLayerTypeData( DEFAULT_Z_VALUE + 1.0, 1000000.0 ));
+    scopeMap.insert(itemLayerType::DrawingItem,    ItemLayerTypeData( 500000.0, 1000000.0 ));
+    scopeMap.insert(itemLayerType::HighlighterItem, ItemLayerTypeData(1.0, 499999.0));
     scopeMap.insert(itemLayerType::ToolItem,       ItemLayerTypeData( 1000000.0,  1000100.0 ));
     scopeMap.insert(itemLayerType::CppTool,        ItemLayerTypeData( 1000100.0,  1000200.0 ));
     scopeMap.insert(itemLayerType::Curtain,        ItemLayerTypeData( 1000200.0,  1001000.0 ));
@@ -976,7 +977,21 @@ void UBGraphicsScene::drawLineTo(const QPointF &pEndPoint, const qreal &startWid
         mAddedItems.clear();
     }
 
-    UBGraphicsPolygonItem *polygonItem = lineToPolygonItem(QLineF(mPreviousPoint, pEndPoint), initialWidth, endWidth);
+    UBGraphicsPolygonItem *polygonItem;
+    if (bLineStyle && UBSettings::settings()->value("Teaching/DashedLines", false).toBool())
+    {
+        QPainterPath path;
+        path.moveTo(mPreviousPoint);
+        path.lineTo(pEndPoint);
+        QPainterPathStroker stroker;
+        stroker.setWidth(qMax(qreal(0.1), endWidth));
+        stroker.setCapStyle(Qt::FlatCap);
+        stroker.setDashPattern(Qt::DashLine);
+        polygonItem = new UBGraphicsPolygonItem(stroker.createStroke(path).toFillPolygon());
+        initPolygonItem(polygonItem);
+    }
+    else
+        polygonItem = lineToPolygonItem(QLineF(mPreviousPoint, pEndPoint), initialWidth, endWidth);
     addPolygonItemToCurrentStroke(polygonItem);
 
     if (!bLineStyle) {
@@ -1263,6 +1278,7 @@ void UBGraphicsScene::initPolygonItem(UBGraphicsPolygonItem* polygonItem)
 
     if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Marker)
     {
+        polygonItem->setData(UBGraphicsItemData::itemLayerType, int(itemLayerType::HighlighterItem));
         colorOnDarkBG = UBApplication::boardController->markerColorOnDarkBackground();
         colorOnLightBG = UBApplication::boardController->markerColorOnLightBackground();
     }
@@ -1979,6 +1995,26 @@ UBGraphicsTextItem *UBGraphicsScene::addTextHtml(const QString &pString, const Q
 void UBGraphicsScene::addItem(QGraphicsItem* item)
 {
     UBCoreGraphicsScene::addItem(item);
+
+    // Ink and highlights occupy separate bands above PDF/image objects. Infer
+    // old document strokes from their alpha, so reopened lessons behave alike.
+    if (auto strokes = dynamic_cast<UBGraphicsStrokesGroup*>(item))
+    {
+        const bool marker = strokes->color().alpha() < 255;
+        const auto layer = marker ? itemLayerType::HighlighterItem : itemLayerType::DrawingItem;
+        const qreal bottom = marker ? 1.0 : 500000.0;
+        const qreal top = marker ? 499999.0 : 1000000.0;
+        strokes->setData(UBGraphicsItemData::itemLayerType, int(layer));
+        if (strokes->zValue() == DEFAULT_Z_VALUE || strokes->zValue() == UBZLayerController::errorNum())
+            UBGraphicsItem::assignZValue(strokes, mZLayerController->generateZLevel(layer));
+        else if (strokes->zValue() <= bottom || strokes->zValue() >= top)
+        {
+            // Loading iterates a hash, so preserve old stacking order rather
+            // than assigning successive z-values in arbitrary load order.
+            const qreal ratio = qBound(qreal(0), (strokes->zValue() + 1000000.0) / 2000000.0, qreal(1));
+            UBGraphicsItem::assignZValue(strokes, bottom + 1.0 + ratio * (top - bottom - 2.0));
+        }
+    }
 
     // the default z value is already set. This is the case when a svg file is read
     if(item->zValue() == DEFAULT_Z_VALUE

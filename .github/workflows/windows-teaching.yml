@@ -1,0 +1,74 @@
+name: Windows teaching installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [graphdesk-teaching-fork]
+  pull_request:
+    branches: [master]
+permissions:
+  contents: read
+concurrency:
+  group: windows-teaching-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - name: Fetch upstream Windows dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - name: Build and stage application
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - name: Native startup, drawing, and GraphDesk checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Create installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup --yes --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' } }
+          & $iscc "$env:GITHUB_WORKSPACE\OpenBoard\release_scripts\teaching\OpenBoardTeaching.iss"
+          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed' }
+      - name: Hash installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem OpenBoard/dist/*Setup.exe
+          $hash = Get-FileHash $setup.FullName -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $($setup.Name)" | Set-Content OpenBoard/dist/SHA256SUMS.txt
+      - name: Upload installer and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenBoard-Teaching-Windows-x64
+          path: |
+            OpenBoard/dist/*Setup.exe
+            OpenBoard/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-validation-report
+          path: |
+            OpenBoard/dist/*report.json
+            OpenBoard/dist/*.log
+          if-no-files-found: ignore

@@ -1,4 +1,8 @@
 target_sources(${PROJECT_NAME} PRIVATE
+    UBTeachingSmokeTest.cpp
+    UBTeachingSmokeTest.h
+    UBTeachingTools.cpp
+    UBTeachingTools.h
     UBBoardController.cpp
     UBBoardController.h
     UBBoardPaletteManager.cpp

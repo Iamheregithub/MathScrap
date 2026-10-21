@@ -44,6 +44,7 @@ class UBStylusPalette : public UBActionPalette
         virtual ~UBStylusPalette();
 
         void initPosition();
+        void applyTeachingLayout(const QStringList &order);
 
     private slots:
 

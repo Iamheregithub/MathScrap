@@ -15,3 +15,9 @@ SOURCES      += src/board/UBBoardController.cpp \
     
 
 
+
+HEADERS += src/board/UBTeachingTools.h
+SOURCES += src/board/UBTeachingTools.cpp
+
+HEADERS += src/board/UBTeachingSmokeTest.h
+SOURCES += src/board/UBTeachingSmokeTest.cpp

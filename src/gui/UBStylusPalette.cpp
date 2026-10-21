@@ -30,6 +30,7 @@
 #include "UBStylusPalette.h"
 
 #include <QtGui>
+#include <QLayout>
 
 #include "UBMainWindow.h"
 
@@ -75,6 +76,8 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
     actions << UBApplication::mainWindow->actionSnap;
     UBApplication::mainWindow->actionSnap->setProperty("ungrouped", true);
 
+    for (auto action : actions)
+        action->setProperty("teachingHiddenBottom", !UBSettings::settings()->value("Teaching/Bottom/" + action->objectName(), action != UBApplication::mainWindow->actionPointer).toBool());
     setActions(actions);
     setButtonIconSize(QSize(42, 42));
     groupActions();
@@ -83,6 +86,7 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
 
     adjustSizeAndPosition();
 
+    applyTeachingLayout(UBSettings::settings()->value("Teaching/BottomOrder").toStringList());
     initPosition();
 
     foreach(const UBActionPaletteButton* button, mButtons)
@@ -132,3 +136,22 @@ void UBStylusPalette::stylusToolDoubleClicked()
 }
 
 
+
+void UBStylusPalette::applyTeachingLayout(const QStringList &order)
+{
+    QStringList complete = order;
+    for (auto action : mActions)
+        if (!complete.contains(action->objectName())) complete << action->objectName();
+    for (auto id : complete)
+        for (auto action : mActions)
+            if (action->objectName() == id) {
+                auto button = getButtonFromAction(action);
+                if (button) {
+                    layout()->removeWidget(button);
+                    layout()->addWidget(button);
+                    button->setVisible(action->isVisible() && !action->property("teachingHiddenBottom").toBool());
+                }
+            }
+    adjustSize();
+    initPosition();
+}

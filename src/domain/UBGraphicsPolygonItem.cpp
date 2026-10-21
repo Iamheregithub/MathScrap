@@ -179,17 +179,20 @@ void UBGraphicsPolygonItem::copyItemParameters(UBItem *copy) const
         cp->setZValue(this->zValue());
         cp->setData(UBGraphicsItemData::ItemOwnZValue, this->data(UBGraphicsItemData::ItemOwnZValue));
         cp->setData(UBGraphicsItemData::ItemLayerType, this->data(UBGraphicsItemData::ItemLayerType));
+        cp->setData(UBGraphicsItemData::itemLayerType, this->data(UBGraphicsItemData::itemLayerType));
     }
 }
 
 void UBGraphicsPolygonItem::paint ( QPainter * painter, const QStyleOptionGraphicsItem * option, QWidget * widget)
 {
+    painter->save();
     if(mHasAlpha && scene() && scene()->isLightBackground())
-        painter->setCompositionMode(QPainter::CompositionMode_SourceOver);
+        painter->setCompositionMode(QPainter::CompositionMode_Multiply);
 
     painter->setRenderHints(QPainter::Antialiasing);
 
     QGraphicsPolygonItem::paint(painter, option, widget);
+    painter->restore();
 }
 
 std::shared_ptr<UBGraphicsScene> UBGraphicsPolygonItem::scene()

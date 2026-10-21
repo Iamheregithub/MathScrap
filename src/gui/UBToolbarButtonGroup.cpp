@@ -32,6 +32,8 @@
 #include <QtGui>
 #include <QLayout>
 #include <QStyleOption>
+#include <QColorDialog>
+#include "core/UBSetting.h"
 
 #include "core/UBApplication.h"
 #include "core/UBSettings.h"
@@ -138,6 +140,33 @@ void UBToolbarButtonGroup::setIcon(const QIcon &icon, int index)
 
 void UBToolbarButtonGroup::setColor(const QColor &color, int index)
 {
+    // A context menu edits a swatch without leaving the lesson.
+    QToolButton *button = mButtons.value(index);
+    if (button && !button->property("paletteEditable").toBool())
+    {
+        button->setProperty("paletteEditable", true);
+        button->setContextMenuPolicy(Qt::CustomContextMenu);
+        button->setToolTip(tr("Select colour; right-click to change it"));
+        connect(button, &QWidget::customContextMenuRequested, this, [this, index]() {
+            auto settings = UBSettings::settings();
+            auto dc = UBDrawingController::drawingController();
+            const bool marker = dc->stylusTool() == UBStylusTool::Marker;
+            // Edit the palette for the background currently being taught on.
+            const bool dark = settings->isDarkBackground();
+            QColorDialog dialog(this);
+            dialog.setWindowTitle(tr("Change colour %1").arg(index + 1));
+            dialog.setCurrentColor(marker ? settings->markerColors(dark).value(index)
+                                         : settings->penColors(dark).value(index));
+            if (dialog.exec() != QDialog::Accepted)
+                return;
+            const QColor chosen = dialog.selectedColor();
+            if (marker) {
+                dc->setMarkerColor(dark, chosen, index);
+            } else {
+                dc->setPenColor(dark, chosen, index);
+            }
+        });
+    }
     QPixmap pixmap(12, 12);
     pixmap.fill(color);
     QIcon icon(pixmap);

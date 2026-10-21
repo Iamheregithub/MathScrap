@@ -51,6 +51,10 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         virtual ~UBGraphicsSvgItem();
 
         QByteArray fileData() const;
+        bool isTeachingShape() const;
+        void setTeachingSvg(const QByteArray &data);
+        void commitTeachingSvg(const QByteArray &before);
+        void refreshTeachingHandles();
 
         void setFileData(const QByteArray& pFileData)
         {
@@ -88,6 +92,9 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
 
         virtual QVariant itemChange(GraphicsItemChange change, const QVariant &value);
 
+        void initTeachingHandles();
+        QList<QGraphicsItem*> mTeachingHandles;
+        bool mTeachingDetached = false;
         QByteArray mFileData;
 };
 

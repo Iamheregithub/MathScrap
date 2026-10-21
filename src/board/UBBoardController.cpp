@@ -28,6 +28,7 @@
 
 
 #include "UBBoardController.h"
+#include "UBTeachingTools.h"
 
 #include <QtWidgets>
 
@@ -357,9 +358,18 @@ void UBBoardController::setupToolbar()
     colorActions.append(mMainWindow->actionColor3);
     colorActions.append(mMainWindow->actionColor4);
 
+    for (int i = colorActions.size(); i < UBSettings::colorPaletteSize; ++i)
+    {
+        QAction *action = new QAction(tr("Color %1").arg(i + 1), mMainWindow);
+        action->setObjectName(QString("actionColor%1").arg(i));
+        action->setCheckable(true);
+        colorActions << action;
+    }
+
     UBToolbarButtonGroup *colorChoice =
             new UBToolbarButtonGroup(mMainWindow->boardToolBar, colorActions);
     colorChoice->setLabel(tr("Color"));
+    colorChoice->setProperty("teachingLabel", tr("Pen colours"));
 
     mMainWindow->boardToolBar->insertWidget(mMainWindow->actionBackgrounds, colorChoice);
 
@@ -392,6 +402,7 @@ void UBBoardController::setupToolbar()
     connect(UBDrawingController::drawingController(), SIGNAL(lineWidthIndexChanged(int))
             , lineWidthChoice, SLOT(setCurrentIndex(int)));
 
+    lineWidthChoice->setProperty("teachingLabel", tr("Line thickness"));
     lineWidthChoice->displayText(QVariant(settings->appToolBarDisplayText->get().toBool()));
     lineWidthChoice->setCurrentIndex(settings->penWidthIndex());
     lineWidthActions.at(settings->penWidthIndex())->setChecked(true);
@@ -414,6 +425,7 @@ void UBBoardController::setupToolbar()
     connect(settings->appToolBarDisplayText, SIGNAL(changed(QVariant)), eraserWidthChoice, SLOT(displayText(QVariant)));
     connect(eraserWidthChoice, SIGNAL(activated(int)), UBDrawingController::drawingController(), SLOT(setEraserWidthIndex(int)));
 
+    eraserWidthChoice->setProperty("teachingLabel", tr("Eraser size"));
     eraserWidthChoice->displayText(QVariant(settings->appToolBarDisplayText->get().toBool()));
     eraserWidthChoice->setCurrentIndex(settings->eraserWidthIndex());
     eraserWidthActions.at(settings->eraserWidthIndex())->setChecked(true);
@@ -433,6 +445,7 @@ void UBBoardController::setupToolbar()
 
     connectToolbar();
     initToolbarTexts();
+    new UBTeachingTools(mMainWindow);
 
     UBApplication::app()->toolBarDisplayTextChanged(QVariant(settings->appToolBarDisplayText->get().toBool()));
 }

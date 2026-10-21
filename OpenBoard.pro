@@ -1,4 +1,5 @@
-TARGET = "OpenBoard"
+TARGET = "OpenBoardTeaching"
+DEFINES += UB_TEACHING_FORK
 TEMPLATE = app
 
 CONFIG += c++17

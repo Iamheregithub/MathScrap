@@ -106,6 +106,15 @@ UBColorListSetting::UBColorListSetting(UBSettings* owner, const QString& pDomain
     , mAlpha(pAlpha)
 {
 
+    if (pKey.endsWith("SelectedColors"))
+    {
+        QStringList stored = get().toStringList();
+        const QStringList defaults = pDefaultValue.toStringList();
+        for (int i = stored.size(); i < UBSettings::colorPaletteSize; ++i)
+            stored << defaults.value(i, "#808080");
+        set(stored);
+    }
+
     foreach(QString s, get().toStringList())
     {
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 4, 0))

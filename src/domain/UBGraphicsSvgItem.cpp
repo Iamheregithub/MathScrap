@@ -30,6 +30,10 @@
 #include "UBGraphicsSvgItem.h"
 
 #include <QtGui>
+#include <QDomDocument>
+#include <QUndoCommand>
+#include <QPointer>
+#include "board/UBDrawingController.h"
 
 #include "UBGraphicsScene.h"
 #include "UBGraphicsItemDelegate.h"
@@ -56,6 +60,7 @@ UBGraphicsSvgItem::UBGraphicsSvgItem(const QString& pFilePath, QGraphicsItem* pa
         mFileData = f.readAll();
         f.close();
     }
+    initTeachingHandles();
 }
 
 UBGraphicsSvgItem::UBGraphicsSvgItem(const QByteArray& pFileData, QGraphicsItem* parent)
@@ -67,6 +72,7 @@ UBGraphicsSvgItem::UBGraphicsSvgItem(const QByteArray& pFileData, QGraphicsItem*
 
     setSharedRenderer(renderer);
     mFileData = pFileData;
+    initTeachingHandles();
 }
 
 
@@ -106,7 +112,9 @@ QByteArray UBGraphicsSvgItem::fileData() const
 QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant &value)
 {
     QVariant newValue = Delegate()->itemChange(change, value);
-    return QGraphicsSvgItem::itemChange(change, newValue);
+    auto result = QGraphicsSvgItem::itemChange(change, newValue);
+    if (change == QGraphicsItem::ItemSelectedHasChanged) refreshTeachingHandles();
+    return result;
 }
 
 
@@ -161,7 +169,8 @@ UBItem* UBGraphicsSvgItem::deepCopy() const
 {
     UBGraphicsSvgItem* copy = new UBGraphicsSvgItem(this->fileData());
 
-    copy->setUuid(this->uuid()); // this is OK for now as long as Widgets are imutable
+    if (!isTeachingShape() && !mFileData.contains("graphdesk-project"))
+        copy->setUuid(this->uuid());
 
     copyItemParameters(copy);
 
@@ -242,4 +251,115 @@ void UBGraphicsSvgItem::clearSource()
     QString fileName = UBPersistenceManager::imageDirectory + "/" + uuid().toString() + ".svg";
     QString diskPath =  UBApplication::boardController->selectedDocument()->persistencePath() + "/" + fileName;
     UBFileSystemUtils::deleteFile(diskPath);
+}
+
+namespace {
+QDomDocument shapeDocument(const QByteArray &data) {
+    QDomDocument doc; doc.setContent(data); return doc;
+}
+QList<QPointF> trianglePoints(const QByteArray &data) {
+    const auto doc = shapeDocument(data);
+    const auto polygons = doc.elementsByTagName("polygon");
+    if (polygons.isEmpty()) return {};
+    const QStringList coords = polygons.at(0).toElement().attribute("points").split(QRegularExpression("[ ,]+"), Qt::SkipEmptyParts);
+    if (coords.size() != 6) return {};
+    QList<QPointF> points;
+    for (int i = 0; i < 6; i += 2) points << QPointF(coords[i].toDouble(), coords[i+1].toDouble());
+    return points;
+}
+class TeachingSvgUndo : public QUndoCommand {
+public:
+    TeachingSvgUndo(UBGraphicsSvgItem *item, const QByteArray &before, const QByteArray &after)
+        : mItem(item), mBefore(before), mAfter(after) { setText(QObject::tr("Edit shape or graph")); }
+    void undo() override { if (mItem) mItem->setTeachingSvg(mBefore); }
+    void redo() override { if (mItem) mItem->setTeachingSvg(mAfter); }
+private:
+    QPointer<UBGraphicsSvgItem> mItem;
+    QByteArray mBefore, mAfter;
+};
+class TeachingVertexHandle : public QGraphicsEllipseItem {
+public:
+    TeachingVertexHandle(UBGraphicsSvgItem *item, int index)
+        : QGraphicsEllipseItem(-6,-6,12,12,item), mItem(item), mIndex(index) {
+        setBrush(QColor("#ffffff")); setPen(QPen(QColor("#147d92"),2));
+        setFlag(QGraphicsItem::ItemIgnoresTransformations);
+        setAcceptedMouseButtons(Qt::LeftButton);
+        setCursor(Qt::SizeAllCursor);
+        setData(UBGraphicsItemData::ItemLayerType, UBItemLayerType::Control);
+        setZValue(10);
+    }
+protected:
+    void mousePressEvent(QGraphicsSceneMouseEvent *event) override {
+        mBefore = mItem->fileData(); event->accept();
+    }
+    void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override {
+        auto points = trianglePoints(mItem->fileData());
+        if (points.size() != 3) return;
+        auto point = mItem->mapFromScene(event->scenePos());
+        points[mIndex] = QPointF(qBound(6.,point.x(),294.), qBound(6.,point.y(),294.));
+        QStringList values;
+        for (auto p : points) values << QString("%1,%2").arg(p.x()).arg(p.y());
+        auto doc = shapeDocument(mItem->fileData());
+        doc.elementsByTagName("polygon").at(0).toElement().setAttribute("points", values.join(" "));
+        mItem->setTeachingSvg(doc.toByteArray());
+        event->accept();
+    }
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override {
+        mItem->commitTeachingSvg(mBefore); event->accept();
+    }
+private:
+    UBGraphicsSvgItem *mItem;
+    int mIndex;
+    QByteArray mBefore;
+};
+}
+
+bool UBGraphicsSvgItem::isTeachingShape() const
+{
+    return mFileData.contains("teaching-shape");
+}
+
+void UBGraphicsSvgItem::initTeachingHandles()
+{
+    if (!isTeachingShape()) return;
+    const bool triangle = trianglePoints(mFileData).size() == 3;
+    auto doc = shapeDocument(mFileData);
+    auto metadata = doc.elementsByTagName("metadata");
+    const int type = metadata.isEmpty() ? -1 : metadata.at(0).toElement().text().toInt();
+    if (type == 0 || triangle)
+        Delegate()->setUBFlags(Delegate()->ubflags() & ~UBGraphicsFlags(GF_RESPECT_RATIO));
+    if (triangle) {
+        for (int i = 0; i < 3; ++i) mTeachingHandles << new TeachingVertexHandle(this, i);
+        connect(UBDrawingController::drawingController(), &UBDrawingController::stylusToolChanged, this,
+                [this](int, int) { refreshTeachingHandles(); });
+    }
+    refreshTeachingHandles();
+}
+
+void UBGraphicsSvgItem::refreshTeachingHandles()
+{
+    const auto points = trianglePoints(mFileData);
+    const bool visible = isSelected() && UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector;
+    for (int i = 0; i < mTeachingHandles.size(); ++i) {
+        if (i < points.size()) mTeachingHandles[i]->setPos(points[i]);
+        mTeachingHandles[i]->setVisible(visible);
+    }
+}
+
+void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
+{
+    // Detach on first edit: duplicated pages may initially share SVG assets.
+    if (!mTeachingDetached) { setUuid(QUuid::createUuid()); mTeachingDetached = true; }
+    prepareGeometryChange();
+    mFileData = data;
+    renderer()->load(data);
+    refreshTeachingHandles();
+    update();
+    if (scene()) scene()->setDocumentUpdated();
+}
+
+void UBGraphicsSvgItem::commitTeachingSvg(const QByteArray &before)
+{
+    if (before != mFileData && UBApplication::undoStack)
+        UBApplication::undoStack->push(new TeachingSvgUndo(this, before, mFileData));
 }
