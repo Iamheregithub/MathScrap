@@ -3,8 +3,6 @@ on:
   workflow_dispatch:
   push:
     branches: [graphdesk-teaching-fork]
-  pull_request:
-    branches: [master]
 permissions:
   contents: read
 concurrency:
@@ -73,3 +71,10 @@ jobs:
             OpenBoard/dist/*.log
             OpenBoard/dist/*window.png
           if-no-files-found: ignore
+      - name: Preserve staged application for diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-staged-application
+          path: OpenBoard/dist/app
+          retention-days: 7

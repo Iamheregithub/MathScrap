@@ -2,5 +2,6 @@
 #ifndef UBTEACHINGSMOKETEST_H
 #define UBTEACHINGSMOKETEST_H
 class QObject;
+void installTeachingCrashDiagnostics();
 void scheduleTeachingSmokeTest(QObject *context);
 #endif

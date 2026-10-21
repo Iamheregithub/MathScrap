@@ -14,6 +14,54 @@
 #include "domain/UBGraphicsSvgItem.h"
 #include "domain/UBGraphicsStrokesGroup.h"
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <dbghelp.h>
+#include <cstdio>
+#pragma comment(lib, "dbghelp.lib")
+namespace {
+LONG CALLBACK recordTeachingCrash(EXCEPTION_POINTERS *exception) {
+    const DWORD code = exception->ExceptionRecord->ExceptionCode;
+    if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION
+        && code != EXCEPTION_STACK_OVERFLOW && code != 0xC000041D) return EXCEPTION_CONTINUE_SEARCH;
+    FILE *file = nullptr;
+    fopen_s(&file, "teaching-crash.log", "a");
+    if (!file) return EXCEPTION_CONTINUE_SEARCH;
+    fprintf(file, "Exception %08lx at %p\n", code, exception->ExceptionRecord->ExceptionAddress);
+    HANDLE process = GetCurrentProcess();
+    SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
+    SymInitialize(process, nullptr, TRUE);
+    CONTEXT context = *exception->ContextRecord;
+    STACKFRAME64 frame = {};
+    frame.AddrPC.Offset = context.Rip; frame.AddrPC.Mode = AddrModeFlat;
+    frame.AddrFrame.Offset = context.Rbp; frame.AddrFrame.Mode = AddrModeFlat;
+    frame.AddrStack.Offset = context.Rsp; frame.AddrStack.Mode = AddrModeFlat;
+    for (int i = 0; i < 48; ++i) {
+        char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME] = {};
+        auto symbol = reinterpret_cast<SYMBOL_INFO*>(buffer);
+        symbol->SizeOfStruct = sizeof(SYMBOL_INFO); symbol->MaxNameLen = MAX_SYM_NAME;
+        DWORD64 displacement = 0;
+        if (SymFromAddr(process, frame.AddrPC.Offset, &displacement, symbol))
+            fprintf(file, "%s + %llu", symbol->Name, displacement);
+        else fprintf(file, "0x%llx", frame.AddrPC.Offset);
+        IMAGEHLP_LINE64 line = {}; line.SizeOfStruct = sizeof(line); DWORD offset = 0;
+        if (SymGetLineFromAddr64(process, frame.AddrPC.Offset, &offset, &line))
+            fprintf(file, " (%s:%lu)", line.FileName, line.LineNumber);
+        fprintf(file, "\n");
+        if (!StackWalk64(IMAGE_FILE_MACHINE_AMD64, process, GetCurrentThread(), &frame,
+            &context, nullptr, SymFunctionTableAccess64, SymGetModuleBase64, nullptr)) break;
+    }
+    fclose(file);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+}
+#endif
+void installTeachingCrashDiagnostics() {
+#ifdef Q_OS_WIN
+    AddVectoredExceptionHandler(1, recordTeachingCrash);
+#endif
+}
+
 namespace {
 void finish(bool passed, const QString &detail) {
     const QString path = qEnvironmentVariable("TEACHING_SMOKE_REPORT");
@@ -32,6 +80,7 @@ void scheduleTeachingSmokeTest(QObject *context)
 {
     QTimer::singleShot(60000, context, [] { finish(false, "Native test timed out"); });
     QTimer::singleShot(7000, context, [] {
+        qWarning("Teaching check: board initialized");
         auto board = UBApplication::boardController;
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
@@ -50,6 +99,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             scene->inputDeviceMove(QPointF(40,y));
             scene->inputDeviceRelease();
         };
+        qWarning("Teaching check: draw strokes");
         stroke(UBStylusTool::Pen,0); stroke(UBStylusTool::Marker,0);
         stroke(UBStylusTool::Marker,40); stroke(UBStylusTool::Pen,40);
         qreal inkBottom = 1000000, markerTop = -1000000;
@@ -69,6 +119,7 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (image.pixelColor(100,60).lightness() > 50 || image.pixelColor(100,100).lightness() > 50) {
             finish(false,"Highlighting obscured black ink"); return;
         }
+        qWarning("Teaching check: shapes");
         const QByteArray shapeData = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"300\" height=\"300\" viewBox=\"0 0 300 300\"><metadata id=\"teaching-shape\">3</metadata><g stroke=\"black\" fill=\"none\" stroke-width=\"3\"><polygon points=\"150,12 288,288 12,288\"/></g></svg>";
         auto shape = scene->addSvg(QUrl(),QPointF(400,0),shapeData);
         if (!shape || !shape->isTeachingShape() || shape->childItems().size() < 3) {
@@ -85,6 +136,7 @@ void scheduleTeachingSmokeTest(QObject *context)
         auto window = UBApplication::mainWindow;
         auto graphAction = window->findChild<QAction*>("actionTeachingGraphDesk");
         if (!graphAction) { finish(false,"GraphDesk toolbar action unavailable"); return; }
+        qWarning("Teaching check: open GraphDesk");
         graphAction->trigger();
         auto tabs = window->teachingTabs();
         auto view = tabs->currentWidget()->findChild<QWebEngineView*>();

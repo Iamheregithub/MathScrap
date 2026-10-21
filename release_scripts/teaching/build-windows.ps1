@@ -15,7 +15,7 @@ try {
 } finally { Pop-Location }
 Push-Location $project
 try {
-    Run-Native "$qtbin\qmake.exe" @('OpenBoard.pro','CONFIG+=release','CONFIG-=debug','CONFIG-=debug_and_release')
+    Run-Native "$qtbin\qmake.exe" @('OpenBoard.pro','-after','CONFIG+=release','CONFIG-=debug','CONFIG-=debug_and_release')
     Run-Native 'nmake.exe' @('/NOLOGO')
     Run-Native "$qtbin\lrelease.exe" @('OpenBoard.pro')
 } finally { Pop-Location }
@@ -24,6 +24,7 @@ if (!(Test-Path $exe)) { throw "Expected application executable is missing: $exe
 $stage = Join-Path $project 'dist\app'
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe $stage
+Get-ChildItem (Split-Path $exe) -Filter *.pdb | Copy-Item -Destination $stage
 Run-Native "$qtbin\windeployqt.exe" @('--release','--compiler-runtime',"$stage\OpenBoardTeaching.exe")
 foreach ($folder in @('library','fonts','customizations','startupHints')) {
     Copy-Item (Join-Path $project "resources\$folder") $stage -Recurse -Force

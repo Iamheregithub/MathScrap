@@ -133,6 +133,9 @@ int main(int argc, char *argv[])
         argc++;
     }
 
+    for (int i = 1; i < argc; ++i)
+        if (QString::fromLocal8Bit(argv[i]) == "--teaching-smoke-test") installTeachingCrashDiagnostics();
+
     UBApplication app("OpenBoard", argc, argv);
 
     QStringList args = app.arguments();
