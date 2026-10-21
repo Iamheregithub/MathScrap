@@ -14,6 +14,7 @@
 #include "domain/UBGraphicsSvgItem.h"
 #include "domain/UBGraphicsStrokesGroup.h"
 #include "document/UBDocumentProxy.h"
+#include "document/UBDocument.h"
 #include "document/UBDocumentController.h"
 #include "gui/UBDocumentThumbnailWidget.h"
 #include "core/UBDocumentManager.h"
