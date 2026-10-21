@@ -39,3 +39,10 @@ Copy-Item (Join-Path $thirdParty 'zlib\1.2.11\bin\*.dll') $stage -Force
 Copy-Item (Join-Path $project 'LICENSE') "$stage\LICENSE.txt"
 # Preserve dependency notices in the package.
 if (Test-Path "$thirdParty\poppler\share") { Copy-Item "$thirdParty\poppler\share" "$stage\third-party-notices" -Recurse -Force }
+# Include Microsoft's official runtime installer for machines missing a recent CRT.
+$redist = Join-Path $project 'dist\vc_redist.x64.exe'
+Invoke-WebRequest 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile $redist
+$signature = Get-AuthenticodeSignature $redist
+if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Microsoft Corporation*') {
+    throw 'The downloaded Visual C++ runtime did not have a valid Microsoft signature'
+}

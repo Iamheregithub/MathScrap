@@ -23,9 +23,50 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Files]
+Source: "..\..\dist\vc_redist.x64.exe"; Flags: dontcopy
 Source: "{#AppRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
 Name: "{group}\OpenBoard Teaching"; Filename: "{app}\OpenBoardTeaching.exe"
 Name: "{autodesktop}\OpenBoard Teaching"; Filename: "{app}\OpenBoardTeaching.exe"; Tasks: desktopicon
 [Run]
 Filename: "{app}\OpenBoardTeaching.exe"; Description: "Open OpenBoard Teaching"; Flags: nowait postinstall skipifsilent unchecked
+
+[Code]
+function VersionAtLeast(Actual, Required: String): Boolean;
+var
+  A, R: TArrayOfString;
+  I, AV, RV: Integer;
+begin
+  if (Length(Actual) > 0) and ((Actual[1] = 'v') or (Actual[1] = 'V')) then
+    Delete(Actual, 1, 1);
+  A := SplitString(Actual, '.');
+  R := SplitString(Required, '.');
+  Result := True;
+  for I := 0 to 3 do begin
+    AV := 0; RV := 0;
+    if I < GetArrayLength(A) then AV := StrToIntDef(A[I], 0);
+    if I < GetArrayLength(R) then RV := StrToIntDef(R[I], 0);
+    if AV <> RV then begin
+      Result := AV > RV;
+      Exit;
+    end;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  InstalledVersion: String;
+  ExitCode: Integer;
+begin
+  Result := '';
+  if RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64', 'Version', InstalledVersion) then
+    if VersionAtLeast(InstalledVersion, '{#GetVersionNumbersString("..\..\dist\vc_redist.x64.exe")}') then Exit;
+  ExtractTemporaryFile('vc_redist.x64.exe');
+  if not ShellExec('runas', ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then begin
+    Result := 'The Microsoft Visual C++ runtime is required. Its installation needs administrator approval.';
+    Exit;
+  end;
+  if (ExitCode <> 0) and (ExitCode <> 3010) and (ExitCode <> 1638) then
+    Result := 'Microsoft Visual C++ runtime installation failed (' + IntToStr(ExitCode) + ').';
+  if ExitCode = 3010 then NeedsRestart := True;
+end;

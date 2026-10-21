@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: windows-teaching-${{ github.event.pull_request.number || github.ref }}
+  group: windows-teaching-build
   cancel-in-progress: true
 jobs:
   windows:
@@ -71,4 +71,5 @@ jobs:
           path: |
             OpenBoard/dist/*report.json
             OpenBoard/dist/*.log
+            OpenBoard/dist/*window.png
           if-no-files-found: ignore

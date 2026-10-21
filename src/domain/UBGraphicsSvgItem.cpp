@@ -355,7 +355,7 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
     renderer()->load(data);
     refreshTeachingHandles();
     update();
-    if (scene()) scene()->setDocumentUpdated();
+    if (scene()) scene()->setModified(true);
 }
 
 void UBGraphicsSvgItem::commitTeachingSvg(const QByteArray &before)

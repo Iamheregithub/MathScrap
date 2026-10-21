@@ -36,6 +36,8 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
         }
+        const QString reportPath = qEnvironmentVariable("TEACHING_SMOKE_REPORT");
+        UBApplication::mainWindow->grab().save(QFileInfo(reportPath).dir().filePath("lesson-window.png"));
         auto scene = board->activeScene();
         scene->setBackground(false, plain);
         auto dc = UBDrawingController::drawingController();
@@ -99,6 +101,7 @@ void scheduleTeachingSmokeTest(QObject *context)
                 return JSON.stringify({ok:project().plots.length===4&&svg===exportScene(scene(),'key').svg&&svg.includes('stroke-dasharray')});
                 }catch(e){return JSON.stringify({ok:false,error:String(e)})}})())JS";
             view->page()->runJavaScript(script,[](const QVariant &result) {
+                UBApplication::mainWindow->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("graphdesk-window.png"));
                 const auto report = QJsonDocument::fromJson(result.toString().toUtf8()).object();
                 finish(report.value("ok").toBool(), report.value("ok").toBool()
                     ? "Startup, ink/highlight layering and pixels, triangle undo/redo, ten swatches, GraphDesk four-function export/restore passed"
