@@ -14,7 +14,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const runId = 39662550981;
+            const runId = 39662965039;
             for (let attempt = 0; attempt < 100; attempt++) {
               const {data} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: runId});
               if (data.status === 'completed') {
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: OpenBoard-Teaching-Windows-x64
-          run-id: 39662550981
+          run-id: 39662965039
           github-token: ${{ github.token }}
           path: package
       - name: Install, launch native checks, and uninstall
