@@ -28,6 +28,7 @@
 #include <QFileDialog>
 
 #include "UBExportAdaptor.h"
+#include <algorithm>
 
 #include "document/UBDocumentProxy.h"
 
@@ -172,4 +173,17 @@ void UBExportAdaptor::showErrorsList(QList<QString> errorsList)
         dialog->setMessages(errorsList);
         dialog->show();
     }
+}
+
+QList<int> UBExportAdaptor::exportPageIndexes(int pageCount) const
+{
+    QList<int> pages;
+    if (mSelectedPages.isEmpty()) {
+        for (int i = 0; i < pageCount; ++i) pages << i;
+    } else {
+        for (int index : mSelectedPages)
+            if (index >= 0 && index < pageCount && !pages.contains(index)) pages << index;
+        std::sort(pages.begin(), pages.end());
+    }
+    return pages;
 }

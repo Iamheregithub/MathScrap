@@ -3175,7 +3175,15 @@ void UBDocumentController::exportDocument()
 
     std::shared_ptr<UBDocumentProxy> proxy = firstSelectedTreeProxy();
 
+    if (!proxy) return;
+    QList<int> pages;
+    auto thumbnails = mDocumentUI->thumbnailWidget;
+    if (thumbnails->document() && thumbnails->document()->proxy() == proxy)
+        for (auto item : thumbnails->selectedItems())
+            if (auto thumbnail = dynamic_cast<UBThumbnail*>(item)) pages << thumbnail->sceneIndex();
+    selectedExportAdaptor->setPageSelection(pages);
     selectedExportAdaptor->persist(proxy);
+    selectedExportAdaptor->setPageSelection({});
     emit exportDone();
 
 }

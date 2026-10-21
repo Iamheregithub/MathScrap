@@ -105,7 +105,8 @@ void UBExportFullPDF::saveOverlayPdf(std::shared_ptr<UBDocumentProxy> pDocumentP
 
         QPainter* pdfPainter = 0;
 
-        for(int pageIndex = 0 ; pageIndex < pDocumentProxy->pageCount(); pageIndex++)
+        int outputIndex = 0;
+        for (int pageIndex : exportPageIndexes(pDocumentProxy->pageCount()))
         {
             std::shared_ptr<UBGraphicsScene> scene = UBPersistenceManager::persistenceManager()->loadDocumentScene(pDocumentProxy, pageIndex);
             // set background according to PDF export settings
@@ -142,7 +143,7 @@ void UBExportFullPDF::saveOverlayPdf(std::shared_ptr<UBDocumentProxy> pDocumentP
 
             if (!pdfPainter) pdfPainter = new QPainter(&pdfPrinter);
 
-            if (pageIndex != 0) pdfPrinter.newPage();
+            if (outputIndex++ != 0) pdfPrinter.newPage();
 
             // do not draw background color and grid if scene has PDF background
             if (sceneHasPDFBackground)
@@ -188,6 +189,8 @@ void UBExportFullPDF::persist(std::shared_ptr<UBDocumentProxy> pDocumentProxy)
 
 bool UBExportFullPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumentProxy, const QString& filename)
 {
+    if (!pDocumentProxy || exportPageIndexes(pDocumentProxy->pageCount()).isEmpty()) return false;
+    mSimpleExporter->setPageSelection(mSelectedPages);
     QFile file(filename);
     if (file.exists()) file.remove();
 
@@ -219,10 +222,10 @@ bool UBExportFullPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumen
             // factor between scene coordinates and PDF coordinates
             double dpiScale = 72. / pDocumentProxy->pageDpi();
 
-            int existingPageCount = pDocumentProxy->pageCount();
-
-            for(int pageIndex = 0 ; pageIndex < existingPageCount; pageIndex++)
+            int outputIndex = 0;
+            for (int pageIndex : exportPageIndexes(pDocumentProxy->pageCount()))
             {
+                ++outputIndex;
                 std::shared_ptr<UBGraphicsScene> scene = UBPersistenceManager::persistenceManager()->loadDocumentScene(pDocumentProxy, pageIndex);
                 UBGraphicsPDFItem *pdfItem = qgraphicsitem_cast<UBGraphicsPDFItem*>(scene->backgroundObject());
 
@@ -274,7 +277,7 @@ bool UBExportFullPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumen
                                                          pdfItem->pageNumber(),
                                                          QFile::encodeName(backgroundPath).constData(),
                                                          pdfTransform,
-                                                         pageIndex + 1,
+                                                         outputIndex,
                                                          annotationTransform,
                                                          false, false);
 
@@ -291,7 +294,7 @@ bool UBExportFullPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumen
                              0,
                              "",
                              TransformationDescription(),
-                             pageIndex + 1,
+                             outputIndex,
                              TransformationDescription(),
                              false, true);
 

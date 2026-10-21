@@ -312,6 +312,16 @@ void UBApplication::setupTranslators(QStringList args)
 
 int UBApplication::exec(const QString& pFileToImport)
 {
+    QString storageMessage;
+    const bool storageChanged = UBSettings::settings()->applyPendingDocumentDirectoryChange(&storageMessage);
+    if (!storageMessage.isEmpty()) {
+        if (arguments().contains("--teaching-smoke-test")) {
+            qCritical() << storageMessage;
+            if (!storageChanged) return 20;
+        } else {
+            QMessageBox::warning(nullptr, tr("My Documents location"), storageMessage);
+        }
+    }
     QPixmapCache::setCacheLimit(1024 * 100);
 
     displayManager = new UBDisplayManager(staticMemoryCleaner);

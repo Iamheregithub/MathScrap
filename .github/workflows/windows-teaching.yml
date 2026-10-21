@@ -84,6 +84,7 @@ jobs:
             OpenBoard/dist/*report.json
             OpenBoard/dist/*.log
             OpenBoard/dist/*window.png
+            OpenBoard/dist/pdf-*.pdf
           if-no-files-found: ignore
       - name: Preserve staged application for diagnostics
         if: failure()
