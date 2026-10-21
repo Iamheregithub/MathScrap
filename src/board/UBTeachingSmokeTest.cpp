@@ -93,7 +93,11 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Native toolbar menu/page controls were lost"); return;
         }
         const int oldPageCount = board->selectedDocument()->pageCount();
-        pageButton->click();
+        auto pageWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionPages");
+        if (!pageWrapper || pageWrapper->text().isEmpty() || menuWrapper->menu() != menuButton->menu()) {
+            finish(false, "Toolbar overflow controls are unavailable"); return;
+        }
+        pageWrapper->trigger();
         if (board->selectedDocument()->pageCount() != oldPageCount + 1) {
             finish(false, "New Page toolbar behaviour was lost"); return;
         }

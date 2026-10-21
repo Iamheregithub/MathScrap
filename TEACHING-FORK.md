@@ -1,6 +1,6 @@
 # OpenBoard Teaching
 
-Status: Windows compilation has succeeded. A startup crash was found during native validation; its fix is being tested. Do not treat the current source as a validated release.
+Status: Windows compilation and native startup/drawing/GraphDesk checks have passed. Installer packaging and installation validation are in progress. This is a test build.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -80,8 +80,9 @@ handwriting, Qt WebEngine, native selection handles, PDF output, or pixels.
 
 ## Outstanding validation
 
-Windows compilation completed on GitHub Actions. Native startup and installer
-validation are in progress. Local DOM tests do not replace Windows checks or
+Windows compilation and native startup, toolbar, ink/highlight layering and
+pixels, triangle undo/redo, scene switching, ten colours, and GraphDesk export/restore
+checks passed on GitHub Actions. Installer validation is in progress. Local DOM tests do not replace Windows checks or
 physical tablet/projector testing.
 
 Required next checks on a configured build host:

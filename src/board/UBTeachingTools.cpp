@@ -108,8 +108,16 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
             auto wrapper = new QWidgetAction(this);
             wrapper->setObjectName("teaching-presentation-" + id);
             wrapper->setDefaultWidget(button);
+            wrapper->setMenu(button->menu());
+            wrapper->setText(source->text());
+            wrapper->setIcon(source->icon());
+            wrapper->setEnabled(source->isEnabled());
+            connect(wrapper, &QAction::triggered, button, &QToolButton::click);
             connect(source, &QAction::changed, wrapper, [source, wrapper] {
                 wrapper->setVisible(source->isVisible() && !source->property("teachingHiddenTop").toBool());
+                wrapper->setText(source->text());
+                wrapper->setIcon(source->icon());
+                wrapper->setEnabled(source->isEnabled());
             });
             presentation = wrapper;
         }

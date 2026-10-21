@@ -32,20 +32,32 @@ Name: "{autodesktop}\OpenBoard Teaching"; Filename: "{app}\OpenBoardTeaching.exe
 Filename: "{app}\OpenBoardTeaching.exe"; Description: "Open OpenBoard Teaching"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
+function NextVersionPart(var Value: String): Integer;
+var
+  Dot: Integer;
+  Part: String;
+begin
+  Dot := Pos('.', Value);
+  if Dot = 0 then begin
+    Part := Value;
+    Value := '';
+  end else begin
+    Part := Copy(Value, 1, Dot - 1);
+    Delete(Value, 1, Dot);
+  end;
+  Result := StrToIntDef(Part, 0);
+end;
+
 function VersionAtLeast(Actual, Required: String): Boolean;
 var
-  A, R: TArrayOfString;
   I, AV, RV: Integer;
 begin
   if (Length(Actual) > 0) and ((Actual[1] = 'v') or (Actual[1] = 'V')) then
     Delete(Actual, 1, 1);
-  A := SplitString(Actual, '.');
-  R := SplitString(Required, '.');
   Result := True;
   for I := 0 to 3 do begin
-    AV := 0; RV := 0;
-    if I < GetArrayLength(A) then AV := StrToIntDef(A[I], 0);
-    if I < GetArrayLength(R) then RV := StrToIntDef(R[I], 0);
+    AV := NextVersionPart(Actual);
+    RV := NextVersionPart(Required);
     if AV <> RV then begin
       Result := AV > RV;
       Exit;
