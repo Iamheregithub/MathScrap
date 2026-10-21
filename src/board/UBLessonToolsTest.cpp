@@ -49,12 +49,18 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
     }
     if(tools->favourites()[0].toObject().value("name")!="Test favourite"||!tools->applyFavourite(0)||UBDrawingController::drawingController()->currentToolColor()!=QColor("#123456")){done(false,"Favourite did not survive restart");return;}
     if(mode=="crash"){
-        auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Crash recovery fixture",true);board->setActiveDocumentScene(doc,0);board->activeScene()->addText("Recovered crash draft",QPointF(0,0));if(!history->checkpoint(false,&error)){done(false,error);return;}report["lessonId"]=doc->uuid().toString(QUuid::WithoutBraces);report["prepared"]=true;write(output.filePath("crash-tools-state.json"),report);write(reportPath,report);
+        auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Crash recovery fixture",true);board->setActiveDocumentScene(doc,0);board->activeScene()->addText("Recovered crash draft",QPointF(0,0));report["lessonId"]=doc->uuid().toString(QUuid::WithoutBraces);
+        // Let the real 20-second recovery timer save this draft before killing the process.
+        QTimer::singleShot(25000,qApp,[history,report,reportPath,output]() mutable {
+            const QString snapshot=history->rootPath()+"/"+report.value("lessonId").toString()+"/recovery.json";
+            if(!QFile::exists(snapshot)){report["passed"]=false;report["detail"]="Automatic recovery timer did not save the crash draft";write(reportPath,report);qApp->exit(31);return;}
+            report["prepared"]=true;report["automaticRecovery"]=true;write(output.filePath("crash-tools-state.json"),report);write(reportPath,report);
 #ifdef Q_OS_WIN
-        TerminateProcess(GetCurrentProcess(),89);
+            TerminateProcess(GetCurrentProcess(),89);
 #else
-        std::_Exit(89);
+            std::_Exit(89);
 #endif
+        });
         return;
     }
     if(mode=="recover"){

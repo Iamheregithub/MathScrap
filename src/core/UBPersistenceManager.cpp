@@ -84,6 +84,7 @@ UBPersistenceManager::UBPersistenceManager(QObject *pParent)
     : QObject(pParent)
     , mHasPurgedDocuments(false)
     , mIsWorkerFinished(false)
+    , mIsApplicationClosing(false)
     , mReplaceDialogReturnedReplaceAll(false)
     , mReplaceDialogReturnedCancel(false)
 {

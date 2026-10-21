@@ -42,7 +42,7 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
     const auto previous=readObject(mRoot+"/session.json");mUnclean=!previous.isEmpty()&&!previous.value("clean").toBool();
     for(const auto &id:previous.value("documents").toArray())mTouched.insert(id.toString());
     saveSession(false);
-    if(!mTesting){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
+    if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
         if(!QApplication::activeModalWidget()&&QApplication::mouseButtons()==Qt::NoButton&&UBApplication::boardController->activeScene()&&!UBApplication::boardController->activeScene()->isInputDevicePressed()){QString error;if(!checkpoint(false,&error)&&!error.isEmpty()&&error!=mError){mError=error;UBApplication::showMessage(tr("Recovery save failed: %1").arg(error));}}
     });timer->start();}
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this]{
