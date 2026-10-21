@@ -1,0 +1,65 @@
+name: Verify teaching Windows installer
+on:
+  push:
+    branches: [installer-validation]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - name: Wait for the application build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runId = 39644239037;
+            for (let attempt = 0; attempt < 100; attempt++) {
+              const {data} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: runId});
+              if (data.status === 'completed') {
+                if (data.conclusion !== 'success') throw new Error('Application build failed: ' + data.conclusion);
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            throw new Error('Application build did not complete in time');
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenBoard-Teaching-Windows-x64
+          run-id: 39644239037
+          github-token: ${{ github.token }}
+          path: package
+      - name: Install, launch native checks, and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'validation'
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          $setup = Get-Item package/*Setup.exe
+          $expected = ((Get-Content package/SHA256SUMS.txt -Raw).Trim() -split '\s+')[0]
+          if ((Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'Installer checksum mismatch' }
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\OpenBoardTeachingTest'
+          $args = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=`"$installed`"","/LOG=`"$dist\install.log`"")
+          $process = Start-Process $setup.FullName -ArgumentList $args -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "Installer failed: $($process.ExitCode)" }
+          $exe = Join-Path $installed 'OpenBoardTeaching.exe'
+          if (!(Test-Path $exe)) { throw 'Installed application missing' }
+          $env:TEACHING_SMOKE_REPORT = Join-Path $dist 'installed-native-report.json'
+          $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
+          # Exercise the installed deployment without an installed Qt SDK.
+          $process = Start-Process $exe -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory $installed -PassThru -RedirectStandardError "$dist\installed-stderr.log" -RedirectStandardOutput "$dist\installed-stdout.log"
+          if (!$process.WaitForExit(90000)) { Stop-Process -Id $process.Id -Force; throw 'Installed application timed out' }
+          Copy-Item "$installed\teaching-crash.log" $dist -ErrorAction SilentlyContinue
+          if ($process.ExitCode -ne 0) { throw "Installed application failed: $($process.ExitCode)" }
+          $report = Get-Content $env:TEACHING_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if (!$report.passed) { throw 'Installed native checks failed' }
+          $process = Start-Process "$installed\unins000.exe" -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or (Test-Path $exe)) { throw 'Uninstallation failed' }
+          'Installer checksum, silent installation, installed native drawing/GraphDesk checks, and uninstallation passed.' | Set-Content "$dist\installer-result.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Windows-installer-validation
+          path: validation
+          retention-days: 30
