@@ -166,7 +166,11 @@ bool checkPdfSelection(QString *error)
                     }
             });
             dialogTimer.start(50);
+            bool triggered = false;
+            auto connection = QObject::connect(exporter->associatedAction(), &QAction::triggered, [&triggered] { triggered = true; });
             exporter->associatedAction()->trigger();
+            QObject::disconnect(connection);
+            qWarning() << "Teaching export action triggered" << triggered;
             dialogTimer.stop();
             if (!verify(file, expected[test])) return false;
         }
@@ -325,6 +329,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             view->page()->runJavaScript(script,[](const QVariant &result) {
                 UBApplication::mainWindow->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("graphdesk-window.png"));
                 const auto report = QJsonDocument::fromJson(result.toString().toUtf8()).object();
+                QTimer::singleShot(0, qApp, [report, result] {
                 QString exportError;
                 if (report.value("ok").toBool() && qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1" && !checkPdfSelection(&exportError)) {
                     finish(false, exportError); return;
@@ -332,6 +337,7 @@ void scheduleTeachingSmokeTest(QObject *context)
                 finish(report.value("ok").toBool(), report.value("ok").toBool()
                     ? "Startup, ink/highlight layering and pixels, triangle undo/redo, ten swatches, GraphDesk four-function export/restore, Documents PDF selection/all/single pages with both exporters, page order and original PDF/annotation pixels passed"
                     : "GraphDesk check failed: " + result.toString());
+                });
             });
         });
     });

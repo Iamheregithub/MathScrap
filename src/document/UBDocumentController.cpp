@@ -3175,6 +3175,8 @@ void UBDocumentController::exportDocument()
 
     std::shared_ptr<UBDocumentProxy> proxy = firstSelectedTreeProxy();
 
+    if (!qEnvironmentVariable("TEACHING_SMOKE_REPORT").isEmpty())
+        qWarning() << "Teaching export handler" << bool(proxy) << actionData;
     if (!proxy) return;
     QList<int> pages;
     auto thumbnails = mDocumentUI->thumbnailWidget;
