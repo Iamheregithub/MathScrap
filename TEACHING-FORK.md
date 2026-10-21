@@ -1,6 +1,6 @@
 # LessonBoard
 
-Status: LessonBoard Windows x64 test installer 1.7.7.3 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7 and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
+Status: LessonBoard Windows x64 test installer 1.7.7.4 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -12,7 +12,7 @@ and creates a per-user Inno Setup installer. Successful builds publish
 `LessonBoard-Windows-x64` in the repository's Actions artifacts.
 The separate installer-validation workflow upgrades the previously delivered package
 on a runner without the Qt SDK, verifies the retained lesson location and data,
-repeats native checks, then uninstalls it.
+repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.3.
 
 LessonBoard uses its own executable, shortcuts, settings and lesson
 folder. Existing OpenBoard installations are kept separate. Export/import UBZ
@@ -39,6 +39,40 @@ triangle's three circular handles to move its vertices.
 GraphDesk opens inside its own tab. Insert adds the current graph to the lesson.
 To revise an inserted graph, select it on the Lesson tab, open GraphDesk, use
 Load selected graph for editing, make changes, then Update loaded graph on lesson.
+
+## Favourites, reveal covers and recovery
+
+The six favourite buttons recall a drawing tool, colour, width and solid/dashed
+line style. Choose the desired pen, highlighter, line or eraser, then use
+Favourites… to name and save the current setup into a slot. Ctrl+Alt+1 through
+Ctrl+Alt+6 recall those slots; these bindings can also be assigned to a Huion
+profile. Favourite colours are independent of the ten-colour palette.
+
+Add cover (Ctrl+Alt+C) places an opaque rectangle above handwriting. Select it
+to move, resize or rotate it. Reveal / cover (Ctrl+Alt+R) toggles selected covers;
+with none selected it opens the list. Covers… controls each cover independently.
+Revealed covers retain a dashed frame for selection. Cover changes support undo
+and persist as ordinary SVG objects. Original OpenBoard can display/move/resize
+these objects; LessonBoard supplies the reveal controls.
+
+Versions… (Ctrl+Alt+H) lists recovery copies and saved versions. Recovery saves
+run every 20 seconds when no drawing stroke or modal dialog is active. Changed
+lessons receive a retained version at most once every five minutes automatically,
+on normal exit, or with Save version (Ctrl+Alt+S). The latest recovery plus up to
+50 versions per lesson are retained; identical content does not create redundant
+versions. Each restore creates a new lesson and never replaces the current one.
+An interrupted session offers recovery review on the next launch.
+
+History is stored under the application's user-data directory in lesson-history,
+separately from the configurable Documents folder. Changing Documents does not
+move history. Content-addressed blobs share unchanged assets within a lesson;
+restores verify every blob's SHA-256 before importing a separate copy. Recovery
+covers the last completed snapshot; work after it may be lost. Page, metadata,
+and editable SVG writes use atomic replacement. This does not make the whole
+multi-file lesson a single filesystem transaction or replace external backups.
+
+The new controls are included in Customize Toolbars and the keyboard shortcut
+editor, so frequently used actions can remain visible and other buttons hidden.
 
 ## PDF export and document storage
 
@@ -91,10 +125,10 @@ Native Windows round-trip tests against the official v1.7.7 source passed:
 
 1. Create and export a three-page lesson using original OpenBoard.
 2. Import into LessonBoard, add a dashed line, filled/outlined shapes and an SVG
-   graph carrying four-function GraphDesk project metadata; save and export.
+   graph carrying four-function GraphDesk project metadata, and a reveal cover; save and export.
 3. Import into original OpenBoard, add editable text, move/rotate/scale the graph,
    then save and export again.
-4. Reopen and save in LessonBoard, including recognition of shape and graph metadata.
+4. Reopen and save in LessonBoard, including recognition of shape, graph and reveal-cover metadata.
 
 The checks compare freshly read files rather than cached scenes: page counts,
 PDF page indexes and file hashes, editable text, handwriting/dashed-line geometry
@@ -110,30 +144,41 @@ UI test of the official distributed Windows installer.
 
 These are generated fixtures, not the user's existing lessons. Older OpenBoard
 versions, every possible asset type, and unusual/damaged documents are untested.
-Original OpenBoard handles new shapes and graphs as ordinary SVG objects;
-triangle-vertex controls and GraphDesk editing require LessonBoard. Highlighter
-compositing remains application-specific; rendering differences are measured in
-compatibility-summary.json in the validation artifact. Some initial scene snapshots
-capture the asynchronous PDF Processing placeholder. All four completed PDF exports
-were separately rendered with Poppler: all twelve pages retain the blue PDF mark,
-and the renders were visually reviewed. Original-resaved versus LessonBoard-reopened
-exports differ in about 0.19%, 0.33%, and 0.33% of pixels above a 12-level threshold;
-exact pixel identity is not claimed. These results are included with the installer.
+Original OpenBoard handles new shapes, graphs and covers as ordinary SVG objects;
+triangle-vertex controls, GraphDesk editing and cover reveal controls require
+LessonBoard. Highlighter compositing remains application-specific. The nine
+cross-application scene renders include their PDF backgrounds synchronously:
+the largest changed-pixel fraction is 0.001014 (about 0.102%) above a 12-level
+threshold. LessonBoard-to-original and original-resave-to-LessonBoard comparisons
+have zero changed pixels in these fixtures; exact identity for other lessons is
+not claimed. Full fractions are recorded in compatibility-summary.json.
 
 ## Test installer provenance
 
-Compiled source: `104ee8d0c4d8528a0b1956e5dcab84bb935d3dec`.
+Compiled source: `b762d9a58f0c9de8c8d8595054eab8f546f14d08`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39673963194
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39674027268
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39689574008
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39689737151
 - Setup filename: `LessonBoard-Windows-x64-Setup.exe`
-- Setup SHA-256: `4471c683b99ddf13344cb8020e74f1cae2f93088027a7b8560cae7c2615e3bda`
+- Setup SHA-256: `68f892f77591af846f9a2d1fbbf2461dfd04786d5e2604faa965a70c42b2f6d8`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
 all document import/export paths have not been verified by these automated checks.
 
 ## Validation completed
+
+- Favourites save/apply and retain tool, colour, width and dashed style; widths
+  retain favourite colours, palette choices clear the override, and palettes are
+  unchanged. Favourite shortcuts exist and the setup survives process restarts.
+- Covers hide existing handwriting, reveal independently, support undo/redo,
+  retain transformations and reveal state after reloading, and stay above ink.
+- Versions deduplicate unchanged content. Restoring an earlier version creates
+  a separate readable lesson while the current one retains its newer content.
+- Corrupted history blobs are rejected without changing the current lesson.
+- The actual 20-second automatic timer saves a draft before forced process
+  termination (exit 89). The next process detects an unclean session and restores
+  the draft as a separate readable lesson. The installed deployment repeats this.
 
 - Documents Export to PDF through its actual menu action: selected pages 3–6,
   no selected pages (whole document), and one selected page, with both PDF engines.
@@ -162,24 +207,19 @@ checks passed on GitHub Actions. Installation, installed native checks and
 uninstallation also passed on a separate Windows runner without the Qt SDK. Local DOM tests do not replace Windows checks or
 physical tablet/projector testing.
 
-Required next checks on a configured build host:
+Manual checks remaining:
 
-1. Compile using the upstream build prerequisites; both qmake and CMake source
-   lists include the teaching controller. CMake is the upstream Linux path;
-   use the upstream Windows build instructions for Windows packaging:
-   https://github.com/OpenBoard-org/OpenBoard/wiki/Build-OpenBoard-on-Windows
-2. Run with a separate test profile/document folder.
-3. Verify Windows Huion pressure, pen/eraser switching, toolbar shortcuts, and
+1. Verify Windows Huion pressure, pen/eraser switching, toolbar shortcuts, and
    HDMI duplicate/extended display behaviour. In extended-display mode the
    separate board display has not been adapted to mirror the GraphDesk tab.
-4. Test highlights drawn before/after ink, printed PDF text, undo/redo, and
+2. Test highlights drawn before/after ink, printed PDF text, undo/redo, and
    reopening old and new documents, including overlapping coloured strokes.
-5. Test dashed line preview, erasing, save/reload, and PDF export.
-6. Test triangle handles, transformations, recolouring, undo/redo, page/object
+3. Test dashed line preview, erasing, save/reload, and PDF export.
+4. Test triangle handles, transformations, recolouring, undo/redo, page/object
    duplication, save/reload, and PDF export.
-7. Test toolbar hiding/reordering/restoring across restarts, display text modes,
+5. Test toolbar hiding/reordering/restoring across restarts, display text modes,
    and narrow window sizes. Confirm hidden-tool shortcut behaviour.
-8. Test GraphDesk insert/re-edit/update, changed page during insertion, saved
+6. Test GraphDesk insert/re-edit/update, changed page during insertion, saved
    document reopening, all existing graph functions, and Qt SVG rendering.
 
 ## Tests
