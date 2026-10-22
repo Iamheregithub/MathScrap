@@ -262,6 +262,9 @@ void UBGraphicsSvgItem::copyItemParameters(UBItem *copy) const
     {
         cp->setPos(this->pos());
         cp->setTransform(this->transform());
+        cp->setTransformOriginPoint(this->transformOriginPoint());
+        cp->setRotation(this->rotation());
+        cp->setScale(this->scale());
         cp->setFlag(QGraphicsItem::ItemIsMovable, true);
         cp->setFlag(QGraphicsItem::ItemIsSelectable, true);
         cp->setData(UBGraphicsItemData::ItemLayerType, this->data(UBGraphicsItemData::ItemLayerType));

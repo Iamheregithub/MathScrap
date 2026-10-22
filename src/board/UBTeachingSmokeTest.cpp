@@ -233,6 +233,10 @@ bool checkLessonControlsAndShapes(QString *error)
         const QString file=output.filePath(full?"pdf-uniform-shape-full.pdf":"pdf-uniform-shape-simple.pdf");UBExportPDF simple;UBExportFullPDF merged;UBExportAdaptor *exporter=full?static_cast<UBExportAdaptor*>(&merged):static_cast<UBExportAdaptor*>(&simple);exporter->setPageSelection({0});if(!exporter->persistsDocument(doc,file))return fail("Uniform shape PDF export failed");
         auto pdf=PDFRenderer::rendererForUuid(QUuid::createUuid(),file,true);pdf->attach();if(!pdf->isValid()){pdf->detach();return fail("Uniform shape PDF is unreadable");}pdf->setDPI(qRound(72*800/pdf->pointSizeF(1).width()));QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);pdf->render(&p,1,false);p.end();pdf->detach();if(!uniform(image,shape))return fail("PDF export stretched the shape outline");
     }
+    std::unique_ptr<UBItem> copied(shape->deepCopy());
+    auto copiedShape=dynamic_cast<UBGraphicsSvgItem*>(copied.get());
+    if(!copiedShape||copiedShape->sceneTransform()!=shape->sceneTransform()||copiedShape->fileData()!=shape->fileData())return fail("Copying a shape lost its transformation or outline");
+    board->setActiveDocumentScene(manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true),0);
     window->setProperty("lessonControlsAndShapesChecked",true);
     return true;
 }
