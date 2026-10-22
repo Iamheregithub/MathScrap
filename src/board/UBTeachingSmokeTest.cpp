@@ -153,7 +153,7 @@ bool checkShapeToolbar(QString *error)
     // Compare actual painted colour areas, including selected versus unselected.
     for(int i=0;i<10;++i) {
         auto b=palette->findChild<QToolButton*>(QString("lessonColour%1").arg(i+1));
-        b->click();
+        b->click(); b->clearFocus();
         const auto colour=b->property("swatchColour").value<QColor>();
         auto image=b->grab().toImage();int count=0;
         for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x)if(image.pixelColor(x,y)==colour)++count;
@@ -197,6 +197,11 @@ bool checkShapeToolbar(QString *error)
     borderSwatches[0]->click();fillSwatches[4]->click();style->setCurrentIndex(0);width->setCurrentIndex(width->findData(3.));opacity->setValue(50);
     edited.setContent(target->fileData());g=edited.elementsByTagName("g").at(0).toElement();
     if(g.attribute("stroke")=="none"||g.attribute("fill")=="none"||g.attribute("fill-opacity").toDouble()!=.5)return fail("Shape colour palettes did not edit selection");
+    QImage fillImage(400,240,QImage::Format_ARGB32_Premultiplied);fillImage.fill(Qt::white);
+    QPainter fillPainter(&fillImage);QSvgRenderer filledSvg(target->fileData());filledSvg.render(&fillPainter,QRectF(0,0,400,240));fillPainter.end();
+    const auto fillColour=QColor(g.attribute("fill"));const auto actualFill=fillImage.pixelColor(200,120);
+    const QColor expectedFill(qRound((255+fillColour.red())/2.),qRound((255+fillColour.green())/2.),qRound((255+fillColour.blue())/2.));
+    if(qAbs(actualFill.red()-expectedFill.red())>2||qAbs(actualFill.green()-expectedFill.green())>2||qAbs(actualFill.blue()-expectedFill.blue())>2)return fail("Fill opacity did not render independently of the border");
     manager->persistDocumentScene(doc,scene,0,true,true);
     auto loaded=UBSvgSubsetAdaptor::loadScene(doc,0);bool found=false;
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;

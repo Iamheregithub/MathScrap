@@ -601,6 +601,7 @@ void UBTeachingTools::createShapeToolbar()
     auto close=mShapeBar->addAction(tr("Close"));connect(close,&QAction::triggered,this,[this]{mShapes->setChecked(false);shapeDialog();});
     auto attach=[this]{cancelShapeDrag();mShapeDrawing=false;QObject::disconnect(mShapeSelectionConnection);if(auto scene=UBApplication::boardController->activeScene())mShapeSelectionConnection=connect(scene.get(),&QGraphicsScene::selectionChanged,this,&UBTeachingTools::syncShapeSelection);syncShapeSelection();};
     connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,attach);attach();
+    connect(UBApplication::undoStack,&QUndoStack::indexChanged,this,[this](int){syncShapeSelection();});
     connect(UBDrawingController::drawingController(),&UBDrawingController::stylusToolChanged,this,[this](int tool,int){if(tool!=UBStylusTool::Selector){cancelShapeDrag();mShapeDrawing=false;UBApplication::boardController->controlView()->viewport()->unsetCursor();mShapeBar->hide();mShapes->setChecked(false);}});
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this](int index){if(index!=0){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
