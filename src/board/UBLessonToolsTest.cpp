@@ -19,6 +19,7 @@
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsTextItem.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBGraphicsItemDelegate.h"
 #include "adaptors/UBSvgSubsetAdaptor.h"
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -108,12 +109,22 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     if(!drawn||qAbs(drawn->sceneBoundingRect().width()-300)>5||qAbs(drawn->sceneBoundingRect().height()-200)>5)return fail("Dragged cover has incorrect dimensions");
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Double click did not reveal the cover");
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double click did not conceal the cover again");
+    auto lock=window->findChild<QAction*>("lessonCoverLock");
+    scene->clearSelection();drawn->setSelected(true);if(!lock||!lock->isEnabled())return fail("Cover position lock unavailable");
+    lock->trigger();if(!drawn->Delegate()->isLocked())return fail("Cover did not lock");
+    const auto fixed=drawn->pos();send(QEvent::MouseButtonPress,QPointF(0,0));send(QEvent::MouseMove,QPointF(40,30));send(QEvent::MouseButtonRelease,QPointF(40,30));
+    if(drawn->pos()!=fixed)return fail("Locked cover moved during a drag");
+    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Locked cover could not reveal");
+    tools->setCoverRevealed(drawn,false);
+    scene->clearSelection();drawn->setSelected(true);lock->trigger();if(drawn->Delegate()->isLocked())return fail("Cover did not unlock");
+    UBApplication::undoStack->undo();if(!drawn->Delegate()->isLocked())return fail("Cover lock undo failed");
     draw->trigger();send(QEvent::MouseButtonPress,QPointF(-200,-200));
     QKeyEvent escape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QApplication::sendEvent(viewport,&escape);
     if(draw->isChecked())return fail("Escape did not cancel cover drawing");
     shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;
     for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade"))shade=svg;
     if(!shade)return fail("Screen shade was not created");
+    lock->trigger();if(!shade->Delegate()->isLocked())return fail("Shade position did not lock");
     // Drag each edge inward and back. This checks that opposite edges stay fixed.
     for(int edge=0;edge<4;++edge){
         QDomDocument doc;doc.setContent(shade->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();
@@ -131,9 +142,15 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
         QDomDocument restored;restored.setContent(shade->fileData());
         if(qAbs(restored.elementsByTagName("rect").at(0).toElement().attribute(dimension).toDouble()-(edge<2?w:h))>4)return fail("Shade edge did not conceal again");
     }
+    const auto home=shade->pos();shade->setPos(home+QPointF(50,25));
+    tools->setCoverRevealed(drawn,true);tools->setCoverRevealed(shade,true);
+    auto reset=window->findChild<QAction*>("lessonResetReveals");if(!reset)return fail("Reset reveals unavailable");
+    reset->trigger();if(tools->isCoverRevealed(drawn)||tools->isCoverRevealed(shade)||shade->pos()!=home||!shade->Delegate()->isLocked())return fail("Reset did not conceal covers and restore the locked shade");
+    UBApplication::undoStack->undo();if(!tools->isCoverRevealed(drawn)||!tools->isCoverRevealed(shade)||shade->pos()!=home+QPointF(50,25))return fail("Reset reveals undo failed");
+    UBApplication::undoStack->redo();
     const auto saved=shade->fileData();UBSvgSubsetAdaptor::persistScene(document,scene,0);
     auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Saved shade page could not be reopened");bool persisted=false;
-    for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData()==saved)persisted=true;
+    for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData()==saved)persisted=svg->Delegate()->isLocked();
     if(!persisted)return fail("Shade geometry did not survive page reload");
     cover->trigger();
     return true;
@@ -167,7 +184,21 @@ bool penToolbarWorkflow(QString *error)
     settings->setValue("Teaching/BottomOrder",original);
     QTimer::singleShot(0,window,[]{if(auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget()))dialog->accept();});
     customize->trigger();
-    if(!checked)*error="Pen toolbar tab, group movement or applied order failed";
+    const bool originalTouch=settings->value("Teaching/TouchFriendly",false).toBool();
+    const auto baseSize=window->boardToolBar->iconSize();
+    for(bool enabled:{true,false}){
+        bool found=false;
+        QTimer::singleShot(0,window,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            auto touch=dialog?dialog->findChild<QCheckBox*>("lessonTouchFriendly"):nullptr;
+            if(touch){touch->setChecked(enabled);found=true;}if(dialog)dialog->accept();});
+        customize->trigger();checked &= found&&settings->value("Teaching/TouchFriendly").toBool()==enabled;
+        if(enabled){checked &= window->boardToolBar->iconSize()==QSize(40,40);
+            for(auto palette:window->findChildren<UBStylusPalette*>())checked &= palette->buttonSize()==QSize(56,56);
+        }else checked &= window->boardToolBar->iconSize()==baseSize;
+    }
+    settings->setValue("Teaching/TouchFriendly",originalTouch);settings->save();
+    window->findChild<UBLessonTools*>()->applyTouchMode();
+    if(!checked)*error="Pen toolbar ordering or touch-friendly controls failed";
     return checked;
 }
 

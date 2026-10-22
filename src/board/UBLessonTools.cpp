@@ -3,6 +3,9 @@
 #include <QtWidgets>
 #include <QtXml>
 #include "gui/UBMainWindow.h"
+#include "gui/UBStylusPalette.h"
+#include "domain/UBGraphicsItemDelegate.h"
+#include "domain/UBUndoCommand.h"
 #include "core/UBApplication.h"
 #include "core/UBApplicationController.h"
 #include "core/UBSettings.h"
@@ -15,6 +18,24 @@
 #include "domain/UBGraphicsSvgItem.h"
 #include "document/UBDocumentProxy.h"
 namespace {
+struct CoverState {
+    QByteArray svg;QPointF position;QTransform transform;qreal scale,rotation;bool locked;
+    explicit CoverState(UBGraphicsSvgItem *item):svg(item->fileData()),position(item->pos()),transform(item->transform()),scale(item->scale()),rotation(item->rotation()),locked(item->Delegate()->isLocked()){}
+    void apply(UBGraphicsSvgItem *item) const {
+        if(item->fileData()!=svg)item->setTeachingSvg(svg);
+        item->setPos(position);item->setTransform(transform);item->setScale(scale);item->setRotation(rotation);
+        item->Delegate()->lock(locked);if(item->scene())item->scene()->setModified(true);
+    }
+};
+class CoverStateUndo : public UBUndoCommand {
+public:
+    CoverStateUndo(UBGraphicsSvgItem *item,const CoverState &after,const QString &label):mItem(item),mBefore(item),mAfter(after){setText(label);}
+    void undo() override{if(mItem)mBefore.apply(mItem);}
+    void redo() override{if(mItem)mAfter.apply(mItem);}
+private:
+    QPointer<UBGraphicsSvgItem> mItem;CoverState mBefore,mAfter;
+};
+
 // Handles are part of the saved SVG, so they survive page changes and reloads.
 void updateShadeHandles(QDomDocument &doc)
 {
@@ -22,12 +43,13 @@ void updateShadeHandles(QDomDocument &doc)
     auto rect=doc.elementsByTagName("rect").at(0).toElement();
     const double x=rect.attribute("x").toDouble(),y=rect.attribute("y").toDouble();
     const double w=rect.attribute("width").toDouble(),h=rect.attribute("height").toDouble();
-    const double dx=qMin(18.,w/4),dy=qMin(18.,h/4);
+    const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
+    const double dx=qMin(touch?28.:18.,w/4),dy=qMin(touch?28.:18.,h/4);
     auto handles=doc.elementsByTagName("path").at(0).toElement();
     if(handles.isNull()){handles=doc.createElement("path");root.appendChild(handles);}
     handles.setAttribute("d",QString("M %1 %2 h %3 M %1 %4 h %3 M %5 %6 v %7 M %8 %6 v %7")
         .arg(x+w/2-dx).arg(y+3).arg(2*dx).arg(y+h-3).arg(x+3).arg(y+h/2-dy).arg(2*dy).arg(x+w-3));
-    handles.setAttribute("stroke","#475569");handles.setAttribute("stroke-width","5");
+    handles.setAttribute("stroke","#475569");handles.setAttribute("stroke-width",touch?"9":"5");
     handles.setAttribute("stroke-linecap","round");handles.setAttribute("fill","none");
     handles.setAttribute("opacity",doc.elementsByTagName("metadata").at(0).toElement().text()=="revealed"?"0.3":"1");
 }
@@ -96,6 +118,20 @@ void UBLessonTools::createCoverToolbar()
         auto a=mCoverBar->addAction(selected?(revealed?tr("Reveal selected"):tr("Hide selected")):(revealed?tr("Reveal all"):tr("Hide all")));
         connect(a,&QAction::triggered,this,[this,selected,revealed]{revealCovers(selected,revealed);});
     }
+    mLockCover=mCoverBar->addAction(tr("Lock position"));mLockCover->setObjectName("lessonCoverLock");mLockCover->setCheckable(true);
+    mLockCover->setToolTip(tr("Keep selected covers in place; reveal controls and shade edges remain usable"));
+    connect(mLockCover,&QAction::triggered,this,[this](bool locked){
+        auto scene=UBApplication::boardController->activeScene();if(!scene)return;
+        UBApplication::undoStack->beginMacro(locked?tr("Lock covers"):tr("Unlock covers"));
+        for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+            CoverState after(svg);after.locked=locked;
+            if(svg->Delegate()->isLocked()!=locked)UBApplication::undoStack->push(new CoverStateUndo(svg,after,tr("Cover position lock")));
+        }
+        UBApplication::undoStack->endMacro();syncCoverLock();
+    });
+    auto reset=mCoverBar->addAction(tr("Reset reveals"));reset->setObjectName("lessonResetReveals");
+    reset->setToolTip(tr("Hide all covers and return the shade to its starting position on this page"));
+    connect(reset,&QAction::triggered,this,&UBLessonTools::resetReveals);
     auto colour=mCoverBar->addAction(tr("Cover colour"));colour->setObjectName("lessonCoverColour");
     connect(colour,&QAction::triggered,this,[this]{
         auto c=QColorDialog::getColor(mCoverColour,mWindow,tr("Cover colour"));if(!c.isValid())return;c.setAlpha(255);mCoverColour=c;
@@ -116,6 +152,13 @@ void UBLessonTools::createCoverToolbar()
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[stop](int index){if(index!=0)stop();});
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[stop](bool visible){if(!visible)stop();});
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this]{cancelCoverDrag();qApp->removeEventFilter(this);});
+    auto attach=[this]{
+        QObject::disconnect(mCoverSelectionConnection);
+        if(auto scene=UBApplication::boardController->activeScene())mCoverSelectionConnection=connect(scene.get(),&QGraphicsScene::selectionChanged,this,&UBLessonTools::syncCoverLock);
+        syncCoverLock();applyTouchMode();
+    };
+    connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,attach);attach();
+    connect(UBApplication::undoStack,&QUndoStack::indexChanged,this,[this](int){syncCoverLock();});
     qApp->installEventFilter(this);mCoverBar->hide();
 }
 
@@ -140,7 +183,9 @@ UBGraphicsSvgItem *UBLessonTools::createCover(const QRectF &rect,bool shade)
     auto scene=UBApplication::boardController->activeScene();if(!scene)return nullptr;
     const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%1\" height=\"%2\" viewBox=\"0 0 %1 %2\" data-cover-colour=\"%3\" %4><metadata id=\"lessonboard-cover\">covered</metadata><rect x=\"0\" y=\"0\" width=\"%1\" height=\"%2\" fill=\"%3\" stroke=\"#64748b\" stroke-width=\"2\"/></svg>")
         .arg(rect.width()).arg(rect.height()).arg(mCoverColour.name()).arg(shade?"data-screen-shade=\"true\"":"").toUtf8();
-    QDomDocument document;document.setContent(svg);updateShadeHandles(document);
+    QDomDocument document;document.setContent(svg);
+    if(shade){document.documentElement().setAttribute("data-shade-home-x",rect.x());document.documentElement().setAttribute("data-shade-home-y",rect.y());}
+    updateShadeHandles(document);
     auto item=scene->addSvg(QUrl(),rect.center(),document.toByteArray());if(!item)return nullptr;
     item->setScale(1);item->setTransform(QTransform());item->setPos(rect.topLeft());item->setZValue(2000000.0);
     scene->clearSelection();item->setSelected(true);return item;
@@ -152,6 +197,57 @@ void UBLessonTools::revealCovers(bool selected,bool revealed)
     UBApplication::undoStack->beginMacro(revealed?tr("Reveal covers"):tr("Hide covers"));
     for(auto item:selected?scene->selectedItems():scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover())setCoverRevealed(svg,revealed);
     UBApplication::undoStack->endMacro();
+}
+
+void UBLessonTools::syncCoverLock()
+{
+    auto scene=UBApplication::boardController->activeScene();bool any=false,all=true;
+    if(scene)for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){any=true;all &= svg->Delegate()->isLocked();}
+    mLockCover->setEnabled(any);mLockCover->setChecked(any&&all);
+}
+
+void UBLessonTools::resetReveals()
+{
+    cancelCoverDrag();mDrawingCover=false;mDrawCover->setChecked(false);
+    UBApplication::boardController->controlView()->viewport()->unsetCursor();
+    auto scene=UBApplication::boardController->activeScene();if(!scene)return;
+    UBApplication::undoStack->beginMacro(tr("Reset reveals"));
+    for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+        if(!svg->fileData().contains("data-screen-shade")){setCoverRevealed(svg,false);continue;}
+        CoverState after(svg);QDomDocument doc;doc.setContent(after.svg);auto root=doc.documentElement();
+        auto rect=doc.elementsByTagName("rect").at(0).toElement();rect.setAttribute("x","0");rect.setAttribute("y","0");
+        rect.setAttribute("width",root.attribute("width"));rect.setAttribute("height",root.attribute("height"));
+        rect.setAttribute("fill",root.attribute("data-cover-colour","#334155"));rect.setAttribute("stroke-dasharray","none");rect.setAttribute("stroke-opacity","1");
+        auto metadata=doc.elementsByTagName("metadata").at(0).toElement();
+        while(!metadata.firstChild().isNull())metadata.removeChild(metadata.firstChild());metadata.appendChild(doc.createTextNode("covered"));
+        updateShadeHandles(doc);after.svg=doc.toByteArray();
+        if(root.hasAttribute("data-shade-home-x"))after.position=QPointF(root.attribute("data-shade-home-x").toDouble(),root.attribute("data-shade-home-y").toDouble());
+        after.transform=QTransform();after.scale=1;after.rotation=0;
+        UBApplication::undoStack->push(new CoverStateUndo(svg,after,tr("Reset screen shade")));
+    }
+    UBApplication::undoStack->endMacro();
+}
+
+void UBLessonTools::applyTouchMode()
+{
+    const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
+    for(auto bar:mWindow->findChildren<QToolBar*>()){
+        if(bar!=mWindow->boardToolBar&&bar->objectName()!="lessonCoverToolbar"&&bar->objectName()!="lessonShapeToolbar")continue;
+        if(!bar->property("lessonOriginalStyle").isValid()){
+            bar->setProperty("lessonOriginalStyle",bar->styleSheet());bar->setProperty("lessonOriginalIconSize",bar->iconSize());
+        }
+        bar->setIconSize(touch?QSize(40,40):bar->property("lessonOriginalIconSize").toSize());
+        bar->setStyleSheet(bar->property("lessonOriginalStyle").toString()+(touch?QString(" QToolButton {min-height:48px;min-width:44px;padding:6px;} QComboBox {min-height:40px;}"):QString()));
+    }
+    for(auto palette:mWindow->findChildren<UBStylusPalette*>()){
+        palette->setButtonIconSize(touch?QSize(56,56):QSize(42,42));palette->layout()->invalidate();palette->adjustSize();palette->initPosition();
+    }
+    if(auto scene=UBApplication::boardController->activeScene())for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade")){
+        QDomDocument doc;doc.setContent(svg->fileData());
+        if(!doc.documentElement().hasAttribute("data-shade-home-x")){doc.documentElement().setAttribute("data-shade-home-x",svg->pos().x());doc.documentElement().setAttribute("data-shade-home-y",svg->pos().y());}
+        updateShadeHandles(doc);
+        if(doc.toByteArray()!=svg->fileData())svg->setTeachingSvg(doc.toByteArray());
+    }
 }
 
 bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
@@ -194,7 +290,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
         for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade")&&!isCoverRevealed(svg)){
             QDomDocument doc;doc.setContent(svg->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();
             QRectF rect(r.attribute("x").toDouble(),r.attribute("y").toDouble(),r.attribute("width").toDouble(),r.attribute("height").toDouble());
-            const auto p=svg->mapFromScene(point);const double tolerance=14/qMax(.01,view->transform().m11()*svg->sceneTransform().m11());
+            const auto p=svg->mapFromScene(point);const double tolerance=(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?26.:14.)/qMax(.01,qAbs(view->transform().m11()*svg->sceneTransform().m11()));
             if(!rect.adjusted(-tolerance,-tolerance,tolerance,tolerance).contains(p))continue;
             const double distances[]={qAbs(p.x()-rect.left()),qAbs(p.x()-rect.right()),qAbs(p.y()-rect.top()),qAbs(p.y()-rect.bottom())};
             for(int i=0;i<4;++i)if(distances[i]<=tolerance){mShadeDrag=svg;mShadeBefore=svg->fileData();mShadeEdge=i;scene->clearSelection();break;}

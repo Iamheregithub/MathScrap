@@ -183,6 +183,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     toolbar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(toolbar, &QWidget::customContextMenuRequested, this, [this] { customize(); });
     createShapeToolbar();
+    if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
     qApp->installEventFilter(this);
     applyLayout();
 }
@@ -362,12 +363,15 @@ void UBTeachingTools::customize()
     };
     connect(up,&QPushButton::clicked,&dialog,[moveRows]{moveRows(true);});
     connect(down,&QPushButton::clicked,&dialog,[moveRows]{moveRows(false);});
+    auto touch=new QCheckBox(tr("Touch-friendly controls (larger buttons and shade handles)"));
+    touch->setObjectName("lessonTouchFriendly");touch->setChecked(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool());layout->addWidget(touch);
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults);
     buttons->button(QDialogButtonBox::Ok)->setText(tr("Done"));
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dialog, [&] {
+        touch->setChecked(false);
         for (auto pair : {qMakePair(top, mDefaultTop), qMakePair(bottom, mDefaultBottom)}) {
             auto list = pair.first;
             for (int target = 0; target < pair.second.size(); ++target)
@@ -390,8 +394,10 @@ void UBTeachingTools::customize()
         }
         UBSettings::settings()->setValue("Teaching/" + pair.second + "Order", order);
     }
+    UBSettings::settings()->setValue("Teaching/TouchFriendly",touch->isChecked());
     UBSettings::settings()->save();
     applyLayout();
+    if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
 }
 
 void UBTeachingTools::openGraphDesk()

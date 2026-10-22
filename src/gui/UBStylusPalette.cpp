@@ -82,7 +82,7 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
     for (auto action : actions)
         action->setProperty("teachingHiddenBottom", !UBSettings::settings()->value("Teaching/Bottom/" + action->objectName(), action != UBApplication::mainWindow->actionPointer).toBool());
     setActions(actions);
-    setButtonIconSize(QSize(42, 42));
+    setButtonIconSize(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?QSize(56,56):QSize(42,42));
     groupActions();
 
     UBShortcutManager::shortcutManager()->addActionGroup(mActionGroup);
@@ -147,7 +147,7 @@ void UBStylusPalette::applyTeachingLayout(const QStringList &order)
     if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash"); dash && !mActions.contains(dash)) {
         addAction(dash);
         auto button = getButtonFromAction(dash);
-        button->setIconSize(QSize(42,42));
+        button->setIconSize(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?QSize(56,56):QSize(42,42));
         connect(button, SIGNAL(doubleClicked()), this, SLOT(stylusToolDoubleClicked()));
     }
     QStringList complete = order;

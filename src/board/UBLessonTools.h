@@ -24,6 +24,7 @@ public:
     bool isCoverRevealed(UBGraphicsSvgItem *cover) const;
     UBLessonHistory *history() const { return mHistory; }
     void showHistory();
+    void applyTouchMode();
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
@@ -33,6 +34,10 @@ private:
     UBGraphicsSvgItem *createCover(const QRectF &rect, bool shade);
     void revealCovers(bool selected, bool revealed);
     void manageCovers();
+    void syncCoverLock();
+    void resetReveals();
+    QAction *mLockCover = nullptr;
+    QMetaObject::Connection mCoverSelectionConnection;
     QToolBar *mCoverBar = nullptr;
     QAction *mCoverAction = nullptr;
     QAction *mDrawCover = nullptr;
