@@ -55,6 +55,10 @@ QIcon inkIcon(const QString &name)
     }
     return icon;
 }
+QIcon pageIcon(const QPixmap &pix)
+{
+    QIcon icon;icon.addPixmap(pix,QIcon::Normal);icon.addPixmap(pix,QIcon::Selected);icon.addPixmap(pix,QIcon::Active);return icon;
+}
 QString panelStyle(){return "QFrame#paperDock,QFrame#paperPenPanel {background:#fffdf7;border:1px solid #ddd7cb;border-radius:16px;} QToolButton {background:transparent;border:1px solid transparent;border-radius:9px;color:#273b3b;padding:5px;} QToolButton:hover {background:#eee9dd;} QToolButton:checked {background:#dceae4;border-color:#77a99a;} QToolButton:pressed {background:#c9ded4;} QLabel {color:#56625b;background:transparent;}";}
 }
 QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *parent)
@@ -74,14 +78,14 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     // Keep legacy actions registered for shortcuts, menus and saved preferences.
     // A zero-height presentation removes the ribbon without hiding Board mode.
     view->setFrameShape(QFrame::NoFrame);view->setStyleSheet("UBBoardView{background:#f0ece2;border:0;}");
-    mWindow->addToolBar(Qt::TopToolBarArea,mWindow->boardToolBar);mWindow->boardToolBar->setMaximumHeight(0);
+    mWindow->addToolBar(Qt::TopToolBarArea,mWindow->boardToolBar);mWindow->boardToolBar->setMaximumHeight(0);mWindow->boardToolBar->setMaximumWidth(0);
     mWindow->teachingTabs()->tabBar()->hide();
     mWindow->teachingTabs()->setStyleSheet("QTabWidget::pane{border:0;background:#f0ece2;}");
     for(const auto &id:QStringList{"actionPen","actionMarker","actionEraser","actionSelector","actionLine","actionTeachingDash","actionTeachingShapes","actionLessonCover","actionText","actionHand","actionUndo","actionRedo","actionTeachingGraphDesk"})
         if(auto a=mWindow->findChild<QAction*>(id))a->setIcon(inkIcon(id));
     mWindow->setStyleSheet(mWindow->styleSheet()+QString(
-        "QMenu {background:#fffdf7;color:#263c3b;border:1px solid #d8d2c5;padding:6px;font-size:13px;} QMenu::item{background:transparent;padding:8px 25px;border-radius:5px;} QMenu::item:selected{background:#dceae4;} QMenu::separator{height:1px;background:#e4ded2;margin:5px;} QDialog{background:#f7f3e9;} QDialog QLabel,QDialog QCheckBox{color:#263c3b;} QDialog QListWidget{background:#fffdf7;border:1px solid #d8d2c5;border-radius:8px;selection-background-color:#dceae4;selection-color:#263c3b;} QDialog QPushButton{background:#fffdf7;border:1px solid #d4cebf;border-radius:7px;padding:7px 14px;}"));
-    mHeader=new QToolBar(tr("Lesson navigation"),mWindow);mHeader->setObjectName("paperTopBar");mHeader->setMovable(false);mHeader->setFloatable(false);
+        "QMainWindow{background:#f8f5ec;} QMenu {background:#fffdf7;color:#263c3b;border:1px solid #d8d2c5;padding:6px;font-size:13px;} QMenu::item{background:transparent;padding:8px 25px;border-radius:5px;} QMenu::item:selected{background:#dceae4;} QMenu::separator{height:1px;background:#e4ded2;margin:5px;} QDialog{background:#f7f3e9;} QDialog QLabel,QDialog QCheckBox{color:#263c3b;} QDialog QListWidget{background:#fffdf7;border:1px solid #d8d2c5;border-radius:8px;selection-background-color:#dceae4;selection-color:#263c3b;} QDialog QPushButton{background:#fffdf7;border:1px solid #d4cebf;border-radius:7px;padding:7px 14px;}"));
+    mHeader=new QToolBar(tr("Lesson navigation"),mWindow);mHeader->setObjectName("paperTopBar");mHeader->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed);mHeader->setMovable(false);mHeader->setFloatable(false);
     mHeader->setStyleSheet("QToolBar{background:#f8f5ec;border:0;border-bottom:1px solid #ded8cc;spacing:8px;padding:6px;} QToolButton{background:transparent;color:#273b3b;border:1px solid transparent;border-radius:7px;height:30px;min-height:30px;max-height:36px;padding:4px 8px;margin:0;} QToolButton:hover{background:#ebe6da;} QToolButton:checked{background:#dceae4;border-color:#7ba99d;} QLabel{background:transparent;color:#273b3b;}");
     mHeader->setProperty("paperBaseStyle",mHeader->styleSheet());mHeader->setMaximumHeight(58);mWindow->addToolBar(Qt::TopToolBarArea,mHeader);
     auto brand=new QLabel(tr("LessonBoard"));brand->setStyleSheet("font-size:17px;font-weight:600;padding:0 16px 0 8px;");mHeader->addWidget(brand);
@@ -210,11 +214,11 @@ void UBPaperInk::refreshPages()
     mPageCount->setText(QString("%1 / %2").arg(board->activeSceneIndex()+1).arg(doc->pageCount()));
     const QString id=doc->uuid().toString();const bool changed=mDocumentId!=id||mPageList->count()!=doc->pageCount();
     QSignalBlocker blocker(mPageList);
-    if(changed){mPageList->clear();mDocumentId=id;for(int i=0;i<doc->pageCount();++i){auto item=new QListWidgetItem(QString::number(i+1),mPageList);item->setData(Qt::UserRole,i);item->setSizeHint(QSize(128,112));item->setIcon(QIcon(UBThumbnailAdaptor::get(doc,i)));}}
+    if(changed){mPageList->clear();mDocumentId=id;for(int i=0;i<doc->pageCount();++i){auto item=new QListWidgetItem(QString::number(i+1),mPageList);item->setData(Qt::UserRole,i);item->setSizeHint(QSize(128,112));item->setIcon(pageIcon(UBThumbnailAdaptor::get(doc,i)));}}
     const int index=board->activeSceneIndex();if(index>=0&&index<mPageList->count()){
         if(mPageList->currentRow()!=index){mPageList->setCurrentRow(index);mPageList->scrollToItem(mPageList->currentItem());}
         if(mPages->isVisible())if(auto scene=board->activeScene()){
-            QPixmap pix(236,164);pix.fill(scene->isDarkBackground()?QColor("#202020"):Qt::white);QPainter p(&pix);scene->render(&p,QRectF(0,0,236,164),scene->normalizedSceneRect());p.end();mPageList->item(index)->setIcon(QIcon(pix));
+            QPixmap pix(236,164);pix.fill(scene->isDarkBackground()?QColor("#202020"):Qt::white);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);const auto context=scene->renderingContext();scene->setRenderingContext(UBGraphicsScene::NonScreen);scene->render(&p,QRectF(0,0,236,164),scene->normalizedSceneRect());scene->setRenderingContext(context);p.end();mPageList->item(index)->setIcon(pageIcon(pix));
         }
     }
 }
@@ -239,6 +243,9 @@ void UBPaperInk::layoutPanels()
 {
     if(mClosing)return;
     auto view=UBApplication::boardController->controlView();if(!view)return;
+    const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
+    const int titleWidth=qBound(0,mWindow->width()-(touch?900:820),240);mTitle->setFixedWidth(titleWidth);
+    if(auto doc=UBApplication::boardController->selectedDocument())mTitle->setText(mTitle->fontMetrics().elidedText(doc->name(),Qt::ElideRight,qMax(0,titleWidth-32)));
     const int rail=mPagesOpen&&view->width()>740?158:0;view->setPaperInkMargins(rail);
     mPages->setGeometry(0,0,rail,view->height());mPages->setVisible(mDock->isVisible()&&rail>0);mPages->raise();
     const int left=rail+12,available=qMax(220,view->width()-left-12);mDock->adjustSize();

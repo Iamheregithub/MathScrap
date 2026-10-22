@@ -161,7 +161,7 @@ bool checkPaperInk(QString *error)
     auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
     if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
     pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
-    if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62)return fail("Paper pen controls or compact header are not visible");
+    if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62||header->width()<window->width()-12)return fail("Paper pen controls or compact header are not visible");
     auto dc=UBDrawingController::drawingController();const int old=dc->currentToolColorIndex();
     auto colour=panel->findChild<QToolButton*>("paperColour8");if(!colour)return fail("Paper colour swatches unavailable");colour->click();
     if(dc->currentToolColorIndex()!=8)return fail("Paper swatch did not select the native pen colour");dc->setColorIndex(old);
