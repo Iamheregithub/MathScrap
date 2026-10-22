@@ -225,7 +225,10 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
                 cancelShapeDrag(); mShapeTarget.clear(); scene->clearSelection();
                 mShapeScene = scene.get(); mShapeStart = point; mShapeDragging = true;
                 mShapePreview = new QGraphicsPathItem;
-                mShapePreview->setZValue(1900000); scene->addItem(mShapePreview);
+                mShapePreview->setZValue(1900000);
+                // Transient previews are owned here, outside OpenBoard's
+                // deferred document-item deletion registry and item counts.
+                scene->QGraphicsScene::addItem(mShapePreview);
             }
             if (mShapeDragging && mShapeScene == scene.get()) {
                 QPointF end = point;
