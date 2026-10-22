@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingTools.h"
+#include "UBPaperInk.h"
 #include "UBLessonTools.h"
 #include <QtWidgets>
 #include <QWebEngineView>
@@ -167,12 +168,13 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     const QList<QAction*> tools = {window->actionPen, window->actionEraser, window->actionMarker,
         window->actionSelector, window->actionPlay, window->actionHand, window->actionZoomIn,
         window->actionZoomOut, window->actionPointer, window->actionLine, dash, window->actionText,
-        window->actionCapture, window->actionVirtualKeyboard, window->actionSnap};
+        window->actionCapture, window->actionVirtualKeyboard, window->actionSnap, shapes, window->findChild<QAction*>("actionLessonCover")};
     for (auto action : tools) {
         mBottom[action->objectName()] = action;
         mDefaultBottom << action->objectName();
         action->setAutoRepeat(false);
     }
+    window->findChild<QAction*>("actionLessonCover")->setProperty("ungrouped",true);
     auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
     customizeAction->setObjectName("actionTeachingCustomize");
@@ -186,6 +188,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
     qApp->installEventFilter(this);
     applyLayout();
+    new UBPaperInk(mWindow);
 }
 
 bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
@@ -302,6 +305,7 @@ void UBTeachingTools::applyLayout()
     QStringList bottomOrder = settings->value("Teaching/BottomOrder", mDefaultBottom).toStringList();
     for (auto palette : mWindow->findChildren<UBStylusPalette*>())
         palette->applyTeachingLayout(bottomOrder);
+    if(auto paper=mWindow->findChild<UBPaperInk*>())paper->rebuild();
 }
 
 void UBTeachingTools::customize()
@@ -398,6 +402,7 @@ void UBTeachingTools::customize()
     UBSettings::settings()->save();
     applyLayout();
     if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
+    if(auto paper=mWindow->findChild<UBPaperInk*>())paper->sync();
 }
 
 void UBTeachingTools::openGraphDesk()

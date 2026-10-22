@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#include "UBPaperInk.h"
+#include <QtWidgets>
+#include <QSvgRenderer>
+#include "gui/UBMainWindow.h"
+#include "gui/UBStylusPalette.h"
+#include "gui/UBDockPalette.h"
+#include "core/UBApplication.h"
+#include "core/UBApplicationController.h"
+#include "core/UBSettings.h"
+#include "board/UBBoardController.h"
+#include "board/UBBoardView.h"
+#include "board/UBBoardPaletteManager.h"
+#include "gui/UBLeftPalette.h"
+#include "board/UBDrawingController.h"
+#include "board/UBLessonTools.h"
+#include "document/UBDocumentProxy.h"
+#include "domain/UBGraphicsScene.h"
+#include "adaptors/UBThumbnailAdaptor.h"
+namespace {
+QIcon inkIcon(const QString &name)
+{
+    static const QMap<QString,QString> paths={
+        {"actionPen","M5 19l1-5L17 3l4 4L10 18z M14 6l4 4 M5 19l5-1"},
+        {"actionMarker","M5 16l10-11 5 5-10 11z M3 21h8 M12 8l5 5"},
+        {"actionEraser","M4 12l9-9 8 8-9 10H9z M8 17l8-8 M12 21h10"},
+        {"actionSelector","M5 3l14 11-7 1-3 7z"},
+        {"actionLine","M4 20L20 4"},{"actionTeachingDash","M4 20l3-3 M10 14l3-3 M16 8l4-4"},
+        {"actionTeachingShapes","M3 4h12v12H3z M16 9a6 6 0 1 1-5 7"},
+        {"actionLessonCover","M4 4h16v16H4z M8 8h8v8H8z"},
+        {"actionText","M3 5h18 M12 5v16 M8 21h8"},
+        {"actionHand","M7 12V6a1.5 1.5 0 0 1 3 0v6-8a1.5 1.5 0 0 1 3 0v8-6a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v8q-1 6-7 6-3 0-5-3l-4-5q-1-3 2-2l3 2"},
+        {"actionUndo","M9 5L4 10l5 5 M4 10h10a5 5 0 0 1 0 10h-3"},
+        {"actionRedo","M15 5l5 5-5 5 M20 10H10a5 5 0 0 0 0 10h3"},
+        {"previous","M15 5l-7 7 7 7"},{"next","M9 5l7 7-7 7"},
+        {"pages","M4 3h12v15H4z M8 21h12V7"},{"plus","M12 4v16 M4 12h16"},
+        {"more","M5 12h.1 M12 12h.1 M19 12h.1"},
+        {"actionTeachingGraphDesk","M4 3v17h17 M5 17l5-8 5 5 5-10"},
+        {"leaf","M5 19Q0 6 19 3q2 15-14 16z M5 19L16 6"}
+    };
+    const QString path=paths.value(name,paths.value("more"));QIcon icon;
+    for(auto mode:{QIcon::Normal,QIcon::Disabled}){
+        const QString colour=mode==QIcon::Disabled?"#b4afa5":"#243b3b";
+        const auto svg=QString("<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='%1' fill='none' stroke='%2' stroke-width='1.65' stroke-linecap='round' stroke-linejoin='round'/></svg>").arg(path,colour).toUtf8();
+        QSvgRenderer renderer(svg);QPixmap pix(64,64);pix.fill(Qt::transparent);QPainter p(&pix);renderer.render(&p);p.end();icon.addPixmap(pix,mode);
+    }
+    return icon;
+}
+QString panelStyle(){return "QFrame#paperDock,QFrame#paperPenPanel {background:#fffdf7;border:1px solid #ddd7cb;border-radius:16px;} QToolButton {background:transparent;border:1px solid transparent;border-radius:9px;color:#273b3b;padding:5px;} QToolButton:hover {background:#eee9dd;} QToolButton:checked {background:#dceae4;border-color:#77a99a;} QToolButton:pressed {background:#c9ded4;} QLabel {color:#56625b;background:transparent;}";}
+}
+QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *parent)
+{
+    auto b=new QToolButton(parent);b->setObjectName("paper-"+source->objectName());b->setAutoRaise(true);
+    auto proxy=new QAction(b);proxy->setText(label);proxy->setToolTip(source->toolTip());
+    auto update=[source,proxy,label]{proxy->setText(label);proxy->setIcon(source->icon());proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());proxy->setChecked(source->isChecked());};
+    connect(source,&QAction::changed,b,update);connect(proxy,&QAction::triggered,source,[source]{source->trigger();});update();
+    b->setDefaultAction(proxy);b->setIconSize(QSize(26,26));return b;
+}
+UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
+{
+    setObjectName("paperInk");mWindow->setProperty("paperInk",true);
+    auto settings=UBSettings::settings();mPagesOpen=settings->value("Teaching/PaperInkPages",true).toBool();
+    auto view=UBApplication::boardController->controlView();
+    // Keep legacy actions registered for shortcuts, menus and saved preferences.
+    // A zero-height presentation removes the ribbon without hiding Board mode.
+    view->setFrameShape(QFrame::NoFrame);view->setStyleSheet("UBBoardView{background:#f0ece2;border:0;}");
+    mWindow->addToolBar(Qt::TopToolBarArea,mWindow->boardToolBar);mWindow->boardToolBar->setMaximumHeight(0);
+    mWindow->teachingTabs()->tabBar()->hide();
+    mWindow->teachingTabs()->setStyleSheet("QTabWidget::pane{border:0;background:#f0ece2;}");
+    for(const auto &id:QStringList{"actionPen","actionMarker","actionEraser","actionSelector","actionLine","actionTeachingDash","actionTeachingShapes","actionLessonCover","actionText","actionHand","actionUndo","actionRedo","actionTeachingGraphDesk"})
+        if(auto a=mWindow->findChild<QAction*>(id))a->setIcon(inkIcon(id));
+    mWindow->setStyleSheet(mWindow->styleSheet()+QString(
+        "QMenu {background:#fffdf7;color:#263c3b;border:1px solid #d8d2c5;padding:6px;font-size:13px;} QMenu::item{background:transparent;padding:8px 25px;border-radius:5px;} QMenu::item:selected{background:#dceae4;} QMenu::separator{height:1px;background:#e4ded2;margin:5px;} QDialog{background:#f7f3e9;} QDialog QLabel,QDialog QCheckBox{color:#263c3b;} QDialog QListWidget{background:#fffdf7;border:1px solid #d8d2c5;border-radius:8px;selection-background-color:#dceae4;selection-color:#263c3b;} QDialog QPushButton{background:#fffdf7;border:1px solid #d4cebf;border-radius:7px;padding:7px 14px;}"));
+    mHeader=new QToolBar(tr("Lesson navigation"),mWindow);mHeader->setObjectName("paperTopBar");mHeader->setMovable(false);mHeader->setFloatable(false);
+    mHeader->setStyleSheet("QToolBar{background:#f8f5ec;border:0;border-bottom:1px solid #ded8cc;spacing:8px;padding:6px;} QToolButton{background:transparent;color:#273b3b;border:1px solid transparent;border-radius:7px;height:30px;min-height:30px;max-height:36px;padding:4px 8px;margin:0;} QToolButton:hover{background:#ebe6da;} QToolButton:checked{background:#dceae4;border-color:#7ba99d;} QLabel{background:transparent;color:#273b3b;}");
+    mHeader->setMaximumHeight(58);mWindow->addToolBar(Qt::TopToolBarArea,mHeader);
+    auto brand=new QLabel(tr("LessonBoard"));brand->setStyleSheet("font-size:17px;font-weight:600;padding:0 16px 0 8px;");mHeader->addWidget(brand);
+    auto lesson=mHeader->addAction(tr("Lesson"));lesson->setCheckable(true);lesson->setChecked(true);
+    connect(lesson,&QAction::triggered,this,[this]{mWindow->teachingTabs()->setCurrentIndex(0);});
+    auto graph=button(mWindow->findChild<QAction*>("actionTeachingGraphDesk"),tr("GraphDesk"),mHeader);graph->setToolButtonStyle(Qt::ToolButtonTextOnly);mHeader->addWidget(graph);
+    mTitle=new QLabel;mTitle->setStyleSheet("font-size:13px;color:#59645e;padding:0 16px;");mHeader->addWidget(mTitle);
+    auto spacer=new QWidget;spacer->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);mHeader->addWidget(spacer);
+    for(auto a:{mWindow->actionUndo,mWindow->actionRedo})mHeader->addWidget(button(a,QString(),mHeader));
+    mPageToggle=new QToolButton;mPageToggle->setIcon(inkIcon("pages"));mPageToggle->setToolTip(tr("Show or hide pages"));mPageToggle->setCheckable(true);mPageToggle->setChecked(mPagesOpen);mHeader->addWidget(mPageToggle);
+    connect(mPageToggle,&QToolButton::clicked,this,[this](bool open){mPagesOpen=open;UBSettings::settings()->setValue("Teaching/PaperInkPages",open);UBSettings::settings()->save();layoutPanels();});
+    auto prev=new QToolButton;prev->setIcon(inkIcon("previous"));prev->setToolTip(tr("Previous page"));mHeader->addWidget(prev);connect(prev,&QToolButton::clicked,this,[this]{auto b=UBApplication::boardController;if(b->activeSceneIndex()>0)b->setActiveSceneIndex(b->activeSceneIndex()-1);});
+    mPageCount=new QLabel;mPageCount->setMinimumWidth(50);mPageCount->setAlignment(Qt::AlignCenter);mHeader->addWidget(mPageCount);
+    auto next=new QToolButton;next->setIcon(inkIcon("next"));next->setToolTip(tr("Next page"));mHeader->addWidget(next);connect(next,&QToolButton::clicked,this,[this]{auto b=UBApplication::boardController;if(b->selectedDocument()&&b->activeSceneIndex()+1<b->selectedDocument()->pageCount())b->setActiveSceneIndex(b->activeSceneIndex()+1);});
+    auto menu=new QToolButton;menu->setObjectName("paperMenu");menu->setIcon(inkIcon("more"));menu->setToolTip(tr("Lesson menu"));menu->setPopupMode(QToolButton::InstantPopup);
+    if(auto wrapper=mWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu"))menu->setMenu(wrapper->menu());
+    mHeader->addWidget(menu);
+    mPages=new QFrame(view);mPages->setObjectName("paperPages");auto pl=new QVBoxLayout(mPages);pl->setContentsMargins(12,14,12,12);pl->setSpacing(10);
+    auto title=new QLabel(tr("Pages"));title->setStyleSheet("font-size:14px;font-weight:600;color:#344a43;");pl->addWidget(title);
+    mPageList=new QListWidget;mPageList->setObjectName("paperPageList");mPageList->setIconSize(QSize(118,82));mPageList->setSpacing(7);mPageList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);pl->addWidget(mPageList);
+    mPages->setStyleSheet("QFrame#paperPages{background:#f6f2e8;border:0;border-right:1px solid #ded8cc;} QListWidget{background:transparent;border:0;color:#53625b;outline:0;} QListWidget::item{background:#fffdf8;border:1px solid #ded8cc;border-radius:7px;padding:5px;} QListWidget::item:selected{border:2px solid #c69c47;background:#fbf5e4;color:#6e5429;} QToolButton{background:#fffdf8;border:1px solid #ded8cc;border-radius:8px;padding:8px;}");
+    auto add=button(mWindow->actionPages,tr("Add page"),mPages);add->setIcon(inkIcon("plus"));add->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);pl->addWidget(add);
+    connect(mPageList,&QListWidget::itemClicked,this,[this](QListWidgetItem *item){UBApplication::boardController->setActiveSceneIndex(item->data(Qt::UserRole).toInt());});
+    mDock=new QFrame(view);mDock->setObjectName("paperDock");mDock->setStyleSheet(panelStyle());auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
+    mPenPanel=new QFrame(view);mPenPanel->setObjectName("paperPenPanel");mPenPanel->setStyleSheet(panelStyle());auto penLayout=new QVBoxLayout(mPenPanel);penLayout->setContentsMargins(14,12,14,12);penLayout->setSpacing(9);
+    auto colours=new QGridLayout;colours->setSpacing(7);penLayout->addLayout(colours);
+    for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[i]{UBDrawingController::drawingController()->setColorIndex(i);});}
+    auto widths=new QHBoxLayout;penLayout->addLayout(widths);
+    for(int i=0;i<3;++i){auto b=new QToolButton;b->setObjectName(QString("paperWidth%1").arg(i));b->setCheckable(true);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setIconSize(QSize(48,18));b->setText(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);widths->addWidget(b);mWidths<<b;
+        connect(b,&QToolButton::clicked,this,[i]{auto dc=UBDrawingController::drawingController();if(dc->stylusTool()==UBStylusTool::Eraser)dc->setEraserWidthIndex(i);else dc->setLineWidthIndex(i);});}
+    for(auto bar:mWindow->findChildren<UBDockPalette*>())bar->setBackgroundBrush(QColor("#f1ecdf"));
+    connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool){sync();});
+    connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this,lesson](int index){lesson->setChecked(index==0);sync();});
+    connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,[this]{refreshPages();sync();});
+    auto dc=UBDrawingController::drawingController();
+    connect(dc,&UBDrawingController::stylusToolChanged,this,[this](int,int){sync();});
+    connect(dc,&UBDrawingController::colorIndexChanged,this,[this](int){refreshPen();});connect(dc,&UBDrawingController::lineWidthIndexChanged,this,[this](int){refreshPen();});connect(dc,&UBDrawingController::colorPaletteChanged,this,&UBPaperInk::refreshPen);
+    for(const auto &id:QStringList{"actionTeachingShapes","actionLessonCover"})if(auto a=mWindow->findChild<QAction*>(id))connect(a,&QAction::changed,this,[this]{scheduleLayout();});
+    auto timer=new QTimer(this);timer->setInterval(3000);connect(timer,&QTimer::timeout,this,[this]{if(mPages->isVisible())refreshPages();});timer->start();
+    connect(qApp,&QCoreApplication::aboutToQuit,this,[this,timer]{mClosing=true;timer->stop();qApp->removeEventFilter(this);});
+    connect(view,&QObject::destroyed,this,[this]{mClosing=true;});
+    for(auto panel:{mDock,mPenPanel}){auto shadow=new QGraphicsDropShadowEffect(panel);shadow->setBlurRadius(20);shadow->setOffset(0,4);shadow->setColor(QColor(73,60,38,35));panel->setGraphicsEffect(shadow);}
+    qApp->installEventFilter(this);adoptContextBars();if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();rebuild();refreshPages();sync();
+}
+void UBPaperInk::adoptContextBars()
+{
+    auto view=UBApplication::boardController->controlView();
+    for(const auto &name:QStringList{"lessonShapeToolbar","lessonCoverToolbar"})if(auto bar=mWindow->findChild<QToolBar*>(name)){
+        mWindow->removeToolBarBreak(bar);mWindow->removeToolBar(bar);bar->setParent(view);bar->setWindowFlags(Qt::Widget);bar->setMovable(false);bar->setFloatable(false);bar->setOrientation(Qt::Horizontal);
+        bar->setProperty("lessonOriginalStyle",QString("QToolBar{background:#fffdf7;border:1px solid #ddd7cb;border-radius:12px;spacing:3px;padding:7px;} QToolButton{color:#2b403b;background:transparent;border:1px solid transparent;border-radius:7px;height:30px;min-height:30px;padding:4px;} QToolButton:hover{background:#eee9dd;} QToolButton:checked{background:#dceae4;border-color:#77a99a;} QLabel{color:#53625b;} QComboBox{background:#fffdf7;border:1px solid #d8d1c3;border-radius:5px;padding:4px;}"));
+        bar->setStyleSheet(bar->property("lessonOriginalStyle").toString());bar->hide();
+    }
+}
+void UBPaperInk::rebuild()
+{
+    if(mClosing)return;
+    delete mMore;mMore=nullptr;mOverflowActions.clear();
+    auto layout=qobject_cast<QHBoxLayout*>(mDock->layout());while(auto item=layout->takeAt(0)){delete item->widget();delete item;}
+    const QStringList defaults={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"};
+    QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();for(const auto &id:defaults)if(!order.contains(id))order<<id;
+    const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingDash",tr("Dashed")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")}};
+    mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
+    const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
+    for(const auto &id:order){auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
+        const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
+        if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){mMore->addAction(source);continue;}
+        auto b=button(source,labels.value(id,source->text()),mDock);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setFixedSize(touch?76:64,touch?76:62);b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
+        if(source==mWindow->actionLine){auto menu=new QMenu(b);menu->addAction(mWindow->actionLine);menu->addAction(mWindow->findChild<QAction*>("actionTeachingDash"));b->setMenu(menu);b->setPopupMode(QToolButton::MenuButtonPopup);}
+    }
+    for(const auto &id:QStringList{"actionHand","actionTeachingDash","actionPlay","actionZoomIn","actionZoomOut","actionPointer","actionCapture","actionVirtualKeyboard","actionSnap"})if(auto a=mWindow->findChild<QAction*>(id);a&&!mMore->actions().contains(a))mMore->addAction(a);
+    mMore->addSeparator();mMore->addAction(mWindow->findChild<QAction*>("actionTeachingCustomize"));
+    auto more=new QToolButton(mDock);more->setObjectName("paperMore");more->setText(tr("More"));more->setIcon(inkIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setIconSize(QSize(26,26));more->setFixedSize(touch?76:64,touch?76:62);more->setMenu(mMore);more->setPopupMode(QToolButton::InstantPopup);layout->addWidget(more);
+    refreshPen();scheduleLayout();
+}
+void UBPaperInk::refreshPen()
+{
+    if(mClosing)return;
+    auto dc=UBDrawingController::drawingController();auto s=UBSettings::settings();
+    const bool touch=s->value("Teaching/TouchFriendly",false).toBool();
+    const auto colours=dc->stylusTool()==UBStylusTool::Marker?s->markerColors(s->isDarkBackground()):s->penColors(s->isDarkBackground());
+    for(int i=0;i<mColours.size()&&i<colours.size();++i){mColours[i]->setFixedSize(touch?44:34,touch?42:32);mColours[i]->setIconSize(touch?QSize(28,28):QSize(22,22));QPixmap pix(44,44);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#b8b2a5"),1));auto c=colours[i];c.setAlpha(255);p.setBrush(c);p.drawEllipse(QRectF(3,3,38,38));p.end();mColours[i]->setIcon(QIcon(pix));mColours[i]->setChecked(dc->currentToolColorIndex()==i);mColours[i]->setToolTip(colours[i].name());mColours[i]->setVisible(dc->stylusTool()!=UBStylusTool::Eraser);}
+    for(int i=0;i<mWidths.size();++i){mWidths[i]->setFixedSize(touch?80:66,touch?62:48);QPixmap pix(96,36);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#273b3b"),2.+i*3,Qt::SolidLine,Qt::RoundCap));QPainterPath path;path.moveTo(10,24);path.cubicTo(32,2,60,34,86,12);p.drawPath(path);p.end();mWidths[i]->setIcon(QIcon(pix));mWidths[i]->setChecked((dc->stylusTool()==UBStylusTool::Eraser?s->eraserWidthIndex():dc->currentToolWidthIndex())==i);}
+    mPenPanel->adjustSize();scheduleLayout();
+}
+void UBPaperInk::refreshPages()
+{
+    if(mClosing)return;
+    auto board=UBApplication::boardController;auto doc=board->selectedDocument();if(!doc)return;
+    mTitle->setText(mTitle->fontMetrics().elidedText(doc->name(),Qt::ElideRight,qMax(80,mWindow->width()/4)));
+    mPageCount->setText(QString("%1 / %2").arg(board->activeSceneIndex()+1).arg(doc->pageCount()));
+    const QString id=doc->uuid().toString();const bool changed=mDocumentId!=id||mPageList->count()!=doc->pageCount();
+    QSignalBlocker blocker(mPageList);
+    if(changed){mPageList->clear();mDocumentId=id;for(int i=0;i<doc->pageCount();++i){auto item=new QListWidgetItem(QString::number(i+1),mPageList);item->setData(Qt::UserRole,i);item->setSizeHint(QSize(128,112));item->setIcon(QIcon(UBThumbnailAdaptor::get(doc,i)));}}
+    const int index=board->activeSceneIndex();if(index>=0&&index<mPageList->count()){
+        if(mPageList->currentRow()!=index){mPageList->setCurrentRow(index);mPageList->scrollToItem(mPageList->currentItem());}
+        if(mPages->isVisible())if(auto scene=board->activeScene()){
+            QPixmap pix(236,164);pix.fill(scene->isDarkBackground()?QColor("#202020"):Qt::white);QPainter p(&pix);scene->render(&p,QRectF(0,0,236,164),scene->normalizedSceneRect());p.end();mPageList->item(index)->setIcon(QIcon(pix));
+        }
+    }
+}
+void UBPaperInk::sync()
+{
+    if(mClosing)return;
+    const bool board=mWindow->boardToolBar->isVisible();const bool lesson=board&&mWindow->teachingTabs()->currentIndex()==0;
+    mHeader->setVisible(board);mDock->setVisible(lesson);mPages->setVisible(lesson&&mPagesOpen);
+    for(auto palette:mWindow->findChildren<UBStylusPalette*>())if(lesson)palette->hide();
+    if(lesson)UBApplication::boardController->paletteManager()->leftPalette()->hide();
+    auto dc=UBDrawingController::drawingController();const int tool=dc->stylusTool();
+    const bool contextual=mWindow->findChild<QAction*>("actionTeachingShapes")->isChecked()||mWindow->findChild<QAction*>("actionLessonCover")->isChecked();
+    mPenPanel->setVisible(lesson&&!contextual&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+    refreshPen();layoutPanels();
+}
+void UBPaperInk::scheduleLayout()
+{
+    if(mClosing)return;
+    if(mScheduled)return;mScheduled=true;QTimer::singleShot(0,this,[this]{mScheduled=false;layoutPanels();});
+}
+void UBPaperInk::layoutPanels()
+{
+    if(mClosing)return;
+    auto view=UBApplication::boardController->controlView();if(!view)return;
+    const int rail=mPagesOpen&&view->width()>740?158:0;view->setPaperInkMargins(rail);
+    mPages->setGeometry(0,0,rail,view->height());mPages->setVisible(mDock->isVisible()&&rail>0);mPages->raise();
+    const int left=rail+12,available=qMax(220,view->width()-left-12);mDock->adjustSize();
+    // Keep readable labels and move overflow tools into More on small windows.
+    if(mMore){for(auto a:mOverflowActions)mMore->removeAction(a);mOverflowActions.clear();}
+    for(int i=0;i<mDock->layout()->count();++i)if(auto b=qobject_cast<QToolButton*>(mDock->layout()->itemAt(i)->widget()))b->show();
+    mDock->layout()->activate();
+    for(int i=mDock->layout()->count()-2;i>=0&&mDock->sizeHint().width()>available;--i){
+        auto b=qobject_cast<QToolButton*>(mDock->layout()->itemAt(i)->widget());if(!b)continue;
+        b->hide();mMore->addAction(b->defaultAction());mOverflowActions.prepend(b->defaultAction());mDock->layout()->invalidate();mDock->layout()->activate();
+    }
+    mDock->adjustSize();mDock->move(left+(available-mDock->width())/2,view->height()-mDock->height()-14);mDock->raise();
+    mPenPanel->adjustSize();mPenPanel->move(qBound(left,mDock->x()+mDock->width()/2-mPenPanel->width()/2,qMax(left,view->width()-mPenPanel->width()-12)),mDock->y()-mPenPanel->height()-9);mPenPanel->raise();
+    const bool lesson=mDock->isVisible();auto dc=UBDrawingController::drawingController();const int tool=dc->stylusTool();
+    bool context=false;
+    for(const auto &name:QStringList{"lessonShapeToolbar","lessonCoverToolbar"})if(auto bar=mWindow->findChild<QToolBar*>(name)){
+        if(!bar->isHidden()&&lesson){context=true;bar->setMaximumWidth(available);bar->adjustSize();bar->move(left+qMax(0,(available-bar->width())/2),mDock->y()-bar->height()-9);bar->raise();}
+    }
+    mPenPanel->setVisible(lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+}
+bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
+{
+    if(mClosing)return false;
+    auto view=UBApplication::boardController->controlView();
+    if(event->type()==QEvent::Show&&(qobject_cast<UBStylusPalette*>(object)||object==UBApplication::boardController->paletteManager()->leftPalette())&&mWindow->boardToolBar->isVisible()){
+        QPointer<QWidget> palette=qobject_cast<QWidget*>(object);QTimer::singleShot(0,this,[palette]{if(palette)palette->hide();});
+    }
+    if(object==view&&(event->type()==QEvent::Resize||event->type()==QEvent::Show))scheduleLayout();
+    if(auto bar=qobject_cast<QToolBar*>(object);bar&&(bar->objectName()=="lessonShapeToolbar"||bar->objectName()=="lessonCoverToolbar")&&(event->type()==QEvent::Show||event->type()==QEvent::Hide||event->type()==QEvent::Resize))scheduleLayout();
+    return false;
+}

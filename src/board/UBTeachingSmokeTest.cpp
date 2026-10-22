@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingSmokeTest.h"
+#include "UBPaperInk.h"
 #include <QtWidgets>
 #include <QWebEngineView>
 #include <QWebEnginePage>
@@ -143,6 +144,32 @@ bool checkWindowAndToolbar(QString *error)
         .save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("window-chrome-window.png"));
 #endif
     return true;
+}
+
+bool checkPaperInk(QString *error)
+{
+    auto fail=[error](const QString &s){*error=s;return false;};
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
+    auto paper=window->findChild<UBPaperInk*>();auto dock=window->findChild<QFrame*>("paperDock");
+    auto header=window->findChild<QToolBar*>("paperTopBar");auto pages=window->findChild<QListWidget*>("paperPageList");
+    if(!paper||!dock||!header||!pages||window->boardToolBar->height()>1)return fail("Paper and ink shell is missing or legacy ribbon remains");
+    auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
+    if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
+    pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
+    if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62)return fail("Paper pen controls or compact header are not visible");
+    auto dc=UBDrawingController::drawingController();const int old=dc->currentToolColorIndex();
+    auto colour=panel->findChild<QToolButton*>("paperColour8");if(!colour)return fail("Paper colour swatches unavailable");colour->click();
+    if(dc->currentToolColorIndex()!=8)return fail("Paper swatch did not select the native pen colour");dc->setColorIndex(old);
+    panel->findChild<QToolButton*>("paperWidth2")->click();if(dc->currentToolWidthIndex()!=2)return fail("Paper stroke width did not update");
+    shape->click();QApplication::processEvents();auto shapeBar=window->findChild<QToolBar*>("lessonShapeToolbar");
+    if(shapeBar->parentWidget()!=board->controlView()||!shapeBar->isVisible()||!panel->isHidden()||shapeBar->geometry().intersects(dock->geometry()))return fail("Shape controls are not positioned above the paper dock");
+    window->findChild<QAction*>("actionTeachingShapes")->trigger();cover->click();QApplication::processEvents();
+    auto coverBar=window->findChild<QToolBar*>("lessonCoverToolbar");
+    if(coverBar->parentWidget()!=board->controlView()||!coverBar->isVisible()||coverBar->geometry().intersects(dock->geometry()))return fail("Cover controls are not positioned above the paper dock");
+    cover->click();pen->click();QApplication::processEvents();
+    if(!board->selectedDocument()||pages->count()!=board->selectedDocument()->pageCount())return fail("Paper page list does not match the lesson");
+    const auto path=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-ink-window.png");window->grab().save(path);
+    window->setProperty("paperInkChecked",true);return true;
 }
 
 bool checkShapeToolbar(QString *error)
@@ -499,7 +526,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError)) { finish(false, chromeError); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");
