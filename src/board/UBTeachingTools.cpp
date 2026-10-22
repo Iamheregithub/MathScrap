@@ -309,13 +309,18 @@ void UBTeachingTools::customize()
     dialog.setWindowTitle(tr("Customize toolbars"));
     dialog.resize(620, 560);
     auto layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Check tools to show them. Drag rows to rearrange them. Hidden tools retain their shortcuts.")));
+    auto instructions = new QLabel(tr("Check tools to show them. Drag rows to rearrange; select several rows to move them together. Hidden tools retain their shortcuts."));
+    instructions->setWordWrap(true);layout->addWidget(instructions);
     auto tabs = new QTabWidget;
     layout->addWidget(tabs);
     auto makeList = [&](const QString &label, const QString &prefix, const QMap<QString, QAction*> &actions,
                         const QStringList &defaults) {
         auto list = new QListWidget;
         list->setDragDropMode(QAbstractItemView::InternalMove);
+        list->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        list->setDefaultDropAction(Qt::MoveAction);
+        list->setDropIndicatorShown(true);
+        list->setSpacing(3);
         auto order = UBSettings::settings()->value("Teaching/" + prefix + "Order", defaults).toStringList();
         for (auto id : defaults) if (!order.contains(id)) order << id;
         for (auto id : order) {
@@ -338,7 +343,27 @@ void UBTeachingTools::customize()
     };
     auto top = makeList(tr("Top toolbar"), "Top", mTop, mDefaultTop);
     auto bottom = makeList(tr("Pen toolbar"), "Bottom", mBottom, mDefaultBottom);
+    if(mCustomize->property("teachingOpenPenTab").toBool())tabs->setCurrentWidget(bottom);
+    mCustomize->setProperty("teachingOpenPenTab",false);
+    auto moves=new QHBoxLayout;
+    auto up=new QPushButton(tr("Move up"));auto down=new QPushButton(tr("Move down"));
+    moves->addWidget(up);moves->addWidget(down);moves->addStretch();layout->addLayout(moves);
+    auto moveRows=[tabs](bool upwards){
+        auto list=qobject_cast<QListWidget*>(tabs->currentWidget());if(!list)return;
+        if(upwards){
+            for(int row=1;row<list->count();++row)if(list->item(row)->isSelected()&&!list->item(row-1)->isSelected()){
+                auto item=list->takeItem(row);list->insertItem(row-1,item);item->setSelected(true);
+            }
+        }else{
+            for(int row=list->count()-2;row>=0;--row)if(list->item(row)->isSelected()&&!list->item(row+1)->isSelected()){
+                auto item=list->takeItem(row);list->insertItem(row+1,item);item->setSelected(true);
+            }
+        }
+    };
+    connect(up,&QPushButton::clicked,&dialog,[moveRows]{moveRows(true);});
+    connect(down,&QPushButton::clicked,&dialog,[moveRows]{moveRows(false);});
     auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Done"));
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -365,6 +390,7 @@ void UBTeachingTools::customize()
         }
         UBSettings::settings()->setValue("Teaching/" + pair.second + "Order", order);
     }
+    UBSettings::settings()->sync();
     applyLayout();
 }
 
@@ -485,6 +511,7 @@ void UBTeachingTools::cancelShapeDrag()
 
 void UBTeachingTools::armShape(int type)
 {
+    if(auto cover=mWindow->findChild<QAction*>("actionLessonCover");cover&&cover->isChecked())cover->trigger();
     cancelShapeDrag(); mShapeTarget.clear();
     mWindow->teachingTabs()->setCurrentIndex(0);
     mWindow->actionSelector->trigger();
@@ -500,6 +527,7 @@ void UBTeachingTools::shapeDialog()
         cancelShapeDrag(); mShapeDrawing=false; mShapeBar->hide();
         UBApplication::boardController->controlView()->viewport()->unsetCursor(); return;
     }
+    if(auto cover=mWindow->findChild<QAction*>("actionLessonCover");cover&&cover->isChecked())cover->trigger();
     mWindow->teachingTabs()->setCurrentIndex(0); mWindow->actionSelector->trigger(); mShapeBar->show(); syncShapeSelection();
     if (!mShapeTarget) armShape(mShapeType);
 }

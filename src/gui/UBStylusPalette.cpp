@@ -31,6 +31,8 @@
 
 #include <QtGui>
 #include <QLayout>
+#include <QMenu>
+#include <QContextMenuEvent>
 
 #include "UBMainWindow.h"
 
@@ -163,4 +165,18 @@ void UBStylusPalette::applyTeachingLayout(const QStringList &order)
             }
     adjustSize();
     initPosition();
+}
+
+void UBStylusPalette::contextMenuEvent(QContextMenuEvent *event)
+{
+    auto customize=UBApplication::mainWindow->findChild<QAction*>("actionTeachingCustomize");
+    // The action is owned by UBTeachingTools, itself a main-window child.
+    if(!customize){event->ignore();return;}
+    QMenu menu(this);
+    auto action=menu.addAction(tr("Customize toolbar…"));
+    connect(action,&QAction::triggered,this,[customize]{
+        customize->setProperty("teachingOpenPenTab",true);
+        customize->trigger();
+    });
+    menu.exec(event->globalPos());event->accept();
 }

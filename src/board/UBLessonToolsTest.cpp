@@ -2,6 +2,10 @@
 #include "UBLessonToolsTest.h"
 #include "UBLessonTools.h"
 #include <QtWidgets>
+#include <QDomDocument>
+#include "board/UBBoardView.h"
+#include "gui/UBStylusPalette.h"
+#include "gui/UBActionPalette.h"
 #include "core/UBApplication.h"
 #include "core/UBSettings.h"
 #include "core/UBLessonHistory.h"
@@ -76,12 +80,105 @@ bool colourMemory(bool seed, QString *error)
     }
     return true;
 }
+bool coverWorkflow(UBLessonTools *tools,QString *error)
+{
+    auto fail=[error](const QString &s){*error=s;return false;};
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto document=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Cover toolbar regression",true);
+    board->setActiveDocumentScene(document,0);auto scene=board->activeScene();
+    auto cover=window->findChild<QAction*>("actionLessonCover");
+    auto bar=window->findChild<QToolBar*>("lessonCoverToolbar");
+    auto draw=window->findChild<QAction*>("lessonDrawCover");
+    auto shadeAction=window->findChild<QAction*>("lessonScreenShade");
+    if(!cover||!bar||!draw||!shadeAction||window->findChild<QAction*>("actionLessonCovers"))return fail("Single Cover toolbar unavailable");
+    cover->trigger();QApplication::processEvents();
+    if(bar->isHidden()||!draw->isChecked())return fail("Cover did not default to Draw cover");
+    auto view=board->controlView();auto viewport=view->viewport();
+    auto send=[&](QEvent::Type type,QPointF point){
+        const QPointF p=view->mapFromScene(point);
+        const auto button=type==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton;
+        const auto buttons=type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton;
+        QMouseEvent event(type,p,viewport->mapToGlobal(p.toPoint()),button,buttons,Qt::NoModifier);
+        QApplication::sendEvent(viewport,&event);
+    };
+    send(QEvent::MouseButtonPress,QPointF(-150,-100));send(QEvent::MouseMove,QPointF(150,100));send(QEvent::MouseButtonRelease,QPointF(150,100));
+    UBGraphicsSvgItem *drawn=nullptr;
+    for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover())drawn=svg;
+    if(!drawn||qAbs(drawn->sceneBoundingRect().width()-300)>5||qAbs(drawn->sceneBoundingRect().height()-200)>5)return fail("Dragged cover has incorrect dimensions");
+    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Double click did not reveal the cover");
+    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double click did not conceal the cover again");
+    draw->trigger();send(QEvent::MouseButtonPress,QPointF(-200,-200));
+    QKeyEvent escape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QApplication::sendEvent(viewport,&escape);
+    if(draw->isChecked())return fail("Escape did not cancel cover drawing");
+    shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;
+    for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade"))shade=svg;
+    if(!shade)return fail("Screen shade was not created");
+    // Drag each edge inward and back. This checks that opposite edges stay fixed.
+    for(int edge=0;edge<4;++edge){
+        QDomDocument doc;doc.setContent(shade->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();
+        const double x=r.attribute("x").toDouble(),y=r.attribute("y").toDouble(),w=r.attribute("width").toDouble(),h=r.attribute("height").toDouble();
+        QPointF a(edge<2?(edge==0?x:x+w):x+w/2,edge>=2?(edge==2?y:y+h):y+h/2);
+        const QPointF delta=edge<2?QPointF(edge==0?60:-60,0):QPointF(0,edge==2?60:-60);
+        auto before=shade->fileData();send(QEvent::MouseButtonPress,shade->mapToScene(a));send(QEvent::MouseMove,shade->mapToScene(a+delta));send(QEvent::MouseButtonRelease,shade->mapToScene(a+delta));
+        if(shade->fileData()==before)return fail(QString("Shade edge %1 did not drag").arg(edge));
+        QDomDocument changed;changed.setContent(shade->fileData());auto cr=changed.elementsByTagName("rect").at(0).toElement();
+        const auto dimension=edge<2?"width":"height";const double expected=(edge<2?w:h)-60;
+        if(qAbs(cr.attribute(dimension).toDouble()-expected)>4)return fail("Shade edge drag changed the wrong extent");
+        UBApplication::undoStack->undo();if(shade->fileData()!=before)return fail("Shade drag undo failed");
+        UBApplication::undoStack->redo();
+        send(QEvent::MouseButtonPress,shade->mapToScene(a+delta));send(QEvent::MouseMove,shade->mapToScene(a));send(QEvent::MouseButtonRelease,shade->mapToScene(a));
+        QDomDocument restored;restored.setContent(shade->fileData());
+        if(qAbs(restored.elementsByTagName("rect").at(0).toElement().attribute(dimension).toDouble()-(edge<2?w:h))>4)return fail("Shade edge did not conceal again");
+    }
+    const auto saved=shade->fileData();UBSvgSubsetAdaptor::persistScene(document,scene,0);
+    auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Saved shade page could not be reopened");bool persisted=false;
+    for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData()==saved)persisted=true;
+    if(!persisted)return fail("Shade geometry did not survive page reload");
+    cover->trigger();
+    return true;
+}
+
+bool penToolbarWorkflow(QString *error)
+{
+    auto window=UBApplication::mainWindow;auto settings=UBSettings::settings();
+    auto customize=window->findChild<QAction*>("actionTeachingCustomize");
+    const auto original=settings->value("Teaching/BottomOrder");bool checked=false;
+    customize->setProperty("teachingOpenPenTab",true);
+    QTimer::singleShot(0,window,[&]{
+        auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());auto tabs=dialog?dialog->findChild<QTabWidget*>():nullptr;
+        auto list=tabs?qobject_cast<QListWidget*>(tabs->currentWidget()):nullptr;
+        if(!list||tabs->currentIndex()!=1||list->count()<4){if(dialog)dialog->reject();return;}
+        list->clearSelection();list->item(1)->setSelected(true);list->item(2)->setSelected(true);
+        const auto first=list->item(1)->data(Qt::UserRole),second=list->item(2)->data(Qt::UserRole);
+        for(auto button:dialog->findChildren<QPushButton*>())if(button->text()=="Move up"){button->click();break;}
+        checked=list->item(0)->data(Qt::UserRole)==first&&list->item(1)->data(Qt::UserRole)==second;
+        dialog->accept();
+    });
+    customize->trigger();
+    const auto order=settings->value("Teaching/BottomOrder").toStringList();
+    for(auto palette:window->findChildren<UBStylusPalette*>()){
+        int previous=-1;
+        for(const auto &id:order)if(auto action=window->findChild<QAction*>(id))if(auto button=palette->getButtonFromAction(action)){
+            const int index=palette->layout()->indexOf(button);if(index<=previous)checked=false;previous=index;
+        }
+    }
+    // Restore the user's arrangement through the real apply path.
+    settings->setValue("Teaching/BottomOrder",original);
+    QTimer::singleShot(0,window,[]{if(auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget()))dialog->accept();});
+    customize->trigger();
+    if(!checked)*error="Pen toolbar tab, group movement or applied order failed";
+    return checked;
+}
+
 void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE");const QString reportPath=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT");const QDir output=QFileInfo(reportPath).dir();QJsonObject report;report["mode"]=mode;
     auto done=[&](bool passed,const QString &detail){report["passed"]=passed;report["detail"]=detail;write(reportPath,report);qApp->exit(passed?0:31);};
     auto tools=UBApplication::mainWindow->findChild<UBLessonTools*>("lessonTools");if(!tools){done(false,"Lesson tools unavailable");return;}auto history=tools->history();auto board=UBApplication::boardController;auto manager=UBPersistenceManager::persistenceManager();QString error;
     if(mode=="exercise"){
         if(!colourMemory(true,&error)){done(false,error);return;}
         report["colourWidthMemoryChecked"]=true;
+        if(!coverWorkflow(tools,&error)||!penToolbarWorkflow(&error)){done(false,error);return;}
+        report["coverToolbarChecked"]=true;report["penToolbarCustomizationChecked"]=true;
         auto dc=UBDrawingController::drawingController();
         auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Lesson tools regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setBackground(false,plain);scene->setNominalSize(800,600);
         auto text=scene->addText("Version one",QPointF(-250,-200));auto cover=tools->addCover();auto second=tools->addCover();if(!cover||!second){done(false,"Cover creation failed");return;}cover->setPos(-180,-80);cover->setScale(1);cover->setTransform(QTransform());second->setPos(180,100);second->setScale(.5);second->setRotation(15);tools->setCoverRevealed(second,true);
