@@ -128,7 +128,12 @@ bool checkWindowAndToolbar(QString *error)
             && (style & expected) == expected && closeState != UINT(-1)
             && !(closeState & (MF_DISABLED | MF_GRAYED));
     };
-    if (!hasChrome() || !window->isMaximized()) { *error = "Windows title bar or maximized startup is missing"; return false; }
+    if (!hasChrome() || !window->isMaximized()) {
+        window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-startup-window.png"));
+        *error=QString("Windows startup state: chrome=%1 maximized=%2 fullScreen=%3 flags=%4 style=%5 size=%6x%7 min=%8x%9")
+            .arg(hasChrome()).arg(window->isMaximized()).arg(window->isFullScreen()).arg(qulonglong(window->windowFlags()),0,16).arg(qulonglong(GetWindowLongPtr(handle,GWL_STYLE)),0,16)
+            .arg(window->width()).arg(window->height()).arg(window->minimumWidth()).arg(window->minimumHeight());return false;
+    }
     window->showMinimized(); QApplication::processEvents();
     if (!IsIconic(handle)) { *error = "Native minimize failed"; return false; }
     window->showNormal(); QApplication::processEvents();

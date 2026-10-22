@@ -175,6 +175,8 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         action->setAutoRepeat(false);
     }
     window->findChild<QAction*>("actionLessonCover")->setProperty("ungrouped",true);
+    const QStringList paperOrder={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"};
+    const auto remaining=mDefaultBottom;mDefaultBottom=paperOrder;for(const auto &id:remaining)if(!mDefaultBottom.contains(id))mDefaultBottom<<id;
     auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
     customizeAction->setObjectName("actionTeachingCustomize");
@@ -310,6 +312,7 @@ void UBTeachingTools::applyLayout()
 
 void UBTeachingTools::customize()
 {
+    const bool wasMaximized=mWindow->isMaximized();
     QDialog dialog(mWindow);
     dialog.setWindowTitle(tr("Customize toolbars"));
     dialog.resize(620, 560);
@@ -341,7 +344,7 @@ void UBTeachingTools::customize()
             item->setData(Qt::UserRole, id);
             item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
             item->setCheckState(UBSettings::settings()->value("Teaching/" + prefix + "/" + id,
-                prefix != "Bottom" || source != mWindow->actionPointer).toBool() ? Qt::Checked : Qt::Unchecked);
+                prefix != "Bottom" || QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(id)).toBool() ? Qt::Checked : Qt::Unchecked);
         }
         tabs->addTab(list, label);
         return list;
@@ -382,7 +385,7 @@ void UBTeachingTools::customize()
                 for (int row = target; row < list->count(); ++row)
                     if (list->item(row)->data(Qt::UserRole).toString() == pair.second[target]) {
                         auto item = list->takeItem(row); list->insertItem(target, item);
-                        item->setCheckState(pair.first == bottom && pair.second[target] == "actionPointer" ? Qt::Unchecked : Qt::Checked);
+                        item->setCheckState(pair.first != bottom || QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(pair.second[target]) ? Qt::Checked : Qt::Unchecked);
                         break;
                     }
         }
@@ -403,6 +406,7 @@ void UBTeachingTools::customize()
     applyLayout();
     if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
     if(auto paper=mWindow->findChild<UBPaperInk*>())paper->sync();
+    if(wasMaximized&&!mWindow->isMaximized())mWindow->showMaximized();
 }
 
 void UBTeachingTools::openGraphDesk()
