@@ -468,6 +468,7 @@ void UBDrawingController::rememberColourWidth(int index)
     const auto mode = colourWidthMode(); if (mode.isEmpty()) return;
     const QString key = "Teaching/ColourWidths/" + mode + "/" + currentToolColor().name(QColor::HexRgb).mid(1);
     UBSettings::settings()->setValue(key,index);
+    UBSettings::settings()->save();
 }
 
 void UBDrawingController::setLineTool(bool dashed)

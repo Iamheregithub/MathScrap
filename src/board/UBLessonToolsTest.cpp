@@ -73,7 +73,6 @@ bool colourMemory(bool seed, QString *error)
         dc->setMarkerAlpha(.25);dc->setColorIndex(8);dc->setColorIndex(1);
         if(dc->currentToolWidthIndex()!=2)return fail("Highlighter opacity split its colour thickness memory");
         dc->setMarkerAlpha(alpha);
-        settings->save();
     }
     return true;
 }
