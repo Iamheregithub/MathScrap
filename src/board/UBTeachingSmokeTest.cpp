@@ -156,11 +156,11 @@ bool checkLessonControlsAndShapes(QString *error)
     for (int i = 0; i < 10; ++i) {
         auto button = palette->findChild<QToolButton*>(QString("lessonColour%1").arg(i+1));
         auto first = palette->findChild<QToolButton*>(i<5 ? "lessonColour1" : "lessonColour6");
-        if (!button || !first || button->y()!=first->y()) return fail("Colour row has incorrect geometry");
+        if (!button || !first || button->height()>32 || button->y()!=first->y()) return fail("Colour row has incorrect geometry");
         button->click();
         if (dc->currentToolColorIndex()!=i) return fail("Colour swatch selected the wrong palette index");
     }
-    if (palette->width()>220 || palette->findChild<QToolButton*>("lessonColour6")->y()<=palette->findChild<QToolButton*>("lessonColour1")->y()) return fail("Colours must occupy two rows of five");
+    if (palette->width()>220 || palette->height()>75 || window->boardToolBar->height()>85 || palette->findChild<QToolButton*>("lessonColour6")->y()<=palette->findChild<QToolButton*>("lessonColour1")->y()) return fail("Colours must occupy two rows of five");
     auto dash = window->findChild<QAction*>("actionTeachingDash");
     auto customize = window->findChild<QAction*>("actionTeachingCustomize");
     auto penPalettes = window->findChildren<UBStylusPalette*>();

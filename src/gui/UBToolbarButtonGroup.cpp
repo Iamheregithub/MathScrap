@@ -106,7 +106,8 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
         if (colourGrid) {
             button->setObjectName(QString("lessonColour%1").arg(i + 1));
             button->setIconSize(QSize(18,18));
-            button->setStyleSheet("QToolButton {min-width:32px;max-width:32px;min-height:28px;max-height:28px;margin:0;padding:0;border:1px solid #777;border-radius:2px;background:#c4c4c4;} QToolButton:checked {border:2px solid #147d92;background:#e4f1f5;} QToolButton:pressed {background:#eeeeee;}");
+            button->setStyleSheet("QToolButton {width:32px;height:28px;min-width:32px;max-width:32px;min-height:28px;max-height:28px;margin:0;padding:0;border:1px solid #777;border-radius:2px;background:#c4c4c4;} QToolButton:checked {border:2px solid #147d92;background:#e4f1f5;} QToolButton:pressed {background:#eeeeee;}");
+            button->setFixedSize(32,28);
         }
         horizontalLayout->addWidget(button, colourGrid ? i / 5 : 0, colourGrid ? i % 5 : i);
         mLabel = action->text();
