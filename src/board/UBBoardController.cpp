@@ -1809,11 +1809,15 @@ void UBBoardController::findUniquesItems(const QUndoCommand *parent, QSet<QGraph
         return;
     }
 
-    const UBUndoCommand *undoCmd = static_cast<const UBUndoCommand*>(parent);
-    if(undoCmd->getType() != UBUndoType::undotype_GRAPHICITEM)
+    // QUndoStack macros are plain QUndoCommand objects, including named
+    // cover operations. Their children were visited above; never cast a macro
+    // to UBUndoCommand just because its label differs from the legacy label.
+    const UBUndoCommand *undoCmd = dynamic_cast<const UBUndoCommand*>(parent);
+    if(!undoCmd || undoCmd->getType() != UBUndoType::undotype_GRAPHICITEM)
         return;
 
     const UBGraphicsItemUndoCommand *cmd = dynamic_cast<const UBGraphicsItemUndoCommand*>(parent);
+    if (!cmd) return;
 
     // go through all added and removed objects, for create list of unique objects
     // grouped items will be deleted by groups, so we don't need do delete that items.
