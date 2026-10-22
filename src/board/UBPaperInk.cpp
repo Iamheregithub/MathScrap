@@ -35,7 +35,7 @@ QIcon inkIcon(const QString &name)
         {"actionRedo","M15 5l5 5-5 5 M20 10H10a5 5 0 0 0 0 10h3"},
         {"previous","M15 5l-7 7 7 7"},{"next","M9 5l7 7-7 7"},
         {"pages","M4 3h12v15H4z M8 21h12V7"},{"plus","M12 4v16 M4 12h16"},
-        {"more","M5 12h.1 M12 12h.1 M19 12h.1"},
+        {"more","M5 12h.1 M12 12h.1 M19 12h.1"},{"close","M5 5l14 14 M19 5L5 19"},
         {"actionTeachingGraphDesk","M4 3v17h17 M5 17l5-8 5 5 5-10"},
         {"actionPlay","M7 4l13 8-13 8z"},
         {"actionZoomIn","M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M15 15l6 6 M7 10h6 M10 7v6"},
@@ -133,7 +133,28 @@ void UBPaperInk::adoptContextBars()
     for(const auto &name:QStringList{"lessonShapeToolbar","lessonCoverToolbar"})if(auto bar=mWindow->findChild<QToolBar*>(name)){
         mWindow->removeToolBarBreak(bar);mWindow->removeToolBar(bar);bar->setParent(view);bar->setWindowFlags(Qt::Widget);bar->setMovable(false);bar->setFloatable(false);bar->setOrientation(Qt::Horizontal);
         bar->setProperty("lessonOriginalStyle",QString("QToolBar{background:#fffdf7;border:1px solid #ddd7cb;border-radius:12px;spacing:3px;padding:7px;} QToolButton{color:#2b403b;background:transparent;border:1px solid transparent;border-radius:7px;height:30px;min-height:30px;padding:4px;margin:0;} QToolButton:hover{background:#eee9dd;} QToolButton:checked{background:#dceae4;border-color:#77a99a;} QLabel{color:#53625b;} QComboBox{background:#fffdf7;border:1px solid #d8d1c3;border-radius:5px;padding:4px;}"));
-        bar->setStyleSheet(bar->property("lessonOriginalStyle").toString());bar->hide();
+        bar->setProperty("lessonOriginalIconSize",QSize(22,22));bar->setIconSize(QSize(22,22));
+        bar->setStyleSheet(bar->property("lessonOriginalStyle").toString());
+        if(name=="lessonShapeToolbar"){
+            mShapePicker=new QToolButton(bar);mShapePicker->setObjectName("paperShapePicker");mShapePicker->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);mShapePicker->setPopupMode(QToolButton::InstantPopup);mShapePicker->setMinimumWidth(105);
+            auto choices=new QMenu(mShapePicker);mShapePicker->setMenu(choices);
+            for(int i=0;i<7;++i)if(auto source=bar->findChild<QAction*>(QString("lessonShape%1").arg(i))){
+                auto alias=choices->addAction(source->icon(),source->text());alias->setCheckable(true);
+                auto update=[this,source,alias]{alias->setChecked(source->isChecked());if(source->isChecked()){mShapePicker->setText(source->text());mShapePicker->setIcon(source->icon());}};
+                connect(source,&QAction::changed,alias,update);connect(alias,&QAction::triggered,source,[source]{source->trigger();});update();
+            }
+            mShapePickerAction=bar->insertWidget(bar->actions().first(),mShapePicker);
+            for(const auto &id:QStringList{"lessonShapeBorder","lessonShapeFill"})if(auto b=bar->findChild<QToolButton*>(id)){b->setToolButtonStyle(Qt::ToolButtonIconOnly);b->setToolTip(id.endsWith("Border")?tr("Border colour"):tr("Fill colour"));}
+            if(auto next=bar->findChild<QAction*>("lessonShapeDrawNext"))next->setVisible(false);
+        }else{
+            for(auto a:bar->actions()){
+                if(a->text()==tr("Reveal selected")){a->setText(tr("Reveal"));a->setToolTip(tr("Reveal selected covers"));}
+                else if(a->text()==tr("Hide selected")){a->setText(tr("Hide"));a->setToolTip(tr("Hide selected covers"));}
+                else if(a->objectName()=="lessonCoverColour")a->setText(tr("Colour"));
+            }
+        }
+        for(auto a:bar->actions())if(a->text()==tr("Close")){a->setIcon(inkIcon("close"));a->setToolTip(tr("Close tool options"));}
+        bar->hide();
     }
 }
 void UBPaperInk::rebuild()
@@ -234,7 +255,16 @@ void UBPaperInk::layoutPanels()
     const bool lesson=mDock->isVisible();auto dc=UBDrawingController::drawingController();const int tool=dc->stylusTool();
     bool context=false;
     for(const auto &name:QStringList{"lessonShapeToolbar","lessonCoverToolbar"})if(auto bar=mWindow->findChild<QToolBar*>(name)){
-        if(!bar->isHidden()&&lesson){context=true;bar->setMaximumWidth(available);bar->adjustSize();bar->move(left+qMax(0,(available-bar->width())/2),mDock->y()-bar->height()-9);bar->raise();}
+        if(!bar->isHidden()&&lesson){
+            context=true;
+            if(name=="lessonShapeToolbar"){
+                const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();const bool compact=available<1050||touch;
+                for(int i=0;i<7;++i)if(auto a=bar->findChild<QAction*>(QString("lessonShape%1").arg(i)))a->setVisible(!compact);
+                if(mShapePickerAction)mShapePickerAction->setVisible(compact);
+                for(auto label:bar->findChildren<QLabel*>())if(label->text()==tr("Width")||label->text()==tr("Fill opacity"))label->setVisible(!compact);
+                if(auto slider=bar->findChild<QSlider*>("lessonShapeOpacity")){slider->setFixedWidth(compact?65:85);slider->setToolTip(tr("Fill opacity"));}
+            }
+            bar->setMaximumWidth(available);bar->adjustSize();bar->move(left+qMax(0,(available-bar->width())/2),mDock->y()-bar->height()-9);bar->raise();}
     }
     mPenPanel->setVisible(lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
 }

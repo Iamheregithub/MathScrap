@@ -34,7 +34,8 @@ private:
     QFrame *mDock=nullptr,*mPenPanel=nullptr,*mPages=nullptr;
     QLabel *mTitle=nullptr,*mPageCount=nullptr;
     QListWidget *mPageList=nullptr;
-    QToolButton *mPageToggle=nullptr;
+    QToolButton *mPageToggle=nullptr,*mShapePicker=nullptr;
+    QAction *mShapePickerAction=nullptr;
     QMenu *mMore=nullptr;
     QList<QAction*> mOverflowActions;
     QList<QToolButton*> mColours,mWidths;

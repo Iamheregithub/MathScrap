@@ -166,9 +166,9 @@ bool checkPaperInk(QString *error)
     auto colour=panel->findChild<QToolButton*>("paperColour8");if(!colour)return fail("Paper colour swatches unavailable");colour->click();
     if(dc->currentToolColorIndex()!=8)return fail("Paper swatch did not select the native pen colour");dc->setColorIndex(old);
     panel->findChild<QToolButton*>("paperWidth2")->click();if(dc->currentToolWidthIndex()!=2)return fail("Paper stroke width did not update");
-    shape->click();QApplication::processEvents();auto shapeBar=window->findChild<QToolBar*>("lessonShapeToolbar");
+    shape->click();QApplication::processEvents();paper->sync();QApplication::processEvents();auto shapeBar=window->findChild<QToolBar*>("lessonShapeToolbar");
     if(shapeBar->parentWidget()!=board->controlView()||!shapeBar->isVisible()||!panel->isHidden()||shapeBar->geometry().intersects(dock->geometry()))return fail("Shape controls are not positioned above the paper dock");
-    window->findChild<QAction*>("actionTeachingShapes")->trigger();cover->click();QApplication::processEvents();
+    window->findChild<QAction*>("actionTeachingShapes")->trigger();cover->click();QApplication::processEvents();paper->sync();QApplication::processEvents();
     auto coverBar=window->findChild<QToolBar*>("lessonCoverToolbar");
     if(coverBar->parentWidget()!=board->controlView()||!coverBar->isVisible()||coverBar->geometry().intersects(dock->geometry()))return fail("Cover controls are not positioned above the paper dock");
     cover->click();pen->click();QApplication::processEvents();
@@ -247,8 +247,11 @@ bool checkShapeToolbar(QString *error)
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
     if(!found)return fail("Styled shape did not survive fresh reload");
     QApplication::processEvents();
+    if(auto paper=window->findChild<UBPaperInk*>()){paper->sync();QEventLoop settle;QTimer::singleShot(60,&settle,&QEventLoop::quit);settle.exec();}
+    window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     if(auto dock=window->findChild<QFrame*>("paperDock")){
-        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>95)return fail("Shape controls must stay in a compact floating panel above the dock");
+        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>95)return fail(QString("Shape panel layout: parent=%1 height=%2 panel=%3,%4,%5,%6 dock=%7,%8,%9,%10")
+            .arg(bar->parentWidget()==board->controlView()).arg(bar->height()).arg(bar->x()).arg(bar->y()).arg(bar->width()).arg(bar->height()).arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height()));
     }else if(bar->geometry().top()<window->boardToolBar->geometry().bottom()||bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
