@@ -177,7 +177,7 @@ void UBLessonTools::cancelCoverDrag()
     if(mCoverPreview){if(mCoverScene)mCoverScene->QGraphicsScene::removeItem(mCoverPreview);delete mCoverPreview;mCoverPreview=nullptr;}
     mCoverScene.clear();
     if(mShadeDrag)mShadeDrag->setTeachingSvg(mShadeBefore);
-    mShadeDrag.clear();mShadeEdge=-1;
+    mShadeDrag.clear();mShadeEdge=-1;mLockedPress.clear();
 }
 
 UBGraphicsSvgItem *UBLessonTools::createCover(const QRectF &rect,bool shade)
@@ -256,7 +256,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
 {
     auto board=UBApplication::boardController;if(!board||!board->controlView())return false;
     auto view=board->controlView();
-    if(event->type()==QEvent::KeyPress&&static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape&&(mDrawingCover||mShadeDrag)){
+    if(event->type()==QEvent::KeyPress&&static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape&&(mDrawingCover||mShadeDrag||mLockedPress)){
         cancelCoverDrag();mDrawingCover=false;mDrawCover->setChecked(false);view->viewport()->unsetCursor();return true;
     }
     const auto type=event->type();
@@ -284,6 +284,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     }
     if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return false;
     if(type==QEvent::MouseButtonDblClick){
+        mLockedPress.clear();
         for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
             setCoverRevealed(svg,!isCoverRevealed(svg));event->accept();return true;
         }
@@ -312,6 +313,14 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
         if(release){mShadeDrag->commitTeachingSvg(mShadeBefore);mShadeDrag.clear();mShadeEdge=-1;}
         event->accept();return true;
     }
+    // A fixed cover must not enter the native SVG drag-and-drop loop.
+    // Keep selection available so the teacher can unlock it from this toolbar.
+    if(press){
+        for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()&&svg->Delegate()->isLocked()){
+            mLockedPress=svg;scene->clearSelection();svg->setSelected(true);break;
+        }
+    }
+    if(mLockedPress){if(release)mLockedPress.clear();event->accept();return true;}
     return false;
 }
 

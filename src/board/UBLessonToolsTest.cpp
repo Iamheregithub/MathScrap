@@ -111,6 +111,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double click did not conceal the cover again");
     auto lock=window->findChild<QAction*>("lessonCoverLock");
     scene->clearSelection();drawn->setSelected(true);if(!lock||!lock->isEnabled())return fail("Cover position lock unavailable");
+    write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","lock and drag cover"}});
     lock->trigger();if(!drawn->Delegate()->isLocked())return fail("Cover did not lock");
     const auto fixed=drawn->pos();send(QEvent::MouseButtonPress,QPointF(0,0));send(QEvent::MouseMove,QPointF(40,30));send(QEvent::MouseButtonRelease,QPointF(40,30));
     if(drawn->pos()!=fixed)return fail("Locked cover moved during a drag");
@@ -142,6 +143,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
         QDomDocument restored;restored.setContent(shade->fileData());
         if(qAbs(restored.elementsByTagName("rect").at(0).toElement().attribute(dimension).toDouble()-(edge<2?w:h))>4)return fail("Shade edge did not conceal again");
     }
+    write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","reset reveals"}});
     const auto home=shade->pos();shade->setPos(home+QPointF(50,25));
     tools->setCoverRevealed(drawn,true);tools->setCoverRevealed(shade,true);
     auto reset=window->findChild<QAction*>("lessonResetReveals");if(!reset)return fail("Reset reveals unavailable");
@@ -184,6 +186,7 @@ bool penToolbarWorkflow(QString *error)
     settings->setValue("Teaching/BottomOrder",original);
     QTimer::singleShot(0,window,[]{if(auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget()))dialog->accept();});
     customize->trigger();
+    write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","touch controls"}});
     const bool originalTouch=settings->value("Teaching/TouchFriendly",false).toBool();
     const auto baseSize=window->boardToolBar->iconSize();
     for(bool enabled:{true,false}){

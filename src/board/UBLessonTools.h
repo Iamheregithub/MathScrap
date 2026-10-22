@@ -47,6 +47,7 @@ private:
     QGraphicsRectItem *mCoverPreview = nullptr;
     QPointer<QGraphicsScene> mCoverScene;
     QPointer<UBGraphicsSvgItem> mShadeDrag;
+    QPointer<UBGraphicsSvgItem> mLockedPress;
     QByteArray mShadeBefore;
     int mShadeEdge = -1;
     UBMainWindow *mWindow;

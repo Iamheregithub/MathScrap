@@ -47,6 +47,7 @@ LONG CALLBACK recordTeachingCrash(EXCEPTION_POINTERS *exception) {
     fopen_s(&file, "teaching-crash.log", "a");
     if (!file) return EXCEPTION_CONTINUE_SEARCH;
     fprintf(file, "Exception %08lx at %p\n", code, exception->ExceptionRecord->ExceptionAddress);
+    fflush(file);
     HANDLE process = GetCurrentProcess();
     SymSetOptions(SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
     SymInitialize(process, nullptr, TRUE);
