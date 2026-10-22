@@ -526,10 +526,12 @@ void UBApplication::toolBarPositionChanged(QVariant topOrBottom)
 #ifdef UB_TEACHING_FORK
     // Keep the contextual row after the main toolbar when startup/preferences
     // relocate the standard toolbars. Otherwise it can consume their row.
-    if (auto shapes = mainWindow->findChild<QToolBar*>("lessonShapeToolbar")) {
-        mainWindow->removeToolBarBreak(shapes);
-        mainWindow->addToolBarBreak(area);
-        mainWindow->addToolBar(area, shapes);
+    if (!mainWindow->property("paperInk").toBool()) {
+        if (auto shapes = mainWindow->findChild<QToolBar*>("lessonShapeToolbar")) {
+            mainWindow->removeToolBarBreak(shapes);
+            mainWindow->addToolBarBreak(area);
+            mainWindow->addToolBar(area, shapes);
+        }
     }
 #endif
 
