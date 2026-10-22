@@ -280,7 +280,7 @@ bool checkLessonControlsAndShapes(QString *error)
     auto line=[&](double y){scene->inputDevicePress(QPointF(-150,y));scene->inputDeviceMove(QPointF(150,y));scene->inputDeviceRelease();};
     line(100);window->actionLine->trigger();
     if(UBSettings::settings()->value("Teaching/DashedLines").toBool()||dash->isChecked()||!window->actionLine->isChecked())return fail("Solid Line did not select a solid drawing tool");
-    line(120);dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
+    dc->setLineWidthIndex(1);line(120);dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
     auto render=[](std::shared_ptr<UBGraphicsScene> page){QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);page->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));return image;};
     auto lines=render(scene);int ink=0,gaps=0,solid=0;
     for(int x=260;x<540;++x){if(lines.pixelColor(x,400).lightness()<80)++ink;else ++gaps;if(lines.pixelColor(x,420).lightness()<80)++solid;}

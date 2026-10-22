@@ -47,13 +47,11 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         window->actionLine->setChecked(line && !dashed);
     };
     connect(dash, &QAction::triggered, this, [syncLineChoices] {
-        UBSettings::settings()->setValue("Teaching/DashedLines", true);
-        UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Line);
+        UBDrawingController::drawingController()->setLineTool(true);
         syncLineChoices();
     });
     connect(window->actionLine, &QAction::triggered, this, [syncLineChoices] {
-        UBSettings::settings()->setValue("Teaching/DashedLines", false);
-        UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Line);
+        UBDrawingController::drawingController()->setLineTool(false);
         syncLineChoices();
     });
     connect(UBDrawingController::drawingController(), &UBDrawingController::stylusToolChanged, this,
