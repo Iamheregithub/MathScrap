@@ -99,7 +99,7 @@ void UBLessonTools::createCoverToolbar()
     auto colour=mCoverBar->addAction(tr("Cover colour"));colour->setObjectName("lessonCoverColour");
     connect(colour,&QAction::triggered,this,[this]{
         auto c=QColorDialog::getColor(mCoverColour,mWindow,tr("Cover colour"));if(!c.isValid())return;c.setAlpha(255);mCoverColour=c;
-        UBSettings::settings()->setValue("Teaching/CoverColour",c);UBSettings::settings()->sync();
+        UBSettings::settings()->setValue("Teaching/CoverColour",c);UBSettings::settings()->save();
         auto scene=UBApplication::boardController->activeScene();if(!scene)return;
         UBApplication::undoStack->beginMacro(tr("Cover colour"));
         for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){

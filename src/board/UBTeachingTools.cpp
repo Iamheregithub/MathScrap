@@ -390,7 +390,7 @@ void UBTeachingTools::customize()
         }
         UBSettings::settings()->setValue("Teaching/" + pair.second + "Order", order);
     }
-    UBSettings::settings()->sync();
+    UBSettings::settings()->save();
     applyLayout();
 }
 
