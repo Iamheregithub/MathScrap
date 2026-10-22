@@ -184,6 +184,7 @@ bool checkShapeToolbar(QString *error)
         return nullptr;
     };
     for(int type=0;type<7;++type){auto shape=draw(type,type==6);if(!shape)return fail(QString("Drag drawing failed for shape %1").arg(type));QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");if(type==3||type==5){int handles=0;for(auto h:shape->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(h))++handles;if(handles!=3)return fail("Triangle must have three vertex handles");}}
+    auto stylePage=manager->createDocumentSceneAt(doc,1,false);board->setActiveDocumentScene(doc,1);scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
     auto target=draw(0);if(!target)return fail("Cannot draw styled rectangle");
     auto before=target->fileData();width->setCurrentIndex(width->findData(8.));style->setCurrentIndex(1);opacity->setValue(35);
     window->findChild<QAction*>("lessonShapeNoBorder")->trigger();
@@ -202,10 +203,12 @@ bool checkShapeToolbar(QString *error)
     const auto fillColour=QColor(g.attribute("fill"));const auto actualFill=fillImage.pixelColor(200,120);
     const QColor expectedFill(qRound((255+fillColour.red())/2.),qRound((255+fillColour.green())/2.),qRound((255+fillColour.blue())/2.));
     if(qAbs(actualFill.red()-expectedFill.red())>2||qAbs(actualFill.green()-expectedFill.green())>2||qAbs(actualFill.blue()-expectedFill.blue())>2)return fail("Fill opacity did not render independently of the border");
-    manager->persistDocumentScene(doc,scene,0,true,true);
-    auto loaded=UBSvgSubsetAdaptor::loadScene(doc,0);bool found=false;
+    manager->persistDocumentScene(doc,scene,1,true,true);
+    auto loaded=UBSvgSubsetAdaptor::loadScene(doc,1);bool found=false;
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
     if(!found)return fail("Styled shape did not survive fresh reload");
+    QApplication::processEvents();
+    if(bar->geometry().top()<window->boardToolBar->geometry().bottom() || bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
     action->trigger();if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Shapes did not activate selection for an existing shape");auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();

@@ -192,7 +192,8 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
 bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
 {
     auto board = UBApplication::boardController;
-    auto view = board->controlView();
+    if (!board) return false;
+    auto view = mShapeDrawing ? board->controlView() : nullptr;
     if (mShapeDrawing && event->type() == QEvent::KeyPress
         && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
         cancelShapeDrag(); mShapeDrawing = false; view->viewport()->unsetCursor(); return true;
@@ -564,6 +565,7 @@ void UBTeachingTools::createShapeToolbar()
     mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),6);
     mShapeBar=new QToolBar(tr("Shape controls"),mWindow);mShapeBar->setObjectName("lessonShapeToolbar");
     mShapeBar->setMovable(false);mShapeBar->setFloatable(false);mShapeBar->setIconSize(QSize(26,26));
+    mShapeBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     mShapeBar->setStyleSheet("QToolBar {spacing:4px;padding:4px;} QToolButton {height:32px;min-width:30px;padding:2px;} QComboBox {min-height:28px;}");
     mWindow->addToolBarBreak(Qt::TopToolBarArea);mWindow->addToolBar(Qt::TopToolBarArea,mShapeBar);
     auto group=new QActionGroup(this);group->setExclusive(true);
@@ -605,6 +607,14 @@ void UBTeachingTools::createShapeToolbar()
     connect(UBDrawingController::drawingController(),&UBDrawingController::stylusToolChanged,this,[this](int tool,int){if(tool!=UBStylusTool::Selector){cancelShapeDrag();mShapeDrawing=false;UBApplication::boardController->controlView()->viewport()->unsetCursor();mShapeBar->hide();mShapes->setChecked(false);}});
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this](int index){if(index!=0){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
+    connect(qApp,&QCoreApplication::aboutToQuit,this,[this] {
+        cancelShapeDrag(); mShapeDrawing=false; mShapeTarget.clear();
+        qApp->removeEventFilter(this);
+        QObject::disconnect(mShapeSelectionConnection);
+        QObject::disconnect(UBApplication::undoStack,nullptr,this,nullptr);
+        QObject::disconnect(UBApplication::boardController,nullptr,this,nullptr);
+        QObject::disconnect(UBDrawingController::drawingController(),nullptr,this,nullptr);
+    });
     mSyncingShape=true;applyShapeStyle();mSyncingShape=false;mShapeBar->hide();
 }
 

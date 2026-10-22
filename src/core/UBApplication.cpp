@@ -523,6 +523,15 @@ void UBApplication::toolBarPositionChanged(QVariant topOrBottom)
     mainWindow->addToolBar(area, mainWindow->boardToolBar);
     mainWindow->addToolBar(area, mainWindow->webToolBar);
     mainWindow->addToolBar(area, mainWindow->documentToolBar);
+#ifdef UB_TEACHING_FORK
+    // Keep the contextual row after the main toolbar when startup/preferences
+    // relocate the standard toolbars. Otherwise it can consume their row.
+    if (auto shapes = mainWindow->findChild<QToolBar*>("lessonShapeToolbar")) {
+        mainWindow->removeToolBarBreak(shapes);
+        mainWindow->addToolBarBreak(area);
+        mainWindow->addToolBar(area, shapes);
+    }
+#endif
 
     webController->showTabAtTop(topOrBottom.toBool());
 
