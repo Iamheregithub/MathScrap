@@ -8,6 +8,10 @@
 #include "core/UBApplication.h"
 #include "core/UBSettings.h"
 #include "gui/UBMainWindow.h"
+#include "gui/UBStylusPalette.h"
+#include "gui/UBToolbarButtonGroup.h"
+#include "adaptors/UBSvgSubsetAdaptor.h"
+#include "domain/UBGraphicsItemTransformUndoCommand.h"
 #include "UBBoardController.h"
 #include "UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
@@ -87,7 +91,11 @@ bool checkWindowAndToolbar(QString *error)
     };
     if (hasLeadingDivider()) { *error = "Stray dividers precede Stylus"; return false; }
     // Exercise the same reorder/apply path that previously stranded separators.
-    auto customize = toolbar->actions().last();
+    auto customize = window->findChild<QAction*>("actionTeachingCustomize");
+    auto wrapper = window->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
+    if (!customize || toolbar->actions().contains(customize) || !wrapper || !wrapper->menu() || !wrapper->menu()->actions().contains(customize)) {
+        *error = "Customization must be in the application menu, not the toolbar"; return false;
+    }
     for (bool restore : {false, true}) {
         bool reordered = false;
         QTimer::singleShot(0, window, [&] {
@@ -131,6 +139,101 @@ bool checkWindowAndToolbar(QString *error)
     window->screen()->grabWindow(0, frame.x(), frame.y(), frame.width(), frame.height())
         .save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("window-chrome-window.png"));
 #endif
+    return true;
+}
+
+bool checkLessonControlsAndShapes(QString *error)
+{
+    auto window = UBApplication::mainWindow;
+    auto board = UBApplication::boardController;
+    auto dc = UBDrawingController::drawingController();
+    auto manager = UBPersistenceManager::persistenceManager();
+    auto fail = [error](const QString &message) { *error = message; return false; };
+    const QDir output = QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
+    auto palette = window->findChild<UBToolbarButtonGroup*>("lessonColourPalette");
+    if (!palette || !palette->property("colourGrid").toBool()) return fail("Two-row colour palette unavailable");
+    palette->displayText(true); palette->layout()->activate();
+    for (int i = 0; i < 10; ++i) {
+        auto button = palette->findChild<QToolButton*>(QString("lessonColour%1").arg(i+1));
+        auto first = palette->findChild<QToolButton*>(i<5 ? "lessonColour1" : "lessonColour6");
+        if (!button || !first || button->y()!=first->y()) return fail("Colour row has incorrect geometry");
+        button->click();
+        if (dc->currentToolColorIndex()!=i) return fail("Colour swatch selected the wrong palette index");
+    }
+    if (palette->width()>220 || palette->findChild<QToolButton*>("lessonColour6")->y()<=palette->findChild<QToolButton*>("lessonColour1")->y()) return fail("Colours must occupy two rows of five");
+    auto dash = window->findChild<QAction*>("actionTeachingDash");
+    auto customize = window->findChild<QAction*>("actionTeachingCustomize");
+    auto penPalettes = window->findChildren<UBStylusPalette*>();
+    if (!dash || !customize || penPalettes.isEmpty()) return fail("Line tool controls unavailable");
+    for (auto pen : penPalettes) if (!pen->actions().contains(dash)) return fail("Dashed Line is absent from a pen palette");
+    const bool topBefore=UBSettings::settings()->value("Teaching/Top/actionTeachingDash",true).toBool();
+    const bool bottomBefore=UBSettings::settings()->value("Teaching/Bottom/actionTeachingDash",true).toBool();
+    auto chooseVisibility = [&](bool top, bool bottom) {
+        bool updated=false;
+        QTimer::singleShot(0,window,[&] {
+            auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            auto tabs=dialog ? dialog->findChild<QTabWidget*>() : nullptr;
+            int found=0;
+            if(tabs) for(int tab=0;tab<2;++tab) if(auto list=qobject_cast<QListWidget*>(tabs->widget(tab)))
+                for(int i=0;i<list->count();++i) if(list->item(i)->data(Qt::UserRole).toString()=="actionTeachingDash") {
+                    list->item(i)->setCheckState((tab==0 ? top : bottom) ? Qt::Checked : Qt::Unchecked);++found;
+                }
+            updated=found==2;
+            if(dialog)dialog->accept();
+        });
+        customize->trigger();
+        if(!updated)return false;
+        bool topVisible=false;
+        for(auto a:window->boardToolBar->actions())if(a->text()==dash->text())topVisible|=a->isVisible();
+        if(topVisible!=top)return false;
+        for(auto pen:penPalettes)if(pen->getButtonFromAction(dash)->isHidden()==bottom)return false;
+        return true;
+    };
+    if(!chooseVisibility(false,true)||!chooseVisibility(true,false)||!chooseVisibility(false,false))return fail("Dashed Line toolbar visibility is not independent");
+    dc->setStylusTool(UBStylusTool::Pen);dash->trigger();
+    if(dc->stylusTool()!=UBStylusTool::Line||!UBSettings::settings()->value("Teaching/DashedLines").toBool()||!dash->isChecked()||window->actionLine->isChecked())return fail("Dashed Line did not immediately select the dashed drawing tool");
+    dash->trigger();if(!dash->isChecked())return fail("Clicking active Dashed Line switched it off");
+    if(!chooseVisibility(topBefore,bottomBefore))return fail("Cannot restore line toolbar preferences");
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Toolbar and uniform outline regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
+    dc->setPenColor(false,Qt::black,0);dc->setColorIndex(0);dc->setLineWidthIndex(1);
+    auto line=[&](double y){scene->inputDevicePress(QPointF(-150,y));scene->inputDeviceMove(QPointF(150,y));scene->inputDeviceRelease();};
+    line(100);window->actionLine->trigger();
+    if(UBSettings::settings()->value("Teaching/DashedLines").toBool()||dash->isChecked()||!window->actionLine->isChecked())return fail("Solid Line did not select a solid drawing tool");
+    line(120);dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
+    auto render=[](std::shared_ptr<UBGraphicsScene> page){QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);page->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));return image;};
+    auto lines=render(scene);int ink=0,gaps=0,solid=0;
+    for(int x=260;x<540;++x){if(lines.pixelColor(x,400).lightness()<80)++ink;else ++gaps;if(lines.pixelColor(x,420).lightness()<80)++solid;}
+    if(ink<20||gaps<20||solid<275)return fail("Dashed/solid line rendering does not match the selected tool");
+    const QByteArray data="<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"100\" viewBox=\"0 0 120 100\"><metadata id=\"teaching-shape\">0</metadata><g stroke=\"black\" fill=\"#ffdd00\" stroke-width=\"3\"><rect x=\"10\" y=\"10\" width=\"100\" height=\"80\"/></g></svg>";
+    auto shape=scene->addSvg(QUrl(),QPointF(),data);shape->setPos(-180,-50);shape->setScale(1);shape->setTransform(QTransform());scene->clearSelection();
+    auto uniform=[&](const QImage &image,UBGraphicsSvgItem *item){
+        auto widthAt=[&](QPointF a,QPointF b){auto direction=b-a;QPointF n(-direction.y(),direction.x());n/=qSqrt(n.x()*n.x()+n.y()*n.y());const auto mid=(a+b)/2+QPointF(400,300);int count=0;for(int i=-8;i<=8;++i){auto p=mid+n*i;if(image.pixelColor(qRound(p.x()),qRound(p.y())).lightness()<80)++count;}return count;};
+        int a=widthAt(item->mapToScene(QPointF(10,10)),item->mapToScene(QPointF(110,10)));
+        int b=widthAt(item->mapToScene(QPointF(10,10)),item->mapToScene(QPointF(10,90)));
+        qWarning()<<"Uniform outline measured"<<a<<b;
+        return a>=2&&a<=5&&b>=2&&b<=5&&qAbs(a-b)<=1;
+    };
+    manager->persistDocumentScene(doc,scene,0,true,true);
+    const auto sharedId=shape->uuid();const QString oldPath=doc->persistencePath()+"/images/"+sharedId.toString()+".svg";QFile old(oldPath);old.open(QIODevice::ReadOnly);const auto originalBytes=old.readAll();old.close();
+    auto second=manager->createDocumentSceneAt(doc,1,false);auto twin=second->addSvg(QUrl(),QPointF(),shape->fileData());twin->setUuid(sharedId);twin->setPos(-180,-50);twin->setScale(1);twin->setTransform(QTransform());manager->persistDocumentScene(doc,second,1,true,true);
+    for(const auto &matrix:{QTransform().scale(3,1),QTransform().scale(.5,2),QTransform().rotate(90).scale(2,.7)}){
+        shape->setTransform(matrix);scene->clearSelection();auto image=render(scene);
+        if(!uniform(image,shape))return fail("Shape outline stretched unevenly");
+        QImage svgImage(800,600,QImage::Format_ARGB32_Premultiplied);svgImage.fill(Qt::white);QPainter p(&svgImage);p.translate(400,300);p.setTransform(shape->sceneTransform(),true);QSvgRenderer svg(shape->fileData());svg.render(&p,QRectF(0,0,120,100));p.end();
+        if(!uniform(svgImage,shape))return fail("Persisted ordinary SVG outline is uneven");
+    }
+    const auto previous=shape->transform();shape->setTransform(QTransform().scale(3,1));UBApplication::undoStack->push(new UBGraphicsItemTransformUndoCommand(shape,shape->pos(),previous,shape->zValue()));UBApplication::undoStack->undo();
+    if(shape->transform()!=previous||!uniform(render(scene),shape))return fail("Shape resize undo lost its outline");UBApplication::undoStack->redo();if(!uniform(render(scene),shape))return fail("Shape resize redo lost its outline");
+    auto stretched=render(scene);stretched.save(output.filePath("shape-outline-window.png"));manager->persistDocumentScene(doc,scene,0,true,true);
+    old.open(QIODevice::ReadOnly);if(old.readAll()!=originalBytes||shape->uuid()==sharedId)return fail("Resizing changed a shared shape asset");old.close();
+    auto fresh=UBSvgSubsetAdaptor::loadScene(doc,0);UBGraphicsSvgItem *reopened=nullptr;for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isTeachingShape())reopened=svg;
+    if(!reopened||!uniform(render(fresh),reopened))return fail("Reopening lost uniform shape outlines");
+    if(qEnvironmentVariable("TEACHING_TEST_SKIP_PDF")!="1")for(bool full:{false,true}){
+        const QString file=output.filePath(full?"pdf-uniform-shape-full.pdf":"pdf-uniform-shape-simple.pdf");UBExportPDF simple;UBExportFullPDF merged;UBExportAdaptor *exporter=full?static_cast<UBExportAdaptor*>(&merged):static_cast<UBExportAdaptor*>(&simple);exporter->setPageSelection({0});if(!exporter->persistsDocument(doc,file))return fail("Uniform shape PDF export failed");
+        auto pdf=PDFRenderer::rendererForUuid(QUuid::createUuid(),file,true);pdf->attach();if(!pdf->isValid()){pdf->detach();return fail("Uniform shape PDF is unreadable");}pdf->setDPI(qRound(72*800/pdf->pointSizeF(1).width()));QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);pdf->render(&p,1,false);p.end();pdf->detach();if(!uniform(image,shape))return fail("PDF export stretched the shape outline");
+    }
+    window->setProperty("lessonControlsAndShapesChecked",true);
     return true;
 }
 
@@ -292,6 +395,7 @@ void finish(bool passed, const QString &detail) {
     report["detail"] = storageError.isEmpty() ? detail : storageError;
     report["qt"] = qVersion();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
+    report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
     file.write(QJsonDocument(report).toJson());
@@ -309,7 +413,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError)) { finish(false, chromeError); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");
@@ -367,11 +471,11 @@ void scheduleTeachingSmokeTest(QObject *context)
         }
         const auto before = shape->fileData();
         auto edited = before; edited.replace("150,12","180,22");
-        shape->setTeachingSvg(edited); shape->commitTeachingSvg(before);
+        shape->setTeachingSvg(edited); const auto after = shape->fileData(); shape->commitTeachingSvg(before);
         UBApplication::undoStack->undo();
         if (shape->fileData() != before) { finish(false,"Shape undo failed"); return; }
         UBApplication::undoStack->redo();
-        if (shape->fileData() != edited) { finish(false,"Shape redo failed"); return; }
+        if (shape->fileData() != after) { finish(false,"Shape redo failed"); return; }
         board->persistCurrentScene(false, true);
         board->setActiveDocumentScene(board->activeSceneIndex());
         if (UBSettings::settings()->penColors(false).size() < 10) { finish(false,"Ten colour palette unavailable"); return; }

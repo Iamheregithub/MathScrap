@@ -100,7 +100,7 @@ UBActionPaletteButton* UBActionPalette::createPaletteButton(QAction* action, QWi
     button->setToolButtonStyle(mToolButtonStyle);
     action->setProperty("id", mButtons.length());
 
-    if (mActionGroup)
+    if (mActionGroup && !action->property("ungrouped").toBool())
         mActionGroup->addAction(action);
 
     mButtons << button;

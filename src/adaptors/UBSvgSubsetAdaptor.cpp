@@ -2202,6 +2202,14 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
 
     mXmlWriter.writeStartElement("image");
 
+    const auto assetData = svgItem->fileData();
+    if (svgItem->isTeachingShape()) {
+        // Duplicated pages can share an SVG asset. A new outline for a resized
+        // shape must not overwrite an asset still referenced by another page.
+        QFile previous(mDocumentPath + "/" + UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg");
+        if (previous.open(QIODevice::ReadOnly) && previous.readAll() != assetData)
+            svgItem->setUuid(QUuid::createUuid());
+    }
     QString fileName = UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg";
 
 
@@ -2210,7 +2218,7 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
         QDir().mkpath(mDocumentPath + "/" + UBPersistenceManager::imageDirectory);
         QSaveFile asset(mDocumentPath + "/" + fileName);
         if (!asset.open(QIODevice::WriteOnly)
-                || asset.write(svgItem->fileData()) != svgItem->fileData().size()
+                || asset.write(assetData) != assetData.size()
                 || !asset.commit()) {
             mAssetSaveFailed = true;
             qWarning() << "Cannot persist editable SVG asset" << asset.fileName();

@@ -52,8 +52,15 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
     Q_ASSERT(actions.size() > 0);
 
     QVBoxLayout *verticalLayout = new QVBoxLayout(this);
-    QHBoxLayout *horizontalLayout = new QHBoxLayout();
-    horizontalLayout->setSpacing(0);
+    const bool colourGrid = objectNameprefix == "colourPalette";
+    setProperty("colourGrid", colourGrid);
+    if (colourGrid) {
+        setObjectName("lessonColourPalette");
+        verticalLayout->setContentsMargins(4, 2, 4, 2);
+        mDisplayLabel = false;
+    }
+    auto horizontalLayout = new QGridLayout();
+    horizontalLayout->setSpacing(colourGrid ? 2 : 0);
     verticalLayout->addStretch();
     verticalLayout->addLayout(horizontalLayout);
     verticalLayout->addStretch();
@@ -96,7 +103,12 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
 
         connect(button, SIGNAL(triggered(QAction*)), this, SLOT(selected(QAction*)));
 
-        horizontalLayout->addWidget(button);
+        if (colourGrid) {
+            button->setObjectName(QString("lessonColour%1").arg(i + 1));
+            button->setIconSize(QSize(18,18));
+            button->setStyleSheet("QToolButton {min-width:32px;max-width:32px;min-height:28px;max-height:28px;margin:0;padding:0;border:1px solid #777;border-radius:2px;background:#c4c4c4;} QToolButton:checked {border:2px solid #147d92;background:#e4f1f5;} QToolButton:pressed {background:#eeeeee;}");
+        }
+        horizontalLayout->addWidget(button, colourGrid ? i / 5 : 0, colourGrid ? i % 5 : i);
         mLabel = action->text();
         buttonSize = button->sizeHint();
         i++;
@@ -164,7 +176,7 @@ void UBToolbarButtonGroup::setColor(const QColor &color, int index)
             }
         });
     }
-    QPixmap pixmap(12, 12);
+    QPixmap pixmap(property("colourGrid").toBool() ? 18 : 12, property("colourGrid").toBool() ? 18 : 12);
     pixmap.fill(color);
     QIcon icon(pixmap);
     setIcon(icon, index);
@@ -218,6 +230,7 @@ void UBToolbarButtonGroup::setCurrentIndex(int index)
 
 void UBToolbarButtonGroup::paintEvent(QPaintEvent *)
 {
+    if (property("colourGrid").toBool()) return;
     QPainter painter(this);
     QStyleOptionToolButton option;
     QPixmap emptyPixmap(32, 32);
@@ -275,7 +288,7 @@ void UBToolbarButtonGroup::colorPaletteChanged()
 
 void UBToolbarButtonGroup::displayText(QVariant display)
 {
-    mDisplayLabel = display.toBool();
+    mDisplayLabel = !property("colourGrid").toBool() && display.toBool();
     QVBoxLayout* verticalLayout = (QVBoxLayout*)layout();
     verticalLayout->setStretch(2, mDisplayLabel ? 1 : 0);
     update();

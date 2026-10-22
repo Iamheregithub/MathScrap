@@ -32,6 +32,7 @@
 
 #include <QtGui>
 #include <QDomDocument>
+#include <QCryptographicHash>
 #include <QUndoCommand>
 #include <QPointer>
 #include "board/UBDrawingController.h"
@@ -106,7 +107,76 @@ UBGraphicsSvgItem::~UBGraphicsSvgItem()
 
 QByteArray UBGraphicsSvgItem::fileData() const
 {
-    return mFileData;
+    if (!isTeachingShape()) return mFileData;
+    QDomDocument doc;
+    if (!doc.setContent(mFileData)) return mFileData;
+    auto root = doc.documentElement();
+    auto groups = doc.elementsByTagName("g");
+    if (groups.isEmpty()) return mFileData;
+    auto group = groups.at(0).toElement();
+    auto shape = group.firstChildElement();
+    if (shape.isNull()) return mFileData;
+    const auto matrix = sceneTransform();
+    // Work in page coordinates, excluding translation. Zoom remains a view
+    // transform, so an outline still zooms naturally with the rest of the page.
+    QTransform linear(matrix.m11(), matrix.m12(), matrix.m21(), matrix.m22(), 0, 0);
+    bool invertible = false;
+    const auto inverse = linear.inverted(&invertible);
+    if (!invertible) return mFileData;
+    QStringList key {shape.tagName(), group.attribute("stroke"), group.attribute("stroke-width", "3")};
+    for (const auto &name : {"x", "y", "width", "height", "cx", "cy", "r", "points"}) key << shape.attribute(name);
+    for (auto v : {matrix.m11(), matrix.m12(), matrix.m21(), matrix.m22()}) key << QString::number(v, 'g', 6);
+    const QString fingerprint = QString::fromLatin1(QCryptographicHash::hash(key.join('|').toUtf8(), QCryptographicHash::Sha256).toHex());
+    if (root.attribute("data-lessonboard-outline-key") == fingerprint) return mFileData;
+    QPainterPath path;
+    if (shape.tagName() == "rect") {
+        path.addRect(QRectF(shape.attribute("x").toDouble(), shape.attribute("y").toDouble(),
+                           shape.attribute("width").toDouble(), shape.attribute("height").toDouble()));
+    } else if (shape.tagName() == "circle") {
+        const double radius = shape.attribute("r").toDouble();
+        path.addEllipse(QPointF(shape.attribute("cx").toDouble(), shape.attribute("cy").toDouble()), radius, radius);
+    } else if (shape.tagName() == "polygon") {
+        const auto coords = shape.attribute("points").split(QRegularExpression("[ ,]+"), Qt::SkipEmptyParts);
+        if (coords.size() < 6 || coords.size() % 2) return mFileData;
+        path.moveTo(coords[0].toDouble(), coords[1].toDouble());
+        for (int i = 2; i < coords.size(); i += 2) path.lineTo(coords[i].toDouble(), coords[i+1].toDouble());
+        path.closeSubpath();
+    } else return mFileData;
+    // A filled SVG path represents the outline. Ordinary OpenBoard and PDF
+    // exporters can therefore retain its uniform width without custom painting
+    // or relying on SVG vector-effect support.
+    QPainterPathStroker stroker;
+    stroker.setWidth(group.attribute("stroke-width", "3").toDouble());
+    stroker.setJoinStyle(Qt::RoundJoin);
+    stroker.setCapStyle(Qt::RoundCap);
+    const auto outline = inverse.map(stroker.createStroke(linear.map(path)));
+    QString commands;
+    auto number = [](double v) { return QString::number(v, 'g', 17); };
+    for (int i = 0; i < outline.elementCount(); ++i) {
+        const auto e = outline.elementAt(i);
+        if (e.isMoveTo()) commands += "M" + number(e.x) + " " + number(e.y);
+        else if (e.isLineTo()) commands += "L" + number(e.x) + " " + number(e.y);
+        else if (e.type == QPainterPath::CurveToElement && i + 2 < outline.elementCount()) {
+            const auto c2 = outline.elementAt(++i), end = outline.elementAt(++i);
+            commands += "C" + number(e.x) + " " + number(e.y) + " " + number(c2.x) + " " + number(c2.y) + " " + number(end.x) + " " + number(end.y);
+        }
+    }
+    auto old = root.firstChildElement("path");
+    while (!old.isNull()) {
+        const auto next = old.nextSiblingElement("path");
+        if (old.attribute("id") == "lessonboard-shape-outline") root.removeChild(old);
+        old = next;
+    }
+    shape.setAttribute("stroke", "none");
+    auto baked = doc.createElement("path");
+    baked.setAttribute("id", "lessonboard-shape-outline");
+    baked.setAttribute("d", commands);
+    baked.setAttribute("fill", group.attribute("stroke", "#000000"));
+    baked.setAttribute("stroke", "none");
+    baked.setAttribute("fill-rule", "nonzero");
+    root.appendChild(baked);
+    root.setAttribute("data-lessonboard-outline-key", fingerprint);
+    return doc.toByteArray();
 }
 
 
@@ -162,7 +232,10 @@ void UBGraphicsSvgItem::paint(QPainter *painter, const QStyleOptionGraphicsItem 
     QStyleOptionGraphicsItem styleOption = QStyleOptionGraphicsItem(*option);
     styleOption.state &= ~QStyle::State_Selected;
 
-    QGraphicsSvgItem::paint(painter, &styleOption, widget);
+    if (isTeachingShape()) {
+        QSvgRenderer uniform(fileData());
+        uniform.render(painter, boundingRect());
+    } else QGraphicsSvgItem::paint(painter, &styleOption, widget);
     Delegate()->postpaint(painter, option, widget);
 }
 
@@ -227,7 +300,8 @@ UBGraphicsPixmapItem* UBGraphicsSvgItem::toPixmapItem() const
 {
     QImage image(renderer()->viewBox().size(), QImage::Format_ARGB32);
     QPainter painter(&image);
-    renderer()->render(&painter);
+    if (isTeachingShape()) { QSvgRenderer uniform(fileData()); uniform.render(&painter); }
+    else renderer()->render(&painter);
 
     UBGraphicsPixmapItem *pixmapItem =  new UBGraphicsPixmapItem();
     pixmapItem->setPixmap(QPixmap::fromImage(image));

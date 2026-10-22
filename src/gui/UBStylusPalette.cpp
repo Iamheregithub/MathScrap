@@ -64,6 +64,7 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
 
     actions << UBApplication::mainWindow->actionPointer;
     actions << UBApplication::mainWindow->actionLine;
+    if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash")) actions << dash;
     actions << UBApplication::mainWindow->actionText;
     actions << UBApplication::mainWindow->actionCapture;
 
@@ -132,13 +133,21 @@ UBStylusPalette::~UBStylusPalette()
 
 void UBStylusPalette::stylusToolDoubleClicked()
 {
-    emit stylusToolDoubleClicked(mActionGroup->checkedAction()->property("id").toInt());
+    auto action = mActionGroup->checkedAction();
+    if (!action) action = UBApplication::mainWindow->actionLine;
+    emit stylusToolDoubleClicked(action->property("id").toInt());
 }
 
 
 
 void UBStylusPalette::applyTeachingLayout(const QStringList &order)
 {
+    if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash"); dash && !mActions.contains(dash)) {
+        addAction(dash);
+        auto button = getButtonFromAction(dash);
+        button->setIconSize(QSize(42,42));
+        connect(button, SIGNAL(doubleClicked()), this, SLOT(stylusToolDoubleClicked()));
+    }
     QStringList complete = order;
     for (auto action : mActions)
         if (!complete.contains(action->objectName())) complete << action->objectName();

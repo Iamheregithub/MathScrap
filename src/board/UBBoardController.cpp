@@ -367,8 +367,7 @@ void UBBoardController::setupToolbar()
     }
 
     UBToolbarButtonGroup *colorChoice =
-            new UBToolbarButtonGroup(mMainWindow->boardToolBar, colorActions);
-    colorChoice->setLabel(tr("Color"));
+            new UBToolbarButtonGroup(mMainWindow->boardToolBar, colorActions, "colourPalette");
     colorChoice->setProperty("teachingLabel", tr("Pen colours"));
 
     mMainWindow->boardToolBar->insertWidget(mMainWindow->actionBackgrounds, colorChoice);

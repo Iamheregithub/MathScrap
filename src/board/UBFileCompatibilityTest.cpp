@@ -122,7 +122,7 @@ void run() {
 #endif
             const QStringList geometry={"<rect x=\"10\" y=\"20\" width=\"160\" height=\"80\"/>","<rect x=\"20\" y=\"20\" width=\"100\" height=\"100\"/>","<circle cx=\"80\" cy=\"80\" r=\"60\"/>","<polygon points=\"10,130 75,5 150,125\"/>"};
             for(int i=0;i<4;++i){const auto data=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"180\" height=\"160\"><metadata id=\"teaching-shape\">%1</metadata><g stroke=\"#800080\" fill=\"%2\" stroke-width=\"3\">%3</g></svg>").arg(i).arg(i%2?"none":"#33cc66").arg(geometry[i]).toUtf8();
-                auto svg=scene->addSvg(QUrl(),QPointF(-210+i*140,130),data);if(!svg){fail("Cannot insert shape");return;}svg->setRotation(i*10);svg->setScale(0.7);
+                auto svg=scene->addSvg(QUrl(),QPointF(-210+i*140,130),data);if(!svg){fail("Cannot insert shape");return;}svg->setRotation(i*10);svg->setScale(0.7);if(i==0)svg->setTransform(QTransform().scale(1.7,.6));
             }
             const QByteArray state=QByteArray("{\"plots\":[{\"expr\":\"x^2\"},{\"expr\":\"2x+1\"},{\"expr\":\"sin(x)\"},{\"expr\":\"-x+3\"}]}").toBase64();
             const QByteArray graph="<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\"><metadata id=\"graphdesk-project\">"+state+"</metadata><path d=\"M0 90L200 10 M0 50L200 50\" stroke=\"red\" stroke-dasharray=\"5 3\" fill=\"none\"/></svg>";

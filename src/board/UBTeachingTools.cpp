@@ -33,12 +33,32 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         mWindow->addAction(action);
         return action;
     };
-    auto dash = add("actionTeachingDash", tr("Dashed lines"), ":/images/teaching/dash.svg");
+    auto dash = add("actionTeachingDash", tr("Dashed Line"), ":/images/teaching/dash.svg");
     dash->setCheckable(true);
-    dash->setChecked(UBSettings::settings()->value("Teaching/DashedLines", false).toBool());
-    connect(dash, &QAction::toggled, this, [](bool on) {
-        UBSettings::settings()->setValue("Teaching/DashedLines", on);
+    dash->setAutoRepeat(false);
+    dash->setShortcut(QKeySequence("Ctrl+Shift+L"));
+    dash->setProperty("ungrouped", true);
+    window->actionLine->setText(tr("Solid Line"));
+    window->actionLine->setToolTip(tr("Draw a solid straight line"));
+    auto syncLineChoices = [window, dash] {
+        const bool line = UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Line;
+        const bool dashed = UBSettings::settings()->value("Teaching/DashedLines", false).toBool();
+        dash->setChecked(line && dashed);
+        window->actionLine->setChecked(line && !dashed);
+    };
+    connect(dash, &QAction::triggered, this, [syncLineChoices] {
+        UBSettings::settings()->setValue("Teaching/DashedLines", true);
+        UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Line);
+        syncLineChoices();
     });
+    connect(window->actionLine, &QAction::triggered, this, [syncLineChoices] {
+        UBSettings::settings()->setValue("Teaching/DashedLines", false);
+        UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Line);
+        syncLineChoices();
+    });
+    connect(UBDrawingController::drawingController(), &UBDrawingController::stylusToolChanged, this,
+            [syncLineChoices](int, int) { syncLineChoices(); });
+    syncLineChoices();
     auto shapes = add("actionTeachingShapes", tr("Shapes"), ":/images/teaching/shapes.svg");
     connect(shapes, &QAction::triggered, this, &UBTeachingTools::shapeDialog);
     auto graph = add("actionTeachingGraphDesk", tr("GraphDesk"), ":/images/teaching/graph.svg");
@@ -135,7 +155,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     }
     const QList<QAction*> tools = {window->actionPen, window->actionEraser, window->actionMarker,
         window->actionSelector, window->actionPlay, window->actionHand, window->actionZoomIn,
-        window->actionZoomOut, window->actionPointer, window->actionLine, window->actionText,
+        window->actionZoomOut, window->actionPointer, window->actionLine, dash, window->actionText,
         window->actionCapture, window->actionVirtualKeyboard, window->actionSnap};
     for (auto action : tools) {
         mBottom[action->objectName()] = action;
@@ -144,7 +164,10 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     }
     auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
-    toolbar->addAction(customizeAction);
+    customizeAction->setObjectName("actionTeachingCustomize");
+    for (auto menu : window->findChildren<QMenu*>())
+        if (menu->actions().contains(window->actionPreferences))
+            menu->insertAction(window->actionPreferences, customizeAction);
     connect(customizeAction, &QAction::triggered, this, &UBTeachingTools::customize);
     toolbar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(toolbar, &QWidget::customContextMenuRequested, this, [this] { customize(); });
@@ -181,7 +204,7 @@ void UBTeachingTools::applyLayout()
         source->setProperty("teachingHiddenTop", !show);
         auto display = mProxies.value(source, source);
         // Moving QWidgetActions via removeAction can delete their widgets.
-        mWindow->boardToolBar->insertAction(mCustomize, display);
+        mWindow->boardToolBar->addAction(display);
         if (!mProxies.contains(source)) display->setVisible(show);
         if (mProxies.contains(source))
             display->setVisible(show && source->isVisible());
