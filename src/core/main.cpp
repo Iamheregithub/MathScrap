@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
     }
 
     for (int i = 1; i < argc; ++i)
-        if (QString::fromLocal8Bit(argv[i]) == "--teaching-smoke-test") installTeachingCrashDiagnostics();
+        if (QString::fromLocal8Bit(argv[i]) == "--teaching-smoke-test" || QString::fromLocal8Bit(argv[i]) == "--lesson-tools-test") installTeachingCrashDiagnostics();
 
     UBApplication app("OpenBoard", argc, argv);
 

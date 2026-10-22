@@ -24,7 +24,9 @@ struct CoverState {
     void apply(UBGraphicsSvgItem *item) const {
         if(item->fileData()!=svg)item->setTeachingSvg(svg);
         item->setPos(position);item->setTransform(transform);item->setScale(scale);item->setRotation(rotation);
-        item->Delegate()->lock(locked);if(item->scene())item->scene()->setModified(true);
+        item->Delegate()->setLocked(locked);
+        if(item->Delegate()->controlsExist())item->Delegate()->lock(locked);
+        if(item->scene())item->scene()->setModified(true);
     }
 };
 class CoverStateUndo : public UBUndoCommand {
