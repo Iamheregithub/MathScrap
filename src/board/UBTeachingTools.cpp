@@ -538,7 +538,7 @@ void UBTeachingTools::applyShapeStyle()
     settings->setValue("Teaching/ShapeNoBorder",mNoBorder);settings->setValue("Teaching/ShapeNoFill",mNoFill);
     settings->setValue("Teaching/ShapeWidth",mShapeWidth->currentData());settings->setValue("Teaching/ShapeDashed",mShapeStyle->currentIndex()==1);
     settings->setValue("Teaching/ShapeOpacity",mShapeOpacity->value());settings->setValue("Teaching/ShapeType",mShapeType);
-    if(!mShapeTarget || mShapeTarget->scene()!=UBApplication::boardController->activeScene().get())return;
+    if(!mShapeTarget || mShapeTarget->scene()!=UBApplication::boardController->activeScene())return;
     const auto before=mShapeTarget->fileData(); QDomDocument doc;doc.setContent(before);
     auto groups=doc.elementsByTagName("g");if(groups.isEmpty())return;auto g=groups.at(0).toElement();
     g.setAttribute("stroke",mNoBorder?"none":mShapeBorder.name());g.setAttribute("fill",mNoFill?"none":mShapeFill.name());
