@@ -208,7 +208,7 @@ bool checkShapeToolbar(QString *error)
     if(!found)return fail("Styled shape did not survive fresh reload");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
-    action->trigger();auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();
+    action->trigger();if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Shapes did not activate selection for an existing shape");auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();
     // Escape cancels a preview without inserting a shape or an undo command.
     const int count=scene->items().size(),undo=UBApplication::undoStack->index();
     const QPointF pos=view->mapFromScene(QPointF(20,20));QMouseEvent press(QEvent::MouseButtonPress,pos,viewport->mapToGlobal(pos.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(viewport,&press);

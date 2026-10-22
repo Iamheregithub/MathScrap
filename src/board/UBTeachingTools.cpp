@@ -498,7 +498,7 @@ void UBTeachingTools::shapeDialog()
         cancelShapeDrag(); mShapeDrawing=false; mShapeBar->hide();
         UBApplication::boardController->controlView()->viewport()->unsetCursor(); return;
     }
-    mWindow->teachingTabs()->setCurrentIndex(0); mShapeBar->show(); syncShapeSelection();
+    mWindow->teachingTabs()->setCurrentIndex(0); mWindow->actionSelector->trigger(); mShapeBar->show(); syncShapeSelection();
     if (!mShapeTarget) armShape(mShapeType);
 }
 
