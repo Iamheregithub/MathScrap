@@ -173,6 +173,12 @@ bool checkPaperInk(QString *error)
     if(coverBar->parentWidget()!=board->controlView()||!coverBar->isVisible()||coverBar->geometry().intersects(dock->geometry()))return fail("Cover controls are not positioned above the paper dock");
     cover->click();pen->click();QApplication::processEvents();
     if(!board->selectedDocument()||pages->count()!=board->selectedDocument()->pageCount())return fail("Paper page list does not match the lesson");
+    const int beforePages=board->selectedDocument()->pageCount();
+    auto add=window->findChild<QToolButton*>("paper-actionNewPage");if(!add)return fail("Paper add-page control unavailable");add->click();QApplication::processEvents();
+    if(board->selectedDocument()->pageCount()!=beforePages+1)return fail("Paper add-page did not create a lesson page");
+    const auto lastScene=board->activeScene();
+    pages->itemClicked(pages->item(0));QApplication::processEvents();
+    if(board->activeSceneIndex()!=0||board->activeScene()==lastScene)return fail("Paper page thumbnail did not load the selected page");
     const auto path=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-ink-window.png");window->grab().save(path);
     window->setProperty("paperInkChecked",true);return true;
 }
@@ -241,7 +247,9 @@ bool checkShapeToolbar(QString *error)
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
     if(!found)return fail("Styled shape did not survive fresh reload");
     QApplication::processEvents();
-    if(bar->geometry().top()<window->boardToolBar->geometry().bottom() || bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
+    if(auto dock=window->findChild<QFrame*>("paperDock")){
+        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>95)return fail("Shape controls must stay in a compact floating panel above the dock");
+    }else if(bar->geometry().top()<window->boardToolBar->geometry().bottom()||bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
     action->trigger();if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Shapes did not activate selection for an existing shape");auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();

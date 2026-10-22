@@ -80,7 +80,7 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
     UBApplication::mainWindow->actionSnap->setProperty("ungrouped", true);
 
     for (auto action : actions)
-        action->setProperty("teachingHiddenBottom", !UBSettings::settings()->value("Teaching/Bottom/" + action->objectName(), action != UBApplication::mainWindow->actionPointer).toBool());
+        action->setProperty("teachingHiddenBottom", !UBSettings::settings()->value("Teaching/Bottom/" + action->objectName(), QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(action->objectName())).toBool());
     setActions(actions);
     setButtonIconSize(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?QSize(56,56):QSize(42,42));
     groupActions();

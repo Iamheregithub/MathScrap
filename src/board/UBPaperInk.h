@@ -24,6 +24,7 @@ protected:
 private:
     void layoutPanels();
     void refreshPages();
+    void goToPage(int index);
     void refreshPen();
     void adoptContextBars();
     void scheduleLayout();
@@ -37,6 +38,6 @@ private:
     QMenu *mMore=nullptr;
     QList<QAction*> mOverflowActions;
     QList<QToolButton*> mColours,mWidths;
-    bool mScheduled=false,mRefreshing=false,mPagesOpen=true,mClosing=false;
+    bool mScheduled=false,mRefreshing=false,mPagesOpen=true,mClosing=false,mLibraryOpen=false;
     QString mDocumentId;
 };
