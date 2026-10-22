@@ -1,6 +1,6 @@
 # LessonBoard
 
-Status: LessonBoard Windows x64 test installer 1.7.7.4 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
+Status: LessonBoard Windows x64 test installer 1.7.7.5 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -12,7 +12,7 @@ and creates a per-user Inno Setup installer. Successful builds publish
 `LessonBoard-Windows-x64` in the repository's Actions artifacts.
 The separate installer-validation workflow upgrades the previously delivered package
 on a runner without the Qt SDK, verifies the retained lesson location and data,
-repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.3.
+repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.4.
 
 LessonBoard uses its own executable, shortcuts, settings and lesson
 folder. Existing OpenBoard installations are kept separate. Export/import UBZ
@@ -25,6 +25,13 @@ mode. OpenBoard's separate extended-display board view shows the lesson; it does
 not yet mirror the GraphDesk tab.
 
 ## Teaching controls
+
+On Windows, LessonBoard starts maximized with a normal title bar, system menu,
+and minimize/restore/maximize/close buttons. Existing frameless profiles are
+updated automatically; no text-file change is needed. Separate projector views
+keep their full-screen display behaviour. The fixed upstream Board-toolbar
+separators are removed because they otherwise collect before Stylus after the
+customizable controls are reordered.
 
 Right-click any colour swatch to change it. Right-click the top toolbar, or use
 Customize Toolbars, to choose visible controls and reorder them. Defaults are
@@ -155,18 +162,25 @@ not claimed. Full fractions are recorded in compatibility-summary.json.
 
 ## Test installer provenance
 
-Compiled source: `b762d9a58f0c9de8c8d8595054eab8f546f14d08`.
+Compiled source: `8a1aec11070638978f4fd5aab6c049917162e622`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39689574008
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39689737151
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39698579865
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39698638392
 - Setup filename: `LessonBoard-Windows-x64-Setup.exe`
-- Setup SHA-256: `68f892f77591af846f9a2d1fbbf2461dfd04786d5e2604faa965a70c42b2f6d8`
+- Setup SHA-256: `7f9d16f98d4b44d80cc3bc3df1ed90fc0ef02eae62899880c4634e646fba5fef`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
 all document import/export paths have not been verified by these automated checks.
 
 ## Validation completed
+
+- Native Windows caption/system-menu/minimize/maximize styles and enabled Close
+  command are checked. Minimize, restore and maximize work; switching between
+  Documents and the lesson retains the window controls and maximized state.
+- Toolbar customization is opened, controls are reordered and restored, and
+  leading dividers remain absent. These checks run across native process
+  restarts and again in the installed deployment.
 
 - Favourites save/apply and retain tool, colour, width and dashed style; widths
   retain favourite colours, palette choices clear the override, and palettes are
