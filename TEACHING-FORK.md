@@ -1,6 +1,6 @@
 # LessonBoard
 
-Status: LessonBoard Windows x64 test installer 1.7.7.6 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
+Status: LessonBoard Windows x64 test installer 1.7.7.7 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -12,7 +12,7 @@ and creates a per-user Inno Setup installer. Successful builds publish
 `LessonBoard-Windows-x64` in the repository's Actions artifacts.
 The separate installer-validation workflow upgrades the previously delivered package
 on a runner without the Qt SDK, verifies the retained lesson location and data,
-repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.5.
+repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.6.
 
 LessonBoard uses its own executable, shortcuts, settings and lesson
 folder. Existing OpenBoard installations are kept separate. Export/import UBZ
@@ -44,14 +44,32 @@ Defaults are P for pen, E for eraser, L for Solid Line, Ctrl+Shift+L for Dashed
 Line, Ctrl++ / Ctrl+- for zoom, and Ctrl+0 for reset zoom. Change these in the existing keyboard shortcut editor and bind the
 same keys in a Huion driver profile for `LessonBoard.exe`.
 
-Use Shapes to insert a shape; select it with the selection tool to move, resize
-or rotate it. Use Shapes again to edit its outline/fill. Drag a selected
-triangle's three circular handles to move its vertices. Shape outlines keep
-their page-space thickness when stretched horizontally or vertically, including
-rotated shapes. Zoom still enlarges the whole page normally. The outline is
-saved as an ordinary filled SVG path so PDF exports and original OpenBoard
-can display the result. Further stretching in original OpenBoard uses its own
-scaling behaviour; uniform outline regeneration requires LessonBoard.
+Press Shapes to reveal a second toolbar row. Choose a rectangle, square,
+circle, triangle, ellipse, right triangle or diamond, then drag on the lesson
+to draw it. Squares/circles constrain their proportions. Release selects the
+new shape for movement, resizing, rotation and immediate appearance editing.
+Choose another shape icon or Draw next to draw another. Escape cancels an
+unfinished preview. Pen/eraser/line, GraphDesk and other application modes
+leave shape drawing and dismiss the row.
+
+Border and Fill have separate ten-colour palettes, custom-colour pickers,
+and No border / No fill. Width offers 1, 2, 3, 5, 8 and 12 page units. Solid or
+dashed borders are independent of the line tool's style. Fill opacity runs
+from 0 to 100% while the border remains opaque. The last chosen appearance
+is remembered. Selecting an existing shape loads its appearance into the row;
+changes support undo/redo. Triangle and right-triangle vertices have three
+draggable handles constrained to the shape's current SVG bounds.
+
+All ten main-toolbar swatches paint identical 18-by-18 colour areas, including
+selected and unselected states. The empty expanding spacer is removed from
+both the toolbar and customization options, including older saved orders.
+
+Shape outlines keep their page-space thickness when stretched horizontally or
+vertically, including rotated and dashed shapes. Zoom still enlarges the whole
+page normally. The outline is saved as an ordinary filled SVG path so PDF
+exports and original OpenBoard can display the result. Further stretching in
+original OpenBoard uses its own scaling behaviour; uniform outline regeneration
+requires LessonBoard.
 
 GraphDesk opens inside its own tab. Insert adds the current graph to the lesson.
 To revise an inserted graph, select it on the Lesson tab, open GraphDesk, use
@@ -117,8 +135,9 @@ existing document repository. Parent/child directory choices are rejected.
 - Highlighter and ink use separate z-order bands above PDF/image content.
   Translucent marks on light backgrounds use multiply blending to preserve
   printed black text. Existing stroke groups are classified on load.
-- Shapes button inserts rectangle, square, circle, or triangle, with separate
-  outline/fill colours and optional fill. The existing object frame supplies
+- Expandable Shapes row draws rectangle, square, circle, triangle, ellipse,
+  right triangle and diamond. Separate border/fill palettes include no border
+  and no fill, with width, solid/dashed border and independent fill opacity. The existing object frame supplies
   resize/rotate/move. Selected triangles have draggable vertex handles. Select
   an existing shape and use Shapes again to recolour it. Shape content edits
   enter the undo stack and save as SVG assets. Uniform-width outlines survive
@@ -178,18 +197,29 @@ not claimed. Full fractions are recorded in compatibility-summary.json.
 
 ## Test installer provenance
 
-Compiled source: `bbe303fbd82f8a4a94bd78fe89dc2099438fe87b`.
+Compiled source: `6dbf1668dd903c837c0ba4b56fbc2a05e1102683`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39787164626
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39787221675
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39818516030
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39818816560
 - Setup filename: `LessonBoard-Windows-x64-Setup.exe`
-- Setup SHA-256: `32fe8ffb319cafa49948d8ba1b5183310df04eecee4cf6c08ed273da86c9814a`
+- Setup SHA-256: `751825febf9a0dc3de450c9d37d7b2d3b53174beb458eb68592a33ad135a6069`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
 all document import/export paths have not been verified by these automated checks.
 
 ## Validation completed
+
+- Shape toolbar opens from Shapes and hides on switching tools. All seven
+  shape choices are drawn through mouse events; tablet events draw a diamond.
+  Triangle/right-triangle handles, cancelled previews without undo changes,
+  border/fill palette edits, no border, opacity pixels, style undo/redo and
+  fresh SVG reload are checked. Synthetic tablet events verify event handling,
+  not physical Huion hardware or pressure.
+- Actual colour-pixel counts verify identical swatch sizes in checked states;
+  customization is opened and must contain no unnamed spacer entry. The
+  contextual row must remain below the main toolbar with compact height; process
+  exit is required to succeed after all native checks.
 
 - The compact two-row palette, all ten colour choices, absence of a toolbar
   Customize button and presence of its menu command are checked natively.
