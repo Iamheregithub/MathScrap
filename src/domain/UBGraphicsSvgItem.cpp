@@ -123,8 +123,8 @@ QByteArray UBGraphicsSvgItem::fileData() const
     bool invertible = false;
     const auto inverse = linear.inverted(&invertible);
     if (!invertible) return mFileData;
-    QStringList key {shape.tagName(), group.attribute("stroke"), group.attribute("stroke-width", "3")};
-    for (const auto &name : {"x", "y", "width", "height", "cx", "cy", "r", "points"}) key << shape.attribute(name);
+    QStringList key {shape.tagName(), group.attribute("stroke"), group.attribute("stroke-width", "3"), group.attribute("stroke-dasharray", "none")};
+    for (const auto &name : {"x", "y", "width", "height", "cx", "cy", "r", "rx", "ry", "points"}) key << shape.attribute(name);
     for (auto v : {matrix.m11(), matrix.m12(), matrix.m21(), matrix.m22()}) key << QString::number(v, 'g', 6);
     const QString fingerprint = QString::fromLatin1(QCryptographicHash::hash(key.join('|').toUtf8(), QCryptographicHash::Sha256).toHex());
     if (root.attribute("data-lessonboard-outline-key") == fingerprint) return mFileData;
@@ -135,6 +135,8 @@ QByteArray UBGraphicsSvgItem::fileData() const
     } else if (shape.tagName() == "circle") {
         const double radius = shape.attribute("r").toDouble();
         path.addEllipse(QPointF(shape.attribute("cx").toDouble(), shape.attribute("cy").toDouble()), radius, radius);
+    } else if (shape.tagName() == "ellipse") {
+        path.addEllipse(QPointF(shape.attribute("cx").toDouble(), shape.attribute("cy").toDouble()), shape.attribute("rx").toDouble(), shape.attribute("ry").toDouble());
     } else if (shape.tagName() == "polygon") {
         const auto coords = shape.attribute("points").split(QRegularExpression("[ ,]+"), Qt::SkipEmptyParts);
         if (coords.size() < 6 || coords.size() % 2) return mFileData;
@@ -147,6 +149,13 @@ QByteArray UBGraphicsSvgItem::fileData() const
     // or relying on SVG vector-effect support.
     QPainterPathStroker stroker;
     stroker.setWidth(group.attribute("stroke-width", "3").toDouble());
+    if (group.attribute("stroke-dasharray", "none") != "none") {
+        QVector<qreal> dashes;
+        const double width = group.attribute("stroke-width", "3").toDouble();
+        for (const auto &v : group.attribute("stroke-dasharray").split(QRegularExpression("[ ,]+"), Qt::SkipEmptyParts))
+            if (width > 0) dashes << v.toDouble()/width;
+        if (!dashes.isEmpty()) stroker.setDashPattern(dashes);
+    }
     stroker.setJoinStyle(Qt::RoundJoin);
     stroker.setCapStyle(Qt::RoundCap);
     const auto outline = inverse.map(stroker.createStroke(linear.map(path)));
@@ -375,7 +384,8 @@ protected:
         auto points = trianglePoints(mItem->fileData());
         if (points.size() != 3) return;
         auto point = mItem->mapFromScene(event->scenePos());
-        points[mIndex] = QPointF(qBound(6.,point.x(),294.), qBound(6.,point.y(),294.));
+        const auto bounds = mItem->boundingRect().adjusted(6,6,-6,-6);
+        points[mIndex] = QPointF(qBound(bounds.left(),point.x(),bounds.right()), qBound(bounds.top(),point.y(),bounds.bottom()));
         QStringList values;
         for (auto p : points) values << QString("%1,%2").arg(p.x()).arg(p.y());
         auto doc = shapeDocument(mItem->fileData());
@@ -411,7 +421,7 @@ void UBGraphicsSvgItem::initTeachingHandles()
     auto doc = shapeDocument(mFileData);
     auto metadata = doc.elementsByTagName("metadata");
     const int type = metadata.isEmpty() ? -1 : metadata.at(0).toElement().text().toInt();
-    if (type == 0 || triangle)
+    if (type == 0 || type == 4 || type == 6 || triangle)
         Delegate()->setUBFlags(Delegate()->ubflags() & ~UBGraphicsFlags(GF_RESPECT_RATIO));
     if (triangle) {
         for (int i = 0; i < 3; ++i) mTeachingHandles << new TeachingVertexHandle(this, i);

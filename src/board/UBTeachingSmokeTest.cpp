@@ -13,6 +13,8 @@
 #include "adaptors/UBSvgSubsetAdaptor.h"
 #include "domain/UBGraphicsItemTransformUndoCommand.h"
 #include "UBBoardController.h"
+#include "UBBoardView.h"
+#include <QDomDocument>
 #include "UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
@@ -140,6 +142,76 @@ bool checkWindowAndToolbar(QString *error)
         .save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("window-chrome-window.png"));
 #endif
     return true;
+}
+
+bool checkShapeToolbar(QString *error)
+{
+    auto fail=[error](const QString &s){*error=s;return false;};
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto palette=window->findChild<UBToolbarButtonGroup*>("lessonColourPalette");
+    // Compare actual painted colour areas, including selected versus unselected.
+    for(int i=0;i<10;++i) {
+        auto b=palette->findChild<QToolButton*>(QString("lessonColour%1").arg(i+1));
+        b->click();
+        const auto colour=b->property("swatchColour").value<QColor>();
+        auto image=b->grab().toImage();int count=0;
+        for(int y=0;y<image.height();++y)for(int x=0;x<image.width();++x)if(image.pixelColor(x,y)==colour)++count;
+        const int expected=qRound(18*image.devicePixelRatio())*qRound(18*image.devicePixelRatio());
+        if(count!=expected)return fail(QString("Colour %1 painted %2 pixels, expected %3").arg(i).arg(count).arg(expected));
+    }
+    auto customize=window->findChild<QAction*>("actionTeachingCustomize");bool clean=true;
+    QTimer::singleShot(0,window,[&]{auto d=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!d){clean=false;return;}for(auto list:d->findChildren<QListWidget*>())for(int i=0;i<list->count();++i)if(list->item(i)->text().startsWith("teachingGroup")||list->item(i)->data(Qt::UserRole).toString()=="teachingGroup3")clean=false;d->reject();});
+    customize->trigger();if(!clean)return fail("Unnamed spacer remains in toolbar customization");
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Shape toolbar regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
+    auto action=window->findChild<QAction*>("actionTeachingShapes");if(!action)return fail("Shapes action unavailable");action->trigger();QApplication::processEvents();
+    auto bar=window->findChild<QToolBar*>("lessonShapeToolbar");if(!bar||!bar->isVisible())return fail("Shapes did not reveal its toolbar");
+    auto width=bar->findChild<QComboBox*>("lessonShapeWidth");auto style=bar->findChild<QComboBox*>("lessonShapeBorderStyle");auto opacity=bar->findChild<QSlider*>("lessonShapeOpacity");
+    if(!width||!style||!opacity)return fail("Shape appearance controls unavailable");
+    auto view=board->controlView();auto viewport=view->viewport();
+    auto draw=[&](int type,bool tablet=false) -> UBGraphicsSvgItem* {
+        auto choice=bar->findChild<QAction*>(QString("lessonShape%1").arg(type));if(!choice)return nullptr;choice->trigger();
+        const QPointF start=view->mapFromScene(QPointF(-150,-100)),end=view->mapFromScene(QPointF(150,60));
+        auto send=[&](QEvent::Type t,QPointF p,Qt::MouseButton button,Qt::MouseButtons buttons){
+            if(tablet){QTabletEvent e(t,QPointingDevice::primaryPointingDevice(),p,viewport->mapToGlobal(p.toPoint()),.8,0,0,0,0,0,Qt::NoModifier,button,buttons);QApplication::sendEvent(viewport,&e);}
+            else{QMouseEvent e(t,p,viewport->mapToGlobal(p.toPoint()),button,buttons,Qt::NoModifier);QApplication::sendEvent(viewport,&e);}
+        };
+        send(tablet?QEvent::TabletPress:QEvent::MouseButtonPress,start,Qt::LeftButton,Qt::LeftButton);
+        send(tablet?QEvent::TabletMove:QEvent::MouseMove,end,Qt::NoButton,Qt::LeftButton);
+        send(tablet?QEvent::TabletRelease:QEvent::MouseButtonRelease,end,Qt::LeftButton,Qt::NoButton);
+        for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())return svg;
+        return nullptr;
+    };
+    for(int type=0;type<7;++type){auto shape=draw(type,type==6);if(!shape)return fail(QString("Drag drawing failed for shape %1").arg(type));QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");if(type==3||type==5){int handles=0;for(auto h:shape->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(h))++handles;if(handles!=3)return fail("Triangle must have three vertex handles");}}
+    auto target=draw(0);if(!target)return fail("Cannot draw styled rectangle");
+    auto before=target->fileData();width->setCurrentIndex(width->findData(8.));style->setCurrentIndex(1);opacity->setValue(35);
+    window->findChild<QAction*>("lessonShapeNoBorder")->trigger();
+    QDomDocument edited;edited.setContent(target->fileData());auto g=edited.elementsByTagName("g").at(0).toElement();
+    if(g.attribute("stroke")!="none"||g.attribute("stroke-width").toDouble()!=8||g.attribute("fill-opacity").toDouble()!=.35||g.attribute("stroke-dasharray")=="none")return fail("Selected shape appearance did not update");
+    const auto after=target->fileData();UBApplication::undoStack->undo();UBApplication::undoStack->redo();if(target->fileData()!=after)return fail("Shape styling redo failed");
+    // Restore border/fill through the same actual palette button used by teachers.
+    auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto fill=bar->findChild<QToolButton*>("lessonShapeFill");
+    auto borderSwatches=border->menu()->findChildren<QToolButton*>();auto fillSwatches=fill->menu()->findChildren<QToolButton*>();
+    if(borderSwatches.size()!=10||fillSwatches.size()!=10)return fail("Border/fill colour palettes unavailable");
+    borderSwatches[0]->click();fillSwatches[4]->click();style->setCurrentIndex(0);width->setCurrentIndex(width->findData(3.));opacity->setValue(50);
+    edited.setContent(target->fileData());g=edited.elementsByTagName("g").at(0).toElement();
+    if(g.attribute("stroke")=="none"||g.attribute("fill")=="none"||g.attribute("fill-opacity").toDouble()!=.5)return fail("Shape colour palettes did not edit selection");
+    manager->persistDocumentScene(doc,scene,0,true,true);
+    auto loaded=UBSvgSubsetAdaptor::loadScene(doc,0);bool found=false;
+    for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
+    if(!found)return fail("Styled shape did not survive fresh reload");
+    window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
+    window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
+    action->trigger();auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();
+    // Escape cancels a preview without inserting a shape or an undo command.
+    const int count=scene->items().size(),undo=UBApplication::undoStack->index();
+    const QPointF pos=view->mapFromScene(QPointF(20,20));QMouseEvent press(QEvent::MouseButtonPress,pos,viewport->mapToGlobal(pos.toPoint()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(viewport,&press);
+    QKeyEvent escape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QApplication::sendEvent(viewport,&escape);
+    if(scene->items().size()!=count||UBApplication::undoStack->index()!=undo)return fail("Cancelled shape left content or undo state");
+    window->actionPen->trigger();
+    auto next=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true);board->setActiveDocumentScene(next,0);
+    window->setProperty("shapeToolbarChecked",true);return true;
 }
 
 bool checkLessonControlsAndShapes(QString *error)
@@ -399,6 +471,7 @@ void finish(bool passed, const QString &detail) {
     report["detail"] = storageError.isEmpty() ? detail : storageError;
     report["qt"] = qVersion();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
+    report["shapeToolbarChecked"] = UBApplication::mainWindow->property("shapeToolbarChecked").toBool();
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
@@ -417,7 +490,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError)) { finish(false, chromeError); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");

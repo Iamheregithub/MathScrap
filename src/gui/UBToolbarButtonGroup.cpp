@@ -42,6 +42,25 @@
 
 #include "core/memcheck.h"
 
+// Paint each swatch at one fixed size. QAction icon updates and platform
+// checked/disabled icon variants must not resize the coloured rectangle.
+namespace {
+class LessonColourButton : public QToolButton {
+public:
+    explicit LessonColourButton(QWidget *parent) : QToolButton(parent) {}
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.fillRect(rect(), isChecked()?QColor("#e4f1f5"):QColor("#c4c4c4"));
+        p.setPen(QPen(isChecked()?QColor("#147d92"):QColor("#777777"),isChecked()?2:1));
+        p.drawRect(rect().adjusted(1,1,-2,-2));
+        const QRect swatch((width()-18)/2,(height()-18)/2,18,18);
+        p.fillRect(swatch,property("swatchColour").value<QColor>());
+        if(hasFocus()){p.setPen(QPen(Qt::black,1,Qt::DotLine));p.drawRect(rect().adjusted(3,3,-4,-4));}
+    }
+};
+}
+
 UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QAction*> &actions, QString objectNameprefix)
     : QWidget(toolBar)
     , mActions(actions)
@@ -76,7 +95,7 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
     {
         mActionGroup->addAction(action);
 
-        QToolButton *button = new QToolButton(this);
+        QToolButton *button = colourGrid ? new LessonColourButton(this) : new QToolButton(this);
         mButtons.append(button);
         button->setDefaultAction(action);
         button->setCheckable(true);
@@ -177,6 +196,7 @@ void UBToolbarButtonGroup::setColor(const QColor &color, int index)
             }
         });
     }
+    if (button && property("colourGrid").toBool()) { button->setProperty("swatchColour",color);button->update(); }
     QPixmap pixmap(property("colourGrid").toBool() ? 18 : 12, property("colourGrid").toBool() ? 18 : 12);
     pixmap.fill(color);
     QIcon icon(pixmap);
