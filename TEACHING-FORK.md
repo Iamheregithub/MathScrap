@@ -1,6 +1,6 @@
 # LessonBoard
 
-Status: LessonBoard Windows x64 test installer 1.7.7.7 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, favourites, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
+Status: LessonBoard Windows x64 test installer 1.7.7.8 is built. Automated native checks, selected-page PDF export, document-folder relocation across restarts, installation on a runner without the Qt SDK, and uninstallation passed. Native round trips with original OpenBoard 1.7.7, per-colour thickness, reveal covers, automatic timed crash recovery, version restoration, damaged-history rejection and upgrade preservation checks passed. Physical Huion/projector and broader document regression testing remain outstanding.
 
 Based on OpenBoard master commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream:
 https://github.com/OpenBoard-org/OpenBoard
@@ -12,7 +12,7 @@ and creates a per-user Inno Setup installer. Successful builds publish
 `LessonBoard-Windows-x64` in the repository's Actions artifacts.
 The separate installer-validation workflow upgrades the previously delivered package
 on a runner without the Qt SDK, verifies the retained lesson location and data,
-repeats native checks plus favourites/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.6.
+repeats native checks plus colour-thickness/covers/versions and automatic timed crash recovery, then uninstalls it. The previous package for this release is LessonBoard 1.7.7.7.
 
 LessonBoard uses its own executable, shortcuts, settings and lesson
 folder. Existing OpenBoard installations are kept separate. Export/import UBZ
@@ -75,13 +75,25 @@ GraphDesk opens inside its own tab. Insert adds the current graph to the lesson.
 To revise an inserted graph, select it on the Lesson tab, open GraphDesk, use
 Load selected graph for editing, make changes, then Update loaded graph on lesson.
 
-## Favourites, reveal covers and recovery
+## Remembered thickness, reveal covers and recovery
 
-The six favourite buttons recall a drawing tool, colour, width and solid/dashed
-line style. Choose the desired pen, highlighter, line or eraser, then use
-Favourites… to name and save the current setup into a slot. Ctrl+Alt+1 through
-Ctrl+Alt+6 recall those slots; these bindings can also be assigned to a Huion
-profile. Favourite colours are independent of the ten-colour palette.
+Thickness is remembered automatically for each visible colour, independently
+for Pen, Highlighter, Solid Line and Dashed Line. For example, select red with
+Pen and choose thin, then select purple and choose thick. Switching back to
+red recalls thin. Red can have different widths for each of the four tools.
+Switching between solid and dashed lines recalls each style's own width even
+though both use OpenBoard's underlying Line tool. The selected thickness
+button updates when the width is recalled.
+
+The memory follows the RGB colour, rather than its palette slot. Moving a
+colour or placing it in two swatches shares that colour's remembered width
+within the same tool. Editing a swatch recalls its new colour's width. Light
+and dark palettes use their visible colours; highlighter opacity does not
+create a different colour preference. New colours initially use stable widths
+seeded from the user's settings when upgrading. Thickness changes save immediately; memory survives restarts.
+The six numbered Favourite actions, their setup dialog and Ctrl+Alt+1–6
+bindings are removed. Old favourite settings are left unused for rollback;
+no lessons or existing palette colours are removed.
 
 Add cover (Ctrl+Alt+C) places an opaque rectangle above handwriting. Select it
 to move, resize or rotate it. Reveal / cover (Ctrl+Alt+R) toggles selected covers;
@@ -197,12 +209,12 @@ not claimed. Full fractions are recorded in compatibility-summary.json.
 
 ## Test installer provenance
 
-Compiled source: `6dbf1668dd903c837c0ba4b56fbc2a05e1102683`.
+Compiled source: `04203d83498a8a057660ed3a9d463badf98bd859`.
 
-- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39818516030
-- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39818816560
+- Build and native checks: https://github.com/Iamheregithub/OpenBoard/actions/runs/39831373914
+- Installation/native checks/uninstallation: https://github.com/Iamheregithub/OpenBoard/actions/runs/39831433058
 - Setup filename: `LessonBoard-Windows-x64-Setup.exe`
-- Setup SHA-256: `751825febf9a0dc3de450c9d37d7b2d3b53174beb458eb68592a33ad135a6069`
+- Setup SHA-256: `efdda0279f50224c43c86202585f01b4d83892cdd9244f982229ddbd24940ef5`
 
 The package is unsigned and is intended for initial testing. Test on copies of
 lessons before using it in class. Hardware pressure, projector behaviour and
@@ -237,9 +249,13 @@ all document import/export paths have not been verified by these automated check
   leading dividers remain absent. These checks run across native process
   restarts and again in the installed deployment.
 
-- Favourites save/apply and retain tool, colour, width and dashed style; widths
-  retain favourite colours, palette choices clear the override, and palettes are
-  unchanged. Favourite shortcuts exist and the setup survives process restarts.
+- Per-colour thickness is independently assigned and recalled for Pen,
+  Highlighter, Solid Line and Dashed Line through their actual toolbar actions.
+  Repeated colour/tool switches update the thickness button and preserve both
+  palettes. Duplicate/recoloured swatches follow their actual RGB colours;
+  background palette changes and highlighter alpha are checked. The memory is
+  verified in two further processes, including after forced termination/recovery.
+  Numbered Favourite controls must be absent.
 - Covers hide existing handwriting, reveal independently, support undo/redo,
   retain transformations and reveal state after reloading, and stay above ink.
 - Versions deduplicate unchanged content. Restoring an earlier version creates
