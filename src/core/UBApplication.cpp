@@ -122,7 +122,7 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
     if(version.endsWith("."))
         version = version.left(version.length()-1);
 #ifdef UB_TEACHING_FORK
-    setApplicationVersion("1.7.7.4");
+    setApplicationVersion("1.7.7.5");
 #else
     setApplicationVersion(version);
 #endif
@@ -330,11 +330,19 @@ int UBApplication::exec(const QString& pFileToImport)
     }
     QPixmapCache::setCacheLimit(1024 * 100);
 
+#if defined(UB_TEACHING_FORK) && defined(Q_OS_WIN)
+    // Upgrade existing frameless profiles as well as new installations.
+    // The control window keeps native Windows controls; projector views still
+    // use the display manager's separate full-screen windows.
+    UBSettings::settings()->appRunInWindow->set(true);
+#endif
     displayManager = new UBDisplayManager(staticMemoryCleaner);
 
     if (UBSettings::settings()->appRunInWindow->get().toBool()) {
         mainWindow = new UBMainWindow(0,
                 Qt::Window |
+                Qt::WindowTitleHint |
+                Qt::WindowSystemMenuHint |
                 Qt::WindowCloseButtonHint |
                 Qt::WindowMinimizeButtonHint |
                 Qt::WindowMaximizeButtonHint |
@@ -435,6 +443,11 @@ int UBApplication::exec(const QString& pFileToImport)
         applicationController->showDocument();
     else
         applicationController->showBoard();
+
+#if defined(UB_TEACHING_FORK) && defined(Q_OS_WIN)
+    if (UBSettings::settings()->appStartMode->get().toInt() != 1)
+        mainWindow->showMaximized();
+#endif
 
     if(UBSettings::settings()->appStartupHintsEnabled->get().toBool())
     {

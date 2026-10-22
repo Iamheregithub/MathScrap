@@ -60,7 +60,12 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     // presentation proxies are hidden; this also preserves disabled states.
     int group = 0;
     for (auto source : toolbar->actions()) {
-        if (source->isSeparator()) continue;
+        if (source->isSeparator()) {
+            // Fixed upstream group dividers have no position in a user-ordered
+            // toolbar. Leaving them in place gathers all five before Stylus.
+            toolbar->removeAction(source);
+            continue;
+        }
         if (source->objectName().isEmpty()) source->setObjectName(QString("teachingGroup%1").arg(group++));
         const QString id = source->objectName();
         mDefaultTop << id;

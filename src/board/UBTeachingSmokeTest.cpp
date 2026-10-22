@@ -76,6 +76,64 @@ void installTeachingCrashDiagnostics() {
 }
 
 namespace {
+bool checkWindowAndToolbar(QString *error)
+{
+    auto window = UBApplication::mainWindow;
+    auto toolbar = window->boardToolBar;
+    auto hasLeadingDivider = [toolbar] {
+        for (auto action : toolbar->actions())
+            if (action->isVisible()) return action->isSeparator();
+        return true;
+    };
+    if (hasLeadingDivider()) { *error = "Stray dividers precede Stylus"; return false; }
+    // Exercise the same reorder/apply path that previously stranded separators.
+    auto customize = toolbar->actions().last();
+    for (bool restore : {false, true}) {
+        bool reordered = false;
+        QTimer::singleShot(0, window, [&] {
+            auto dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            auto tabs = dialog ? dialog->findChild<QTabWidget*>() : nullptr;
+            auto list = tabs ? qobject_cast<QListWidget*>(tabs->widget(0)) : nullptr;
+            if (list && list->count() > 1) {
+                auto item = list->takeItem(restore ? list->count() - 1 : 0);
+                list->insertItem(restore ? 0 : list->count(), item);
+                reordered = true;
+            }
+            if (dialog) dialog->accept();
+        });
+        customize->trigger();
+        if (!reordered || hasLeadingDivider()) { *error = "Toolbar reorder restored leading dividers"; return false; }
+    }
+    window->setProperty("toolbarLayoutChecked", true);
+#ifdef Q_OS_WIN
+    const HWND handle = reinterpret_cast<HWND>(window->winId());
+    auto hasChrome = [window, handle] {
+        const LONG_PTR expected = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        const auto style = GetWindowLongPtr(handle, GWL_STYLE);
+        const HMENU menu = GetSystemMenu(handle, FALSE);
+        const UINT closeState = menu ? GetMenuState(menu, SC_CLOSE, MF_BYCOMMAND) : UINT(-1);
+        return !window->isFullScreen() && !(window->windowFlags() & Qt::FramelessWindowHint)
+            && (style & expected) == expected && closeState != UINT(-1)
+            && !(closeState & (MF_DISABLED | MF_GRAYED));
+    };
+    if (!hasChrome() || !window->isMaximized()) { *error = "Windows title bar or maximized startup is missing"; return false; }
+    window->showMinimized(); QApplication::processEvents();
+    if (!IsIconic(handle)) { *error = "Native minimize failed"; return false; }
+    window->showNormal(); QApplication::processEvents();
+    if (IsIconic(handle) || IsZoomed(handle) || !hasChrome()) { *error = "Native restore failed"; return false; }
+    window->showMaximized(); QApplication::processEvents();
+    UBApplication::applicationController->showDocument();
+    UBApplication::applicationController->showBoard();
+    QApplication::processEvents();
+    if (!IsZoomed(handle) || !hasChrome()) { *error = "Mode switching lost the native window controls"; return false; }
+    window->setProperty("windowChromeChecked", true);
+    const auto frame = window->frameGeometry().intersected(window->screen()->geometry());
+    window->screen()->grabWindow(0, frame.x(), frame.y(), frame.width(), frame.height())
+        .save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("window-chrome-window.png"));
+#endif
+    return true;
+}
+
 bool checkPdfSelection(QString *error)
 {
     const QDir output = QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
@@ -234,6 +292,8 @@ void finish(bool passed, const QString &detail) {
     report["detail"] = storageError.isEmpty() ? detail : storageError;
     report["qt"] = qVersion();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
+    report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
+    report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
     file.write(QJsonDocument(report).toJson());
     file.close();
     qApp->exit(passed ? 0 : 18);
@@ -248,6 +308,8 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
         }
+        QString chromeError;
+        if (!checkWindowAndToolbar(&chromeError)) { finish(false, chromeError); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");
