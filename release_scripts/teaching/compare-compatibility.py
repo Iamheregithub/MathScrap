@@ -1,5 +1,7 @@
 """Compare semantic scene manifests and rendering; no lesson files are rewritten."""
-import json,sys,hashlib,zipfile,math
+import json,sys,hashlib,zipfile,math,posixpath
+import xml.etree.ElementTree as ET
+from urllib.parse import unquote
 from pathlib import Path
 from PIL import Image,ImageChops
 root=Path(sys.argv[1]);checks=[]
@@ -33,13 +35,24 @@ compare(read('original-edit-saved.json'),read('lessonboard-reopen-saved.json'),'
 for name in ['original.ubz','lessonboard.ubz','original-resaved.ubz','lessonboard-reopened.ubz']:
     with zipfile.ZipFile(root/name) as z:
         assert z.testzip() is None,(name,'ZIP CRC')
-        svgs=[z.read(n) for n in z.namelist() if n.endswith('.svg')]
+        # Old assets may be retained to protect duplicated pages. Count shapes
+        # referenced by live pages, and verify every referenced SVG exists.
+        names=set(z.namelist());referenced=set()
+        for page in names:
+            if not (posixpath.basename(page).startswith('page') and page.endswith('.svg')):continue
+            for element in ET.fromstring(z.read(page)).iter():
+                href=element.get('{http://www.w3.org/1999/xlink}href',element.get('href',''))
+                if href.endswith('.svg'):
+                    asset=posixpath.normpath(posixpath.join(posixpath.dirname(page),unquote(href)))
+                    assert asset in names,(name,page,'missing SVG asset',asset)
+                    referenced.add(asset)
+        svgs=[z.read(n) for n in sorted(referenced)]
         if name!='original.ubz':
             assert sum(b'id="teaching-shape"' in v for v in svgs)==4,(name,'shape metadata')
             assert sum(b'id="graphdesk-project"' in v for v in svgs)==1,(name,'graph metadata')
             assert sum(b'id="lessonboard-cover"' in v for v in svgs)==1,(name,'cover metadata')
         assert any(n.endswith('.pdf') for n in z.namelist()),(name,'original PDF')
-checks.append('All four UBZ archives pass CRC validation and retain their PDF assets; new SVG metadata survives')
+checks.append('All four UBZ archives pass CRC validation and retain their PDF assets; all live SVG references resolve and new SVG metadata survives')
 visual=[]
 for left,right,label in [('original-create-saved','lessonboard-edit-import','Original lesson'),('lessonboard-edit-saved','original-edit-import','LessonBoard lesson'),('original-edit-saved','lessonboard-reopen-import','Resaved lesson')]:
     for page in range(1,4):
