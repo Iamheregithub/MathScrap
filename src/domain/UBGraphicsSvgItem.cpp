@@ -28,6 +28,7 @@
 
 
 #include "UBGraphicsSvgItem.h"
+#include "UBQuadraticFormula.h"
 #include "UBUndoCommand.h"
 
 #include <QtGui>
@@ -201,6 +202,11 @@ QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant
 
 void UBGraphicsSvgItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    mQuadraticPressedButton = UBQuadraticFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
+    if (mQuadraticPressedButton >= 0) {
+        event->accept();
+        return;
+    }
     QMimeData* pMime = new QMimeData();
     QPixmap pixmap = toPixmapItem()->pixmap();
     pMime->setImageData(pixmap.toImage());
@@ -230,6 +236,23 @@ void UBGraphicsSvgItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void UBGraphicsSvgItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
+    const int direction = UBQuadraticFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
+    if (mQuadraticPressedButton >= 0) {
+        const bool clicked = direction == mQuadraticPressedButton;
+        mQuadraticPressedButton = -1;
+        UBQuadraticFormula::State state;
+        if (clicked && UBQuadraticFormula::read(mFileData, &state)) {
+            const int next=qBound(0,state.step+(direction?1:-1),5);
+            if (next!=state.step) {
+                const QByteArray before=mFileData;
+                state.step=next;
+                setTeachingSvg(UBQuadraticFormula::render(state));
+                commitTeachingSvg(before);
+            }
+        }
+        event->accept();
+        return;
+    }
     Delegate()->mouseReleaseEvent(event);
     QGraphicsSvgItem::mouseReleaseEvent(event);
 }
@@ -253,7 +276,7 @@ UBItem* UBGraphicsSvgItem::deepCopy() const
 {
     UBGraphicsSvgItem* copy = new UBGraphicsSvgItem(this->fileData());
 
-    if (!isTeachingShape() && !mFileData.contains("graphdesk-project"))
+    if (!isTeachingShape() && !mFileData.contains("graphdesk-project") && !mFileData.contains("lessonboard-quadratic"))
         copy->setUuid(this->uuid());
 
     copyItemParameters(copy);

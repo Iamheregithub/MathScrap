@@ -96,6 +96,7 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         void initTeachingHandles();
         QList<QGraphicsItem*> mTeachingHandles;
         bool mTeachingDetached = false;
+        int mQuadraticPressedButton = -1;
         QByteArray mFileData;
 };
 

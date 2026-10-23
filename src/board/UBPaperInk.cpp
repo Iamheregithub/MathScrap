@@ -226,6 +226,7 @@ void UBPaperInk::rebuild()
     auto page=mMore->addMenu(tr("Page and paper"));
     for(const auto &id:QStringList{"actionNewPage","actionDuplicatePage","actionImportPage","actionBackgrounds","actionClearPage"})if(auto a=mWindow->findChild<QAction*>(id))page->addAction(a);
     auto zoom=mMore->addMenu(tr("Zoom"));for(const auto &id:QStringList{"actionTeachingZoomIn","actionTeachingZoomOut","actionTeachingZoomReset"})if(auto a=mWindow->findChild<QAction*>(id))zoom->addAction(a);
+    if(auto a=mWindow->findChild<QAction*>("actionTeachingQuadratic"))mMore->addAction(a);
     for(const auto &id:QStringList{"actionDocument","actionLessonHistory","actionLessonSaveVersion"})if(auto a=mWindow->findChild<QAction*>(id))mMore->addAction(a);
     mMore->addSeparator();mMore->addAction(mWindow->findChild<QAction*>("actionTeachingCustomize"));
     auto more=new QToolButton(mDock);more->setObjectName("paperMore");more->setText(tr("More"));more->setIcon(inkIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setIconSize(QSize(26,26));more->setFixedSize(touch?76:64,touch?76:62);more->setMenu(mMore);more->setPopupMode(QToolButton::InstantPopup);layout->addWidget(more);

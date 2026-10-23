@@ -24,6 +24,7 @@
 
 #include <QGraphicsPixmapItem>
 #include <QSvgRenderer>
+#include <QWidget>
 
 #include "board/UBDrawingController.h"
 #include "document/UBDocument.h"
@@ -292,8 +293,17 @@ void UBThumbnail::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
 void UBThumbnail::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
+    const bool paperDocuments = widget && widget->window() &&
+        widget->window()->findChild<QWidget*>("paperDocumentsWorkspace");
+    if (paperDocuments) {
+        painter->setRenderHint(QPainter::Antialiasing);
+        const QRectF card=boundingRect().adjusted(3,3,-3,-3);
+        painter->setPen(QPen(isSelected()?QColor("#c69c47"):QColor("#ded8cc"),isSelected()?2:1));
+        painter->setBrush(QColor("#fffdf8"));
+        painter->drawRoundedRect(card,8,8);
+    }
     // paint a selection frame but only around the pixmap
-    if (isSelected())
+    if (isSelected() && !paperDocuments)
     {
         const auto selectionRect = mapRectFromItem(mPixmapItem, mPixmapItem->boundingRect()) + cSelectionMargins;
         painter->setPen(pen());

@@ -22,6 +22,7 @@
 #include "board/UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBQuadraticFormula.h"
 
 UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindow(window)
 {
@@ -65,6 +66,35 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     connect(shapes, &QAction::triggered, this, &UBTeachingTools::shapeDialog);
     auto graph = add("actionTeachingGraphDesk", tr("GraphDesk"), ":/images/teaching/graph.svg");
     connect(graph, &QAction::triggered, this, &UBTeachingTools::openGraphDesk);
+    auto quadratic = add("actionTeachingQuadratic", tr("Quadratic formula"), ":/images/teaching/graph.svg");
+    connect(quadratic, &QAction::triggered, this, [this] {
+        auto scene=UBApplication::boardController->activeScene();
+        if (!scene) return;
+        UBQuadraticFormula::State state;
+        UBGraphicsSvgItem *selected=nullptr;
+        for (auto item:scene->selectedItems()) if (auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))
+            if (UBQuadraticFormula::read(svg->fileData(),&state)) { selected=svg; break; }
+        QDialog dialog(mWindow); dialog.setWindowTitle(selected?tr("Edit quadratic formula"):tr("Insert quadratic formula"));
+        auto layout=new QVBoxLayout(&dialog);
+        layout->addWidget(new QLabel(tr("Enter the coefficients of ax² + bx + c = 0.")));
+        auto form=new QFormLayout; layout->addLayout(form);
+        QSpinBox *inputs[3];
+        const int values[3]={state.a,state.b,state.c};
+        const QStringList names={"a","b","c"};
+        for (int i=0;i<3;++i) { inputs[i]=new QSpinBox(&dialog); inputs[i]->setRange(-9999,9999); inputs[i]->setValue(values[i]); form->addRow(names[i],inputs[i]); }
+        auto note=new QLabel(tr("a must not be zero. Select an inserted formula and choose this command to edit it."));
+        note->setWordWrap(true); layout->addWidget(note);
+        auto buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel,&dialog);layout->addWidget(buttons);
+        connect(buttons,&QDialogButtonBox::accepted,&dialog,[&] { if(inputs[0]->value()) dialog.accept(); else QMessageBox::warning(&dialog,tr("Quadratic formula"),tr("a must not be zero.")); });
+        connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
+        if(dialog.exec()!=QDialog::Accepted) return;
+        state.a=inputs[0]->value();state.b=inputs[1]->value();state.c=inputs[2]->value();state.step=0;
+        const auto svg=UBQuadraticFormula::render(state);
+        if(svg.isEmpty()) { QMessageBox::warning(mWindow,tr("Quadratic formula"),tr("These coefficients are too large to calculate safely."));return; }
+        if(selected) {const auto before=selected->fileData();selected->setTeachingSvg(svg);selected->commitTeachingSvg(before);}
+        else scene->addSvg(QUrl(),UBApplication::boardController->controlView()->mapToScene(UBApplication::boardController->controlView()->viewport()->rect().center()),svg);
+        mWindow->actionSelector->trigger();
+    });
     auto zoomIn = add("actionTeachingZoomIn", tr("Zoom +"), ":/images/stylusPalette/zoomIn.png");
     auto zoomOut = add("actionTeachingZoomOut", tr("Zoom −"), ":/images/stylusPalette/zoomOut.png");
     auto reset = add("actionTeachingZoomReset", tr("Reset zoom"), ":/images/stylusPalette/zoomOut.png");
@@ -74,7 +104,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     connect(zoomIn, &QAction::triggered, this, [] { UBApplication::boardController->zoomIn(); });
     connect(zoomOut, &QAction::triggered, this, [] { UBApplication::boardController->zoomOut(); });
     connect(reset, &QAction::triggered, this, [] { UBApplication::boardController->zoomRestore(); });
-    UBShortcutManager::shortcutManager()->addActions(tr("Teaching"), {dash, shapes, graph, zoomIn, zoomOut, reset}, window);
+    UBShortcutManager::shortcutManager()->addActions(tr("Teaching"), {dash, shapes, graph, quadratic, zoomIn, zoomOut, reset}, window);
 
     new UBLessonTools(window);
 

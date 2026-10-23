@@ -55,3 +55,5 @@ SOURCES += src/domain/UBGraphicsScene.cpp \
     src/domain/UBSelectionFrame.cpp \
     src/domain/UBUndoCommand.cpp \
     src/domain/UBGraphicsItemZLevelUndoCommand.cpp
+HEADERS += src/domain/UBQuadraticFormula.h
+SOURCES += src/domain/UBQuadraticFormula.cpp

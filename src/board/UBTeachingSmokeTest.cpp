@@ -19,6 +19,7 @@
 #include "UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBQuadraticFormula.h"
 #include "domain/UBGraphicsStrokesGroup.h"
 #include "document/UBDocumentProxy.h"
 #include "document/UBDocument.h"
@@ -581,6 +582,17 @@ void scheduleTeachingSmokeTest(QObject *context)
         }
         QString chromeError;
         if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError)) { finish(false, chromeError); return; }
+        if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
+        UBQuadraticFormula::State example{1,6,7,0}, restored;
+        auto first=UBQuadraticFormula::render(example);
+        if (!UBQuadraticFormula::read(first,&restored) || restored.a!=1 || restored.b!=6 || restored.c!=7 || restored.step!=0
+            || UBQuadraticFormula::stepAt(first,640,185)!=1) { finish(false,"Quadratic initial state or Next button invalid"); return; }
+        example.step=5;
+        auto finalFormula=UBQuadraticFormula::render(example);
+        if (!finalFormula.contains("−3 ± √2") || !finalFormula.contains("-1.586") || !finalFormula.contains("-4.414")
+            || !UBQuadraticFormula::read(finalFormula,&restored) || restored.step!=5) { finish(false,"Quadratic exact or approximate roots invalid"); return; }
+        if (!UBQuadraticFormula::render({1,0,1,5}).contains("No real roots") ||
+            !UBQuadraticFormula::render({1,-2,1,5}).contains("One repeated root")) { finish(false,"Quadratic discriminant cases invalid"); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");
