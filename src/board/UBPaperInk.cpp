@@ -90,7 +90,7 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
     auto proxy=new QAction(b);proxy->setText(label);proxy->setToolTip(source->toolTip());
     auto update=[source,proxy,label,dash]{const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();proxy->setText(dash?(dashed?tr("Dashed"):tr("Line")):label);proxy->setIcon(inkIcon(dashed?QString("actionTeachingDash"):source->objectName()));proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());proxy->setChecked(source->isChecked()||(dash&&dash->isChecked()));};
     connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);connect(proxy,&QAction::triggered,this,[this,source,b,dash]{
-        const bool same=mTrayOpen&&mTrayAction==source->objectName();
+        const bool same=mTrayOpen&&mTrayAction==source->objectName()&&UBDrawingController::drawingController()->stylusTool()==trayTool();
         if(dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool())dash->trigger();else source->trigger();
         if(b->property("paperTray").toBool()){if(same)closeTray();else openTray(b);}
     });update();
@@ -100,6 +100,14 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
 {
     setObjectName("paperInk");mWindow->setProperty("paperInk",true);
     auto settings=UBSettings::settings();mPagesOpen=settings->value("Teaching/PaperInkPages",true).toBool();
+    if(!settings->value("Teaching/CombinedLineButton",false).toBool()){
+        const bool visible=settings->value("Teaching/Bottom/actionLine",true).toBool()||settings->value("Teaching/Bottom/actionTeachingDash",false).toBool();
+        settings->setValue("Teaching/Bottom/actionLine",visible);settings->setValue("Teaching/Bottom/actionTeachingDash",false);
+        auto order=settings->value("Teaching/BottomOrder").toStringList();
+        if(!order.contains("actionLine")&&order.contains("actionTeachingDash"))order[order.indexOf("actionTeachingDash")]=QString("actionLine");
+        order.removeAll("actionTeachingDash");if(!order.isEmpty())settings->setValue("Teaching/BottomOrder",order);
+        settings->setValue("Teaching/CombinedLineButton",true);settings->save();
+    }
     auto view=UBApplication::boardController->controlView();
     // Keep legacy actions registered for shortcuts, menus and saved preferences.
     // A zero-height presentation removes the ribbon without hiding Board mode.

@@ -226,7 +226,7 @@ bool checkCircleErase(QString *error)
     if(!scene->circleEraseReady()||render()!=before||UBApplication::undoStack->index()!=undoBefore)return fail("Drawing an erase loop changed lesson ink before confirmation");
     scene->inputDevicePress(QPointF(0,0));scene->inputDeviceRelease();const auto after=render();
     if(scene->circleEraseReady()||after.pixelColor(400,300).lightness()<230||after.pixelColor(260,300).lightness()>80||after.pixelColor(540,300).lightness()>80)return fail("Circle erase did not clip only the inside of crossing ink");
-    if(shape->scene()!=scene.get()||shape->fileData()!=shapeData||UBApplication::undoStack->index()!=undoBefore+1)return fail("Circle erase changed a shape or created multiple undo steps");
+    if(shape->scene()!=scene||shape->fileData()!=shapeData||UBApplication::undoStack->index()!=undoBefore+1)return fail("Circle erase changed a shape or created multiple undo steps");
     UBApplication::undoStack->undo();if(render()!=before)return fail("Circle erase Undo did not restore all ink");
     UBApplication::undoStack->redo();if(render()!=after)return fail("Circle erase Redo did not restore the clipped result");
     loop();scene->inputDevicePress(QPointF(160,160));scene->inputDeviceRelease();
