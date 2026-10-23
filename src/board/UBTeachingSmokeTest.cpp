@@ -596,7 +596,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             example.step=stage;const auto data=UBQuadraticFormula::render(example);QSvgRenderer renderer(data);
             if(!renderer.isValid()||!data.contains("4(1)(7)")||!data.contains("denominator 2(1)")){finish(false,"Quadratic substitution notation or SVG invalid");return;}
             QFile svgFile(formulaOutput.filePath(QString("quadratic-stage-%1.svg").arg(stage)));svgFile.open(QIODevice::WriteOnly);svgFile.write(data);svgFile.close();
-            QImage image(renderer.defaultSize()*2,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter painter(&image);renderer.render(&painter);painter.end();image.save(formulaOutput.filePath(QString("quadratic-stage-%1.png").arg(stage)));
+            QImage image(renderer.defaultSize()*2,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter painter(&image);renderer.render(&painter);painter.end();image.save(formulaOutput.filePath(QString("quadratic-stage-%1-window.png").arg(stage)));
         }
         example.step=5;
         auto finalFormula=UBQuadraticFormula::render(example);
