@@ -12,7 +12,7 @@
 #include <cmath>
 namespace {
 QString num(int n){return QString::number(n);}
-QString nfmt(double n){if(qAbs(n)<0.0000000001)n=0;return QString::number(n,'g',10);}
+QString nfmt(double n){return QString::number(n==0?0:n,'g',15);}
 QString dec(double n){if(qAbs(n)<0.0005)n=0;QString s=QString::number(n,'f',3);s.remove(QRegularExpression("0+$"));s.remove(QRegularExpression("\\.$"));return s;}
 QString par(double n){return "("+nfmt(n)+")";}
 struct Math { QString spoken; QPainterPath path; qreal width=0, height=0, baseline=0; };
@@ -79,17 +79,18 @@ bool parsePolynomial(QString source,Polynomial &p){
     const QRegularExpression term("^([+-]?)(?:(\\d*\\.?\\d+)(?:/(\\d*\\.?\\d+))?\\*?)?(x(?:\\^([0-4]))?)?$");
     const auto parts=source.split('+',Qt::KeepEmptyParts);
     for(const auto &part:parts){const auto m=term.match(part);if(!m.hasMatch()||(m.captured(2).isEmpty()&&m.captured(4).isEmpty()))return false;
-        double c=m.captured(2).isEmpty()?1:m.captured(2).toDouble();if(!m.captured(3).isEmpty())return false;if(m.captured(1)=="-")c=-c;
+        if(part.endsWith('*'))return false;
+        bool ok=true;double c=m.captured(2).isEmpty()?1:m.captured(2).toDouble(&ok);if(!ok||!m.captured(3).isEmpty())return false;if(m.captured(1)=="-")c=-c;
         int degree=m.captured(4).isEmpty()?0:m.captured(5).isEmpty()?1:m.captured(5).toInt();p[degree]+=c;if(!std::isfinite(c)||qAbs(c)>1000000)return false;}
     return true;
 }
 int choose(int n,int k){int r=1;for(int i=1;i<=k;++i)r=r*(n-i+1)/i;return r;}
 Math polynomial(const Terms &terms){
     QList<Math> lines,parts;bool first=true;qreal width=0;
-    for(auto it=terms.cend();it!=terms.cbegin();){--it;const double c=it.value();if(qAbs(c)<1e-10)continue;
+    for(auto it=terms.cend();it!=terms.cbegin();){--it;const double c=it.value();if(c==0)continue;
         QList<Math> t;QString sign=c<0?(first?"−":" − "):(first?"":" + ");if(!sign.isEmpty())t<<text(sign);
         const int xp=it.key().first,hp=it.key().second;
-        if(qAbs(qAbs(c)-1)>1e-10||(!xp&&!hp))t<<text(nfmt(qAbs(c)));
+        if(qAbs(c)!=1||(!xp&&!hp))t<<text(nfmt(qAbs(c)));
         if(xp)t<<power("x",xp);if(hp)t<<power("h",hp);const Math next=join(t);
         if(!parts.isEmpty()&&width+next.width>700){lines<<join(parts);parts.clear();width=0;}
         parts<<next;width+=next.width;first=false;
@@ -97,7 +98,7 @@ Math polynomial(const Terms &terms){
     if(parts.isEmpty()&&lines.isEmpty())return text("0");if(!parts.isEmpty())lines<<join(parts);return lines.size()==1?lines.first():stack(lines);
 }
 Terms asTerms(const Polynomial &p){Terms t;for(auto it=p.cbegin();it!=p.cend();++it)t[{it.key(),0}]=it.value();return t;}
-Math polynomialAt(const Polynomial &p,const QString &variable){QList<Math> parts;bool first=true;for(auto it=p.cend();it!=p.cbegin();){--it;double c=it.value();if(qAbs(c)<1e-10)continue;const QString sign=c<0?(first?"−":" − "):(first?"":" + ");parts<<text(sign);if(qAbs(qAbs(c)-1)>1e-10||it.key()==0)parts<<text(nfmt(qAbs(c)));if(it.key())parts<<power(variable,it.key());first=false;}return first?text("0"):join(parts);}
+Math polynomialAt(const Polynomial &p,const QString &variable){QList<Math> parts;bool first=true;for(auto it=p.cend();it!=p.cbegin();){--it;double c=it.value();if(c==0)continue;const QString sign=c<0?(first?"−":" − "):(first?"":" + ");parts<<text(sign);if(qAbs(c)!=1||it.key()==0)parts<<text(nfmt(qAbs(c)));if(it.key())parts<<power(variable,it.key());first=false;}return first?text("0"):join(parts);}
 Math limit(const Math &inside){return join({stack({text("lim",24),text("h → 0",16)}),inside},12);}
 Work build(const UBMathFormula::State &s){
     Work w;const QString k=s.kind;
@@ -157,15 +158,20 @@ Work build(const UBMathFormula::State &s){
         const QString xs=par(v[2])+" − "+par(v[0]),ys=par(v[3])+" − "+par(v[1]);
         if(k=="slope"){
             w.rows<<eq("m",divide(T(ys),T(xs)));
-            if(qAbs(dx)<1e-12){w.rows<<text(qAbs(dy)<1e-12?"Slope is undefined: the two points coincide.":"Slope is undefined: the line is vertical.",24);return w;}
+            if(dx==0){w.rows<<text(dy==0?"Slope is undefined: the two points coincide.":"Slope is undefined: the line is vertical.",24);return w;}
+            if(!std::isfinite(dy/dx))return fail("The slope is too large to represent. Rescale the coordinates.");
             w.rows<<eq("m",divide(T(nfmt(dy)),T(nfmt(dx))));
             if(dy==qRound(dy)&&dx==qRound(dx)){int n=qRound(dy),den=qRound(dx),g=std::gcd(qAbs(n),qAbs(den));n/=g;den/=g;if(den<0){n=-n;den=-den;}w.rows<<eq("m",den==1?T(num(n)):divide(T(num(n)),T(num(den))));}
             w.rows<<text("m ≈ "+dec(dy/dx));
         }else{const double r=dx*dx+dy*dy;w.rows<<eq("d",radical(join({squared("("+xs+")"),T(" + "),squared("("+ys+")")})));w.rows<<eq("d",radical(T(nfmt(dx*dx)+" + "+nfmt(dy*dy))));w.rows<<eq("d",radical(T(nfmt(r))));w.rows<<text("d ≈ "+dec(qSqrt(r)));}
     }else if(k=="sine"){
         const double a=v[0],A=v[1],third=v[2];if(a<=0||A<=0||A>=180)return fail("Use a positive side and an angle strictly between 0° and 180°.");
+        const double sinA=qSin(qDegreesToRadians(A));
+        if(sinA==0)return fail("Angle A is too small to calculate reliably.");
         if(s.mode==0){if(third<=0||A+third>=180)return fail("The known angles must be positive and sum to less than 180°.");
-            w.rows<<eq("b",divide(T("a sin B"),T("sin A")));w.rows<<eq("b",divide(T(nfmt(a)+" sin("+nfmt(third)+"°)"),T("sin("+nfmt(A)+"°)")));double b=a*qSin(qDegreesToRadians(third))/qSin(qDegreesToRadians(A));w.rows<<text("b ≈ "+dec(b));
+            w.rows<<eq("b",divide(T("a sin B"),T("sin A")));w.rows<<eq("b",divide(T(nfmt(a)+" sin("+nfmt(third)+"°)"),T("sin("+nfmt(A)+"°)")));double b=a*qSin(qDegreesToRadians(third))/sinA;
+            if(!std::isfinite(b))return fail("The side is too large to represent. Rescale the known side.");
+            w.rows<<text("b ≈ "+dec(b));
         }else{if(third<=0)return fail("Side b must be positive.");const double ratio=third*qSin(qDegreesToRadians(A))/a;
             w.rows<<eq("sin B",divide(T("b sin A"),T("a")));w.rows<<eq("sin B",divide(T(nfmt(third)+" sin("+nfmt(A)+"°)"),T(nfmt(a))));w.rows<<eq("sin B",T(nfmt(ratio)));
             if(ratio>1+1e-12){w.rows<<text("No triangle: sin B would exceed 1.",24);return w;}
@@ -177,12 +183,18 @@ Work build(const UBMathFormula::State &s){
         }
     }else if(k=="cosine-side"){
         const double b=v[0],c=v[1],A=v[2];if(b<=0||c<=0||A<=0||A>=180)return fail("Use positive sides and an included angle between 0° and 180°.");
-        const double rad=b*b+c*c-2*b*c*qCos(qDegreesToRadians(A));
+        // The expanded cosine law loses the small difference when b and c
+        // are similar and A is small. This equivalent form avoids cancellation.
+        const double side=std::hypot(b-c,2*qSqrt(b)*qSqrt(c)*qSin(qDegreesToRadians(A/2)));
+        const double rad=side*side;
         w.rows<<eq("a",radical(join({squared(par(b)),T(" + "),squared(par(c)),T(" − 2"+par(b)+par(c)+" cos("+nfmt(A)+"°)")})));
-        w.rows<<eq("a",radical(T(nfmt(rad))));w.rows<<text("a ≈ "+dec(qSqrt(qMax(0.0,rad))));
+        w.rows<<eq("a",radical(T(nfmt(rad))));w.rows<<text("a ≈ "+dec(side));
     }else if(k=="cosine-angle"){
         const double a=v[0],b=v[1],c=v[2];if(a<=0||b<=0||c<=0||a+b<=c||a+c<=b||b+c<=a)return fail("These side lengths do not form a triangle.");
-        const double ratio=(b*b+c*c-a*a)/(2*b*c);
+        const double scale=qMax(a,qMax(b,c)),an=a/scale,bn=b/scale,cn=c/scale;
+        const double denominator=2*bn*cn;
+        if(denominator==0)return fail("These side lengths differ too much to calculate the angle reliably.");
+        const double ratio=(bn*bn+cn*cn-an*an)/denominator;
         w.rows<<eq("cos A",divide(join({squared(par(b)),T(" + "),squared(par(c)),T(" − "),squared(par(a))}),T("2"+par(b)+par(c))));
         w.rows<<eq("cos A",T(nfmt(ratio)));w.rows<<eq("A",join({power("cos",-1),T("("+nfmt(ratio)+")")}));w.rows<<text("A ≈ "+dec(qRadiansToDegrees(qAcos(qBound(-1.0,ratio,1.0))))+"°");
     }

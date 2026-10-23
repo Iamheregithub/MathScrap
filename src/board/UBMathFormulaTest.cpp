@@ -29,12 +29,19 @@ bool checkMathFormulae(QString *error){
         {"distance",{"1","2","4","6"},0,"d ≈ 5"},
         {"slope",{"1","2","3","6"},0,"m ≈ 2"},
         {"slope",{"1","2","1","6"},0,"line is vertical"},
+        {"slope",{"0","0","0.0000000000001","1"},0,"m ≈ 10000000000000"},
+        {"slope",{"1","2","1","2"},0,"two points coincide"},
         {"sine",{"10","30","60"},0,"b ≈ 17.321"},
         {"sine",{"7","30","10"},1,"both triangles are valid"},
         {"cosine-side",{"3","4","90"},0,"a ≈ 5"},
+        {"cosine-side",{"1000000","1000000","0.000001"},0,"a ≈ 0.017"},
         {"cosine-angle",{"5","3","4"},0,"A ≈ 90°"},
+        {"cosine-angle",{"1e-200","1e-200","1e-200"},0,"A ≈ 60°"},
         {"quotient",{"x^2"},0,"Q = 2x + h"},
-        {"derivative",{"x^3-2x"},0,"f′(x) = 3x^2 − 2"}
+        {"derivative",{"x^3-2x"},0,"f′(x) = 3x^2 − 2"},
+        {"derivative",{"0.00000000001x^2"},0,"f′(x) = 2e-11x"},
+        {"derivative",{"0.99999999999x"},0,"f′(x) = 0.99999999999"},
+        {"derivative",{"7"},0,"f′(x) = 0"}
     };
     const QDir output=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
     for(const auto &e:examples){UBMathFormula::State state;state.kind=e.kind;state.values=e.values;state.mode=e.mode;state.step=UBMathFormula::lastStep(state);const auto svg=UBMathFormula::render(state);UBMathFormula::State reopened;QSvgRenderer renderer(svg);const auto result=description(svg);
@@ -42,6 +49,9 @@ bool checkMathFormulae(QString *error){
         QImage image(renderer.defaultSize(),QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter painter(&image);renderer.render(&painter);painter.end();image.save(output.filePath("formula-"+e.kind+QString::number(e.mode)+"-window.png"));
     }
     UBMathFormula::State unsupported;unsupported.kind="derivative";unsupported.values={"sin(x)"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Unsupported function was accepted");
+    unsupported.values={"2*"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Incomplete multiplication was accepted as a constant");
+    UBMathFormula::State overflow;overflow.kind="slope";overflow.values={"0","0","1e-320","1"};if(UBMathFormula::error(overflow).isEmpty())return fail("Unrepresentable slope was accepted");
+    overflow.kind="sine";overflow.values={"1000000","1e-310","60"};if(UBMathFormula::error(overflow).isEmpty())return fail("Unrepresentable sine-law side was accepted");
     UBMathFormula::State impossible;impossible.kind="cosine-angle";impossible.values={"1","2","4"};if(UBMathFormula::error(impossible).isEmpty())return fail("Impossible triangle was accepted");
     auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;auto manager=UBPersistenceManager::persistenceManager();
     auto functions=window->findChild<QAction*>("actionTeachingFunctions");auto insert=window->findChild<QAction*>("insertFormula-quadratic");

@@ -217,14 +217,14 @@ void UBGraphicsSvgItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
         return;
     }
     QMimeData* pMime = new QMimeData();
-    QPixmap pixmap = toPixmapItem()->pixmap();
+    auto preview = toPixmapItem();
+    QPixmap pixmap = preview->pixmap();
+    delete preview;
     pMime->setImageData(pixmap.toImage());
     Delegate()->setMimeData(pMime);
-    qreal k = (qreal)pixmap.width() / 100.0;
-
-    QSize newSize((int)(pixmap.width() / k), (int)(pixmap.height() / k));
-
-    Delegate()->setDragPixmap(pixmap.scaled(newSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+    if (!pixmap.isNull()) {
+        Delegate()->setDragPixmap(pixmap.scaledToWidth(100, Qt::SmoothTransformation));
+    }
     if (!Delegate()->mousePressEvent(event))
         QGraphicsSvgItem::mousePressEvent(event);
 }
