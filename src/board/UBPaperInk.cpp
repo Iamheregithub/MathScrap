@@ -206,7 +206,7 @@ void UBPaperInk::rebuild()
     delete mMore;mMore=nullptr;mOverflowActions.clear();
     auto layout=qobject_cast<QHBoxLayout*>(mDock->layout());while(auto item=layout->takeAt(0)){delete item->widget();delete item;}
     const QStringList defaults={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"};
-    QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();for(const auto &id:defaults)if(!order.contains(id))order<<id;
+    QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();order.removeDuplicates();for(const auto &id:defaults)if(!order.contains(id))order<<id;
     const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingDash",tr("Dashed")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")}};
     mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
     const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();

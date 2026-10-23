@@ -158,6 +158,12 @@ bool checkPaperInk(QString *error)
     auto paper=window->findChild<UBPaperInk*>();auto dock=window->findChild<QFrame*>("paperDock");
     auto header=window->findChild<QToolBar*>("paperTopBar");auto pages=window->findChild<QListWidget*>("paperPageList");
     if(!paper||!dock||!header||!pages||window->boardToolBar->height()>1)return fail("Paper and ink shell is missing or legacy ribbon remains");
+    QSet<QString> toolNames;
+    for(auto button:dock->findChildren<QToolButton*>(QString(),Qt::FindDirectChildrenOnly)){
+        const QString name=button->objectName();
+        if(toolNames.contains(name))return fail("Repeated paper toolbar action: "+name);
+        toolNames.insert(name);
+    }
     auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
     if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
     window->actionSelector->trigger();pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
@@ -200,6 +206,7 @@ bool checkPaperInk(QString *error)
     const auto lastScene=board->activeScene();
     pages->itemClicked(pages->item(0));QApplication::processEvents();
     if(board->activeSceneIndex()!=0||board->activeScene()==lastScene)return fail("Paper page thumbnail did not load the selected page");
+    pen->click();QApplication::processEvents();
     const auto path=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-ink-window.png");window->grab().save(path);
     window->setProperty("paperInkChecked",true);return true;
 }

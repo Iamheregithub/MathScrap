@@ -177,6 +177,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     window->findChild<QAction*>("actionLessonCover")->setProperty("ungrouped",true);
     const QStringList paperOrder={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"};
     const auto remaining=mDefaultBottom;mDefaultBottom=paperOrder;for(const auto &id:remaining)if(!mDefaultBottom.contains(id))mDefaultBottom<<id;
+    mDefaultBottom.removeAll("actionTeachingDash");
     auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
     customizeAction->setObjectName("actionTeachingCustomize");
@@ -330,6 +331,7 @@ void UBTeachingTools::customize()
         list->setDropIndicatorShown(true);
         list->setSpacing(3);
         auto order = UBSettings::settings()->value("Teaching/" + prefix + "Order", defaults).toStringList();
+        order.removeDuplicates();
         for (auto id : defaults) if (!order.contains(id)) order << id;
         for (auto id : order) {
             if(prefix=="Bottom"&&id=="actionTeachingDash")continue;
