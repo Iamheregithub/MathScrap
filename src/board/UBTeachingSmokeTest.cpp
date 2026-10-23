@@ -589,7 +589,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             || UBQuadraticFormula::stepAt(first,640,185)!=1) { finish(false,"Quadratic initial state or Next button invalid"); return; }
         example.step=5;
         auto finalFormula=UBQuadraticFormula::render(example);
-        if (!finalFormula.contains("−3 ± √2") || !finalFormula.contains("-1.586") || !finalFormula.contains("-4.414")
+        if (!finalFormula.contains("-3 ± √2") || !finalFormula.contains("-1.586") || !finalFormula.contains("-4.414")
             || !UBQuadraticFormula::read(finalFormula,&restored) || restored.step!=5) { finish(false,"Quadratic exact or approximate roots invalid"); return; }
         if (!UBQuadraticFormula::render({1,0,1,5}).contains("No real roots") ||
             !UBQuadraticFormula::render({1,-2,1,5}).contains("One repeated root")) { finish(false,"Quadratic discriminant cases invalid"); return; }
