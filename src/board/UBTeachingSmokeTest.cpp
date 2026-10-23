@@ -160,8 +160,29 @@ bool checkPaperInk(QString *error)
     if(!paper||!dock||!header||!pages||window->boardToolBar->height()>1)return fail("Paper and ink shell is missing or legacy ribbon remains");
     auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
     if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
-    pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
+    window->actionSelector->trigger();pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
     if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62||header->width()<window->width()-12)return fail("Paper pen controls or compact header are not visible");
+    auto docs=window->findChild<QToolButton*>("paperDocuments");
+    if(!docs||!docs->isVisible()||docs->text()!=QObject::tr("Documents"))return fail("Documents is not visible in the header");
+    if(dock->findChild<QToolButton*>("paper-actionTeachingDash"))return fail("Dashed Line still has a separate dock button");
+    const int penCentre=pen->mapTo(board->controlView(),QPoint(pen->width()/2,0)).x();
+    const int rail=window->findChild<QFrame*>("paperPages")->width();
+    const int expected=qBound(rail+12,penCentre-panel->width()/2,qMax(rail+12,board->controlView()->width()-panel->width()-12));
+    if(qAbs(panel->x()-expected)>2)return fail("Pen tray is not anchored to Pen");
+    pen->click();paper->sync();QApplication::processEvents();
+    if(!panel->isHidden()||UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Pen)return fail("Closing a tray changed the pen or layout reopened it");
+    pen->click();QApplication::processEvents();if(panel->isHidden())return fail("Active Pen cannot reopen its tray");
+    auto lineButton=dock->findChild<QToolButton*>("paper-actionLine");
+    if(!lineButton)return fail("Combined line tool unavailable");
+    window->actionLine->trigger();lineButton->click();
+    QMouseEvent doubleClick(QEvent::MouseButtonDblClick,QPointF(lineButton->rect().center()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+    QApplication::sendEvent(lineButton,&doubleClick);
+    if(!UBSettings::settings()->value("Teaching/DashedLines").toBool()||lineButton->text()!=QObject::tr("Dashed"))return fail("Line double-click did not immediately select dashed mode");
+    QMouseEvent release(QEvent::MouseButtonRelease,QPointF(lineButton->rect().center()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(lineButton,&release);
+    lineButton->click();if(!UBSettings::settings()->value("Teaching/DashedLines").toBool())return fail("Selecting combined Line forgot the dashed style");
+    QApplication::sendEvent(lineButton,&doubleClick);QApplication::sendEvent(lineButton,&release);
+    if(UBSettings::settings()->value("Teaching/DashedLines").toBool())return fail("Line double-click could not return to solid mode");
+    window->actionSelector->trigger();pen->click();
     auto dc=UBDrawingController::drawingController();const int old=dc->currentToolColorIndex();
     auto colour=panel->findChild<QToolButton*>("paperColour8");if(!colour)return fail("Paper colour swatches unavailable");colour->click();
     if(dc->currentToolColorIndex()!=8)return fail("Paper swatch did not select the native pen colour");dc->setColorIndex(old);
@@ -181,6 +202,41 @@ bool checkPaperInk(QString *error)
     if(board->activeSceneIndex()!=0||board->activeScene()==lastScene)return fail("Paper page thumbnail did not load the selected page");
     const auto path=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-ink-window.png");window->grab().save(path);
     window->setProperty("paperInkChecked",true);return true;
+}
+
+bool checkCircleErase(QString *error)
+{
+    auto fail=[error](const QString &message){*error=message;return false;};
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;auto dc=UBDrawingController::drawingController();
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Circle and Tap regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
+    window->actionLine->trigger();dc->setPenColor(false,Qt::black,0);dc->setColorIndex(0);dc->setLineWidthIndex(2);
+    scene->inputDevicePress(QPointF(-170,0));scene->inputDeviceMove(QPointF(170,0));scene->inputDeviceRelease();
+    const QByteArray svg="<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#ffdd00'/></svg>";
+    auto shape=scene->addSvg(QUrl(),QPointF(0,20),svg);scene->clearSelection();
+    auto render=[scene]{QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);const auto context=scene->renderingContext();scene->setRenderingContext(UBGraphicsScene::NonScreen);scene->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));scene->setRenderingContext(context);return image;};
+    const QImage before=render();const auto shapeData=shape->fileData();
+    window->actionEraser->trigger();
+    auto loop=[&]{
+        for(int i=0;i<=36;++i){const qreal angle=i*6.283185307179586/36;const QPointF pt(70*qCos(angle),70*qSin(angle));if(i==0)scene->inputDevicePress(pt);else scene->inputDeviceMove(pt);}
+        scene->inputDeviceRelease();
+    };
+    const int undoBefore=UBApplication::undoStack->index();loop();
+    if(!scene->circleEraseReady()||render()!=before||UBApplication::undoStack->index()!=undoBefore)return fail("Drawing an erase loop changed lesson ink before confirmation");
+    scene->inputDevicePress(QPointF(0,0));scene->inputDeviceRelease();const auto after=render();
+    if(scene->circleEraseReady()||after.pixelColor(400,300).lightness()<230||after.pixelColor(260,300).lightness()>80||after.pixelColor(540,300).lightness()>80)return fail("Circle erase did not clip only the inside of crossing ink");
+    if(shape->scene()!=scene.get()||shape->fileData()!=shapeData||UBApplication::undoStack->index()!=undoBefore+1)return fail("Circle erase changed a shape or created multiple undo steps");
+    UBApplication::undoStack->undo();if(render()!=before)return fail("Circle erase Undo did not restore all ink");
+    UBApplication::undoStack->redo();if(render()!=after)return fail("Circle erase Redo did not restore the clipped result");
+    loop();scene->inputDevicePress(QPointF(160,160));scene->inputDeviceRelease();
+    if(scene->circleEraseReady()||render()!=after)return fail("Outside tap did not cancel circle erasing");
+    loop();window->actionPen->trigger();if(scene->circleEraseReady())return fail("Switching tools did not cancel circle erase");
+    window->actionEraser->trigger();scene->inputDevicePress(QPointF(140,-20));scene->inputDeviceMove(QPointF(140,20));scene->inputDeviceRelease();
+    if(render().pixelColor(540,300).lightness()<230)return fail("Ordinary open-stroke erasing stopped working");
+    window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("circle-erase-window.png"));
+    auto next=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true);board->setActiveDocumentScene(next,0);
+    window->setProperty("circleEraseChecked",true);return true;
 }
 
 bool checkShapeToolbar(QString *error)
@@ -290,34 +346,9 @@ bool checkLessonControlsAndShapes(QString *error)
     auto penPalettes = window->findChildren<UBStylusPalette*>();
     if (!dash || !customize || penPalettes.isEmpty()) return fail("Line tool controls unavailable");
     for (auto pen : penPalettes) if (!pen->actions().contains(dash)) return fail("Dashed Line is absent from a pen palette");
-    const bool topBefore=UBSettings::settings()->value("Teaching/Top/actionTeachingDash",true).toBool();
-    const bool bottomBefore=UBSettings::settings()->value("Teaching/Bottom/actionTeachingDash",true).toBool();
-    auto chooseVisibility = [&](bool top, bool bottom) {
-        bool updated=false;
-        QTimer::singleShot(0,window,[&] {
-            auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
-            auto tabs=dialog ? dialog->findChild<QTabWidget*>() : nullptr;
-            int found=0;
-            if(tabs) for(int tab=0;tab<2;++tab) if(auto list=qobject_cast<QListWidget*>(tabs->widget(tab)))
-                for(int i=0;i<list->count();++i) if(list->item(i)->data(Qt::UserRole).toString()=="actionTeachingDash") {
-                    list->item(i)->setCheckState((tab==0 ? top : bottom) ? Qt::Checked : Qt::Unchecked);++found;
-                }
-            updated=found==2;
-            if(dialog)dialog->accept();
-        });
-        customize->trigger();
-        if(!updated)return false;
-        bool topVisible=false;
-        for(auto a:window->boardToolBar->actions())if(a->text()==dash->text())topVisible|=a->isVisible();
-        if(topVisible!=top)return false;
-        for(auto pen:penPalettes)if(pen->getButtonFromAction(dash)->isHidden()==bottom)return false;
-        return true;
-    };
-    if(!chooseVisibility(false,true)||!chooseVisibility(true,false)||!chooseVisibility(false,false))return fail("Dashed Line toolbar visibility is not independent");
     dc->setStylusTool(UBStylusTool::Pen);dash->trigger();
     if(dc->stylusTool()!=UBStylusTool::Line||!UBSettings::settings()->value("Teaching/DashedLines").toBool()||!dash->isChecked()||window->actionLine->isChecked())return fail("Dashed Line did not immediately select the dashed drawing tool");
     dash->trigger();if(!dash->isChecked())return fail("Clicking active Dashed Line switched it off");
-    if(!chooseVisibility(topBefore,bottomBefore))return fail("Cannot restore line toolbar preferences");
     auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Toolbar and uniform outline regression",true);
     board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
     dc->setPenColor(false,Qt::black,0);dc->setColorIndex(0);dc->setLineWidthIndex(1);
@@ -542,7 +573,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError)) { finish(false, chromeError); return; }
         auto menuWrapper = UBApplication::mainWindow->findChild<QWidgetAction*>("teaching-presentation-actionMenu");
         auto menuButton = menuWrapper ? qobject_cast<QToolButton*>(menuWrapper->defaultWidget()) : nullptr;
         auto pageButton = UBApplication::mainWindow->findChild<QToolButton*>("teaching-actionPages");

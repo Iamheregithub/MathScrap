@@ -13,6 +13,7 @@ class QLabel;
 class QListWidget;
 class QAction;
 class QMenu;
+class QTimer;
 class UBPaperInk : public QObject {
     Q_OBJECT
 public:
@@ -23,6 +24,10 @@ protected:
     bool eventFilter(QObject *object,QEvent *event) override;
 private:
     void layoutPanels();
+    void openTray(QToolButton *anchor);
+    void closeTray();
+    void selectTrayTool();
+    int trayTool() const;
     void refreshPages();
     void goToPage(int index);
     void refreshPen();
@@ -40,5 +45,8 @@ private:
     QList<QAction*> mOverflowActions;
     QList<QToolButton*> mColours,mWidths;
     bool mScheduled=false,mRefreshing=false,mPagesOpen=true,mClosing=false,mLibraryOpen=false;
-    QString mDocumentId;
+    QString mDocumentId,mTrayAction;
+    QPointer<QToolButton> mTrayAnchor,mHoverAnchor;
+    QTimer *mHoverTimer=nullptr,*mCloseTimer=nullptr;
+    bool mTrayOpen=false;
 };

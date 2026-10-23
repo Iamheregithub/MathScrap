@@ -332,6 +332,7 @@ void UBTeachingTools::customize()
         auto order = UBSettings::settings()->value("Teaching/" + prefix + "Order", defaults).toStringList();
         for (auto id : defaults) if (!order.contains(id)) order << id;
         for (auto id : order) {
+            if(prefix=="Bottom"&&id=="actionTeachingDash")continue;
             auto source = actions.value(id); if (!source) continue;
             QString text = source->text();
             if (text.isEmpty()) {

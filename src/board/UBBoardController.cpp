@@ -1697,6 +1697,7 @@ std::shared_ptr<UBGraphicsScene> UBBoardController::setActiveDocumentScene(int p
 
 std::shared_ptr<UBGraphicsScene> UBBoardController::setActiveDocumentScene(std::shared_ptr<UBDocumentProxy> pDocumentProxy, const int pSceneIndex, bool forceReload, bool onImport)
 {
+    if(mActiveScene)mActiveScene->cancelCircleErase();
     UBApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
     persistViewPositionOnCurrentScene();
 

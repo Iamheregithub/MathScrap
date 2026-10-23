@@ -1893,6 +1893,20 @@ void UBBoardView::drawBackground (QPainter *painter, const QRectF &rect)
 
 void UBBoardView::drawForeground(QPainter* painter, const QRectF& rect)
 {
+    if(bIsControl&&scene()){
+        const auto boundary=scene()->circleErasePreview();
+        if(!boundary.isEmpty()){
+            painter->save();QPen pen(QColor("#428c79"),2,Qt::DashLine);pen.setCosmetic(true);
+            painter->setPen(pen);painter->setBrush(scene()->circleEraseReady()?QBrush(QColor(78,150,126,20)):Qt::NoBrush);painter->drawPath(boundary);
+            if(scene()->circleEraseReady()){
+                const QRectF bounds=boundary.boundingRect();
+                painter->resetTransform();const QPoint pos=mapFromScene(bounds.topLeft());
+                const QString label=tr("Tap inside to erase · Esc to cancel");const QRect box(pos-QPoint(0,28),QSize(painter->fontMetrics().horizontalAdvance(label)+16,24));
+                painter->setPen(Qt::NoPen);painter->setBrush(QColor("#fffdf7"));painter->drawRoundedRect(box,5,5);
+                painter->setPen(QColor("#285f50"));painter->drawText(box,Qt::AlignCenter,label);
+            }painter->restore();
+        }
+    }
     QTransform transform{viewportTransform()};
     QRect viewportRect(0, 0, viewport()->width(), viewport()->height());
     QRectF visible{mapToScene(viewportRect).boundingRect()};

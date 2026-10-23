@@ -1,5 +1,5 @@
 #define AppRoot "..\..\dist\app"
-#define AppVersion "1.7.7.11"
+#define AppVersion "1.7.7.12"
 [Setup]
 AppId={{2269D566-C066-4763-8D2D-48EE7AE1C83C}
 AppName=LessonBoard
