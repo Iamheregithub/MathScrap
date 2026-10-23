@@ -119,7 +119,7 @@ QByteArray render(const State &s) {
     QList<Math> rows;
     rows << divide(join({text("−b ± "),radical(join({squared("b"),text(" − 4ac")}))}),text("2a"));
     if(stage>=1) rows << divide(join({text("−"+(s.b<0?pb:num(s.b))+" ± "),radical(join({squared(pb),text(" − 4"+pa+pc)}))}),text("2"+pa));
-    if(stage>=2) rows << divide(join({text(num(-s.b)+" ± "),radical(text(QString("%1 − %2").arg(qint64(s.b)*s.b).arg(4*qint64(s.a)*s.c)))}),text(num(2*s.a)));
+    if(stage>=2) rows << divide(join({text(num(-s.b)+" ± "),radical(text(QString("%1 − %2").arg(qint64(s.b)*s.b).arg(4*qint64(s.a)*s.c<0?"("+QString::number(4*qint64(s.a)*s.c)+")":QString::number(4*qint64(s.a)*s.c))))}),text(num(2*s.a)));
     if(stage>=3) rows << divide(join({text(num(-s.b)+" ± "),radical(text(num(d)))}),text(num(2*s.a)));
     if(stage>=4) rows << exactMath(s.a,s.b,d);
     for(auto &row:rows)row=join({text("x = "),row},10);
@@ -146,7 +146,7 @@ QByteArray render(const State &s) {
     QDomDocument doc;if(!doc.setContent(bytes))return {};
     auto root=doc.documentElement();root.setAttribute("data-quadratic-layout",2);
     const QJsonObject state{{"a",s.a},{"b",s.b},{"c",s.c},{"step",stage}};
-    auto metadata=doc.createElement("metadata");metadata.setAttribute("id","lessonboard-quadratic");metadata.appendChild(doc.createTextNode(QString::fromLatin1(QJsonDocument(state).toJson(QJsonDocument::Compact).toBase64())));root.prependChild(metadata);
+    auto metadata=doc.createElement("metadata");metadata.setAttribute("id","lessonboard-quadratic");metadata.appendChild(doc.createTextNode(QString::fromLatin1(QJsonDocument(state).toJson(QJsonDocument::Compact).toBase64())));root.insertBefore(metadata,root.firstChild());
     QString result=exact(s.a,s.b,d);
     if(d>0)result+=QString("; roots approximately %1 and %2").arg(formatted((-s.b+qSqrt(d))/(2.0*s.a)),formatted((-s.b-qSqrt(d))/(2.0*s.a)));
     else if(!d)result+="; One repeated root";
