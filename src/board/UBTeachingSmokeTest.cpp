@@ -34,6 +34,7 @@
 #include "adaptors/UBImportPDF.h"
 #include "pdf/PDFRenderer.h"
 #include <QPdfWriter>
+#include <QSvgRenderer>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -585,8 +586,18 @@ void scheduleTeachingSmokeTest(QObject *context)
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;
         auto first=UBQuadraticFormula::render(example);
+        QDomDocument formulaDoc;formulaDoc.setContent(first);
+        const auto formulaBox=formulaDoc.documentElement().attribute("viewBox").split(' ');
+        const double formulaWidth=formulaBox.value(2).toDouble(),formulaHeight=formulaBox.value(3).toDouble();
         if (!UBQuadraticFormula::read(first,&restored) || restored.a!=1 || restored.b!=6 || restored.c!=7 || restored.step!=0
-            || UBQuadraticFormula::stepAt(first,640,185)!=1) { finish(false,"Quadratic initial state or Next button invalid"); return; }
+            || UBQuadraticFormula::stepAt(first,formulaWidth-80,formulaHeight-36)!=1) { finish(false,"Quadratic initial state or Next button invalid"); return; }
+        const auto formulaOutput=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
+        for(int stage:{1,5}){
+            example.step=stage;const auto data=UBQuadraticFormula::render(example);QSvgRenderer renderer(data);
+            if(!renderer.isValid()||!data.contains("4(1)(7)")||!data.contains("denominator 2(1)")){finish(false,"Quadratic substitution notation or SVG invalid");return;}
+            QFile svgFile(formulaOutput.filePath(QString("quadratic-stage-%1.svg").arg(stage)));svgFile.open(QIODevice::WriteOnly);svgFile.write(data);svgFile.close();
+            QImage image(renderer.defaultSize()*2,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter painter(&image);renderer.render(&painter);painter.end();image.save(formulaOutput.filePath(QString("quadratic-stage-%1.png").arg(stage)));
+        }
         example.step=5;
         auto finalFormula=UBQuadraticFormula::render(example);
         if (!finalFormula.contains("-3 ± √2") || !finalFormula.contains("-1.586") || !finalFormula.contains("-4.414")
