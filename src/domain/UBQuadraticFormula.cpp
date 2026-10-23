@@ -145,6 +145,10 @@ QByteArray render(const State &s) {
     painter.end();buffer.close();
     QDomDocument doc;if(!doc.setContent(bytes))return {};
     auto root=doc.documentElement();root.setAttribute("data-quadratic-layout",2);
+    // QSvgGenerator emits millimetres, which QSvgRenderer resolves using the
+    // current Windows DPI. Keep page geometry and button hit areas in SVG pixels.
+    root.setAttribute("width",QString::number(width,'g',12));
+    root.setAttribute("height",QString::number(height,'g',12));
     const QJsonObject state{{"a",s.a},{"b",s.b},{"c",s.c},{"step",stage}};
     auto metadata=doc.createElement("metadata");metadata.setAttribute("id","lessonboard-quadratic");metadata.appendChild(doc.createTextNode(QString::fromLatin1(QJsonDocument(state).toJson(QJsonDocument::Compact).toBase64())));root.insertBefore(metadata,root.firstChild());
     QString result=exact(s.a,s.b,d);
