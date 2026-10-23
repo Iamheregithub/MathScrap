@@ -470,7 +470,14 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
     if (!mTeachingDetached) { setUuid(QUuid::createUuid()); mTeachingDetached = true; }
     prepareGeometryChange();
     mFileData = data;
-    renderer()->load(data);
+    if(data.contains("lessonboard-quadratic")) {
+        // QGraphicsSvgItem caches the default bounds when a renderer is assigned.
+        // Merely loading taller data squeezes every added line into the old bounds.
+        QPointer<QSvgRenderer> previous=renderer();
+        setSharedRenderer(new QSvgRenderer(data,this));
+        if(previous && previous->parent()==this)previous->deleteLater();
+        if(isSelected())Delegate()->update();
+    } else renderer()->load(data);
     refreshTeachingHandles();
     update();
     if (scene()) scene()->setModified(true);

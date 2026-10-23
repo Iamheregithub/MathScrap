@@ -600,6 +600,10 @@ void scheduleTeachingSmokeTest(QObject *context)
         }
         example.step=5;
         auto finalFormula=UBQuadraticFormula::render(example);
+        UBGraphicsSvgItem growingFormula(first);
+        const qreal initialFormulaHeight=growingFormula.boundingRect().height();
+        growingFormula.setTeachingSvg(finalFormula);
+        if(growingFormula.boundingRect().height()<=initialFormulaHeight || qAbs(growingFormula.boundingRect().height()-growingFormula.renderer()->viewBoxF().height())>1){finish(false,"Quadratic page object squeezed growing working into old bounds");return;}
         if (!finalFormula.contains("-3 ± √2") || !finalFormula.contains("-1.586") || !finalFormula.contains("-4.414")
             || !UBQuadraticFormula::read(finalFormula,&restored) || restored.step!=5) { finish(false,"Quadratic exact or approximate roots invalid"); return; }
         if (!UBQuadraticFormula::render({1,0,1,5}).contains("No real roots") ||
