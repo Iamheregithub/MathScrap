@@ -8,3 +8,5 @@
 - Open eraser gestures complete on release so an enclosing loop can be recognised before any ink is removed.
 
 The Windows build publishes a direct installer download after its native, recovery, and OpenBoard compatibility checks succeed.
+
+Dismissing a tray keeps the selected tool, colour and thickness active. Solid and dashed lines retain their separate per-colour thickness memories.
