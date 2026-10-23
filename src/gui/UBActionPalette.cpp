@@ -100,7 +100,7 @@ UBActionPaletteButton* UBActionPalette::createPaletteButton(QAction* action, QWi
     button->setToolButtonStyle(mToolButtonStyle);
     action->setProperty("id", mButtons.length());
 
-    if (mActionGroup)
+    if (mActionGroup && !action->property("ungrouped").toBool())
         mActionGroup->addAction(action);
 
     mButtons << button;
@@ -255,7 +255,7 @@ void UBActionPalette::actionChanged()
 {
     for(int i = 0; i < mActions.length() && i < mButtons.length(); i++)
     {
-        mButtons.at(i)->setVisible(mActions.at(i)->isVisible());
+        mButtons.at(i)->setVisible(mActions.at(i)->isVisible() && !mActions.at(i)->property("teachingHiddenBottom").toBool());
     }
 }
 

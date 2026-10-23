@@ -2236,6 +2236,38 @@ void UBDocumentController::setupViews()
         mDocumentUI = new Ui::documents();
 
         mDocumentUI->setupUi(mDocumentWidget);
+        // The Documents workspace uses the same Paper & Ink surfaces as the lesson.
+        // Keep all existing actions, sorting, tree drag/drop and thumbnail behaviour.
+        mDocumentWidget->setObjectName("paperDocumentsWorkspace");
+        mDocumentWidget->setStyleSheet(
+            "QWidget#paperDocumentsWorkspace{background:#f8f5ec;color:#273b3b;}"
+            "QWidget#topLeftWidget{background:#f6f2e8;border-right:1px solid #ded8cc;}"
+            "QFrame#topRightFrame{background:#f0ece2;border:0;}"
+            "QTreeView#documentTreeView{background:#f6f2e8;color:#273b3b;border:0;"
+            "font-size:14px;outline:0;padding:8px;}"
+            "QTreeView#documentTreeView::item{height:36px;border-radius:7px;padding:2px 6px;}"
+            "QTreeView#documentTreeView::item:hover{background:#eee9dd;}"
+            "QTreeView#documentTreeView::item:selected{background:#dceae4;color:#263c3b;}"
+            "QComboBox#sortKind{background:#fffdf7;color:#273b3b;border:1px solid #d8d1c3;"
+            "border-radius:7px;padding:7px 10px;}"
+            "QToolButton#sortOrder{background:#fffdf7;border:1px solid #d8d1c3;"
+            "border-radius:7px;padding:7px;}"
+            "QWidget#bottomRightFrame{background:#f0ece2;}"
+            "QSlider::groove:horizontal{height:5px;background:#d8d1c3;border-radius:2px;}"
+            "QSlider::handle:horizontal{background:#6e9c8d;width:16px;margin:-6px 0;border-radius:8px;}"
+        );
+        mMainWindow->documentToolBar->setStyleSheet(
+            "QToolBar{background:#f8f5ec;border:0;border-bottom:1px solid #ded8cc;"
+            "spacing:5px;padding:6px;}"
+            "QToolButton{color:#273b3b;background:transparent;border:1px solid transparent;"
+            "border-radius:8px;padding:5px 7px;}"
+            "QToolButton:hover{background:#eee9dd;}"
+            "QToolButton:pressed,QToolButton:checked{background:#dceae4;border-color:#77a99a;}"
+        );
+        mMainWindow->documentToolBar->setIconSize(QSize(25,25));
+        mMainWindow->actionNewDocument->setText(tr("New lesson"));
+        mMainWindow->actionOpen->setText(tr("Open lesson"));
+        mMainWindow->documentToolBar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
         int thumbWidth = UBSettings::settings()->documentThumbnailWidth->get().toInt();
 
@@ -2392,7 +2424,7 @@ void UBDocumentController::setupViews()
             mDocumentUI->thumbnailWidget->setDocument(UBDocument::getDocument(proxy));
         });
 
-        mDocumentUI->thumbnailWidget->setBackgroundBrush(UBSettings::documentViewLightColor);
+        mDocumentUI->thumbnailWidget->setBackgroundBrush(QColor("#f0ece2"));
 
         #ifdef Q_WS_MACX
             mMessageWindow = new UBMessageWindow(NULL);
@@ -3175,7 +3207,19 @@ void UBDocumentController::exportDocument()
 
     std::shared_ptr<UBDocumentProxy> proxy = firstSelectedTreeProxy();
 
+    if (!qEnvironmentVariable("TEACHING_SMOKE_REPORT").isEmpty())
+        qWarning() << "Teaching export handler" << bool(proxy) << actionData;
+    if (!proxy) return;
+    QList<int> pages;
+    auto thumbnails = mDocumentUI->thumbnailWidget;
+    if (thumbnails->document() && thumbnails->document()->proxy() == proxy)
+        for (auto item : thumbnails->selectedItems())
+            if (auto thumbnail = dynamic_cast<UBThumbnail*>(item)) pages << thumbnail->sceneIndex();
+    if (!qEnvironmentVariable("TEACHING_SMOKE_REPORT").isEmpty())
+        qWarning() << "Teaching export document" << proxy->name() << proxy->pageCount() << pages;
+    selectedExportAdaptor->setPageSelection(pages);
     selectedExportAdaptor->persist(proxy);
+    selectedExportAdaptor->setPageSelection({});
     emit exportDone();
 
 }

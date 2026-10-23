@@ -88,7 +88,7 @@ class UBSvgSubsetAdaptor
         static std::shared_ptr<UBGraphicsScene> loadScene(std::shared_ptr<UBDocumentProxy> proxy, const QByteArray& pArray);
         static std::shared_ptr<UBSvgReaderContext> prepareLoadingScene(std::shared_ptr<UBDocumentProxy> proxy, const int pageIndex);
 
-        static void persistScene(std::shared_ptr<UBDocumentProxy> proxy, std::shared_ptr<UBGraphicsScene> pScene, const int pageIndex);
+        static bool persistScene(std::shared_ptr<UBDocumentProxy> proxy, std::shared_ptr<UBGraphicsScene> pScene, const int pageIndex);
         static void upgradeScene(std::shared_ptr<UBDocumentProxy> proxy, const int pageIndex);
 
         static QUuid sceneUuid(std::shared_ptr<UBDocumentProxy> proxy, const int pageIndex);
@@ -289,6 +289,7 @@ class UBSvgSubsetAdaptor
                 QXmlStreamWriter mXmlWriter;
                 QString mDocumentPath;
                 int mPageIndex;
+                bool mAssetSaveFailed = false;
 
         };
 };

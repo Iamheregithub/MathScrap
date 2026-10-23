@@ -126,6 +126,7 @@ struct itemLayerType
         , Cache
         , SelectedItem
         , SelectionFrame
+        , HighlighterItem
     };
 };
 

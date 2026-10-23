@@ -30,6 +30,9 @@
 #include "UBStylusPalette.h"
 
 #include <QtGui>
+#include <QLayout>
+#include <QMenu>
+#include <QContextMenuEvent>
 
 #include "UBMainWindow.h"
 
@@ -63,6 +66,7 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
 
     actions << UBApplication::mainWindow->actionPointer;
     actions << UBApplication::mainWindow->actionLine;
+    if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash")) actions << dash;
     actions << UBApplication::mainWindow->actionText;
     actions << UBApplication::mainWindow->actionCapture;
 
@@ -75,14 +79,17 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
     actions << UBApplication::mainWindow->actionSnap;
     UBApplication::mainWindow->actionSnap->setProperty("ungrouped", true);
 
+    for (auto action : actions)
+        action->setProperty("teachingHiddenBottom", !UBSettings::settings()->value("Teaching/Bottom/" + action->objectName(), QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(action->objectName())).toBool());
     setActions(actions);
-    setButtonIconSize(QSize(42, 42));
+    setButtonIconSize(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?QSize(56,56):QSize(42,42));
     groupActions();
 
     UBShortcutManager::shortcutManager()->addActionGroup(mActionGroup);
 
     adjustSizeAndPosition();
 
+    applyTeachingLayout(UBSettings::settings()->value("Teaching/BottomOrder").toStringList());
     initPosition();
 
     foreach(const UBActionPaletteButton* button, mButtons)
@@ -128,7 +135,48 @@ UBStylusPalette::~UBStylusPalette()
 
 void UBStylusPalette::stylusToolDoubleClicked()
 {
-    emit stylusToolDoubleClicked(mActionGroup->checkedAction()->property("id").toInt());
+    auto action = mActionGroup->checkedAction();
+    if (!action) action = UBApplication::mainWindow->actionLine;
+    emit stylusToolDoubleClicked(action->property("id").toInt());
 }
 
 
+
+void UBStylusPalette::applyTeachingLayout(const QStringList &order)
+{
+    if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash"); dash && !mActions.contains(dash)) {
+        addAction(dash);
+        auto button = getButtonFromAction(dash);
+        button->setIconSize(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool()?QSize(56,56):QSize(42,42));
+        connect(button, SIGNAL(doubleClicked()), this, SLOT(stylusToolDoubleClicked()));
+    }
+    QStringList complete = order;
+    for (auto action : mActions)
+        if (!complete.contains(action->objectName())) complete << action->objectName();
+    for (auto id : complete)
+        for (auto action : mActions)
+            if (action->objectName() == id) {
+                auto button = getButtonFromAction(action);
+                if (button) {
+                    layout()->removeWidget(button);
+                    layout()->addWidget(button);
+                    button->setVisible(action->isVisible() && !action->property("teachingHiddenBottom").toBool());
+                }
+            }
+    adjustSize();
+    initPosition();
+}
+
+void UBStylusPalette::contextMenuEvent(QContextMenuEvent *event)
+{
+    auto customize=UBApplication::mainWindow->findChild<QAction*>("actionTeachingCustomize");
+    // The action is owned by UBTeachingTools, itself a main-window child.
+    if(!customize){event->ignore();return;}
+    QMenu menu(this);
+    auto action=menu.addAction(tr("Customize toolbar…"));
+    connect(action,&QAction::triggered,this,[customize]{
+        customize->setProperty("teachingOpenPenTab",true);
+        customize->trigger();
+    });
+    menu.exec(event->globalPos());event->accept();
+}

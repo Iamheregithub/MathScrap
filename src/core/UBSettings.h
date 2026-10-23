@@ -134,6 +134,11 @@ class UBSettings : public QObject
         //user directories
         static QString userDataDirectory();
         static QString userDocumentDirectory();
+        QString pendingDocumentDirectory();
+        bool scheduleDocumentDirectoryChange(const QString &path, bool moveExisting, QString *error);
+        void cancelDocumentDirectoryChange();
+        bool applyPendingDocumentDirectoryChange(QString *error);
+        static bool validateDocumentDirectory(const QString &current, const QString &target, bool moveExisting, QString *error);
         static QString userFavoriteListFilePath();
         static QString userTrashDirPath();
         static QString userImageDirectory();

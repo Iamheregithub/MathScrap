@@ -40,7 +40,7 @@ class UBMetadataDcSubsetAdaptor
         UBMetadataDcSubsetAdaptor();
         virtual ~UBMetadataDcSubsetAdaptor();
 
-        static void persist(std::shared_ptr<UBDocumentProxy> proxy);
+        static bool persist(std::shared_ptr<UBDocumentProxy> proxy);
         static QMap<QString, QVariant> load(QString pPath);
 
         static const QString nsRdf;

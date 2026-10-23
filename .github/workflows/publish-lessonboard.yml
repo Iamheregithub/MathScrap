@@ -1,0 +1,28 @@
+name: Publish verified LessonBoard installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [graphdesk-teaching-fork]
+    paths: ['.github/workflows/publish-lessonboard.yml']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Retrieve tested Windows build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh run download 39863037473 --name LessonBoard-Windows-x64 --dir dist
+          test -s dist/LessonBoard-Windows-x64-Setup.exe
+          test -s dist/SHA256SUMS.txt
+      - name: Publish installer release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create lessonboard-v1.7.7.11 dist/LessonBoard-Windows-x64-Setup.exe dist/SHA256SUMS.txt --target 760aa1f2f80e21442f30e1ce2700d728249032d0 --title "LessonBoard 1.7.7.11 — Paper & Ink" --notes "Windows x64 installer for the Paper & Ink teaching interface. Built and tested by workflow run 39863037473. Includes native drawing, cover and shade tools, customizable toolbar ordering, recovery checks, and OpenBoard file compatibility checks. Source code is available at the tagged commit under the repository licence."

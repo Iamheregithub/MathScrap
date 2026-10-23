@@ -84,6 +84,7 @@ UBPersistenceManager::UBPersistenceManager(QObject *pParent)
     : QObject(pParent)
     , mHasPurgedDocuments(false)
     , mIsWorkerFinished(false)
+    , mIsApplicationClosing(false)
     , mReplaceDialogReturnedReplaceAll(false)
     , mReplaceDialogReturnedCancel(false)
 {
@@ -1114,6 +1115,11 @@ std::shared_ptr<UBGraphicsScene> UBPersistenceManager::getDocumentScene(std::sha
 void UBPersistenceManager::reassignDocProxy(std::shared_ptr<UBDocumentProxy> newDocument, std::shared_ptr<UBDocumentProxy> oldDocument)
 {
     return mSceneCache.reassignDocProxy(newDocument, oldDocument);
+}
+
+void UBPersistenceManager::flushPendingWrites()
+{
+    if (mWorker && !mIsApplicationClosing) mWorker->flush();
 }
 
 void UBPersistenceManager::persistDocumentScene(std::shared_ptr<UBDocumentProxy> pDocumentProxy, std::shared_ptr<UBGraphicsScene> pScene, const int pSceneIndex, bool isAnAutomaticBackup, bool forceImmediateSaving)

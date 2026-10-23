@@ -242,27 +242,6 @@ void UBShortcutManager::addMainActions(UBMainWindow *mainWindow)
     actions << action;
 
     action = new QAction(this);
-    action->setText(mainWindow->actionZoomIn->text());
-    action->setToolTip(mainWindow->actionZoomIn->toolTip());
-    action->setShortcuts( { QKeySequence(Qt::CTRL | Qt::Key_Plus) } );
-    action->setProperty("builtIn", true);
-    actions << action;
-
-    action = new QAction(this);
-    action->setText(mainWindow->actionZoomOut->text());
-    action->setToolTip(mainWindow->actionZoomOut->toolTip());
-    action->setShortcuts( { QKeySequence(Qt::CTRL | Qt::Key_Minus) } );
-    action->setProperty("builtIn", true);
-    actions << action;
-
-    action = new QAction(this);
-    action->setText(tr("Zoom reset"));
-    action->setToolTip(tr("Reset zoom factor"));
-    action->setShortcuts( { QKeySequence(Qt::CTRL | Qt::Key_0) } );
-    action->setProperty("builtIn", true);
-    actions << action;
-
-    action = new QAction(this);
     action->setText(tr("Scroll left"));
     action->setToolTip(tr("Scroll page left"));
     action->setShortcuts( { QKeySequence(Qt::CTRL | Qt::Key_Left) } );

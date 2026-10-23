@@ -47,6 +47,9 @@ class UBExportAdaptor : public QObject
         virtual void persist(std::shared_ptr<UBDocumentProxy> pDocument) = 0;
         virtual bool persistsDocument(std::shared_ptr<UBDocumentProxy> pDocument, const QString& filename);
         virtual bool associatedActionactionAvailableFor(const QModelIndex &selectedIndex) {Q_UNUSED(selectedIndex); return false;}
+        // Empty selection exports the document; selected indexes are zero-based.
+        void setPageSelection(const QList<int> &pages) { mSelectedPages = pages; }
+        QList<int> exportPageIndexes(int pageCount) const;
         QAction *associatedAction() {return mAssociatedAction;}
         void setAssociatedAction(QAction *pAssociatedAction) {mAssociatedAction = pAssociatedAction;}
 
@@ -68,6 +71,7 @@ class UBExportAdaptor : public QObject
 
         void showErrorsList(QList<QString> errorsList);
 
+        QList<int> mSelectedPages;
         bool mIsVerbose;
         QAction* mAssociatedAction;
 

@@ -54,7 +54,6 @@ class UBToolbarButtonGroup : public QWidget
         void paintEvent(QPaintEvent *);
 
     private:
-        QToolButton         *mToolButton; // The first button in the toolbar
         QString              mLabel;
         QList<QAction*>      mActions;
         QList<QToolButton*>  mButtons;

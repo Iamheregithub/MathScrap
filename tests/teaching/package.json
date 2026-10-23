@@ -1,0 +1,12 @@
+{
+  "name": "openboard-teaching-tests",
+  "private": true,
+  "scripts": {
+    "test": "node graphdesk-dom.cjs",
+    "browser": "node graphdesk-smoke.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.2",
+    "playwright": "1.62.1"
+  }
+}

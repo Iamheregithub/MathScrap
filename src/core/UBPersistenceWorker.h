@@ -36,15 +36,17 @@
 
 typedef enum{
     WriteScene = 0,
-    WriteMetadata
+    WriteMetadata,
+    FlushWrites
 }ActionType;
 
-typedef struct{
+struct PersistenceInformation {
     ActionType action;
     std::shared_ptr<UBDocumentProxy> proxy;
     UBGraphicsScene* scene;
     int sceneIndex;
-}PersistenceInformation;
+    QSemaphore* barrier = nullptr;
+};
 
 class UBPersistenceWorker : public QObject
 {
@@ -54,6 +56,7 @@ public:
 
     void saveScene(std::shared_ptr<UBDocumentProxy> proxy, UBGraphicsScene* scene, const int pageIndex);
     void saveMetadata(std::shared_ptr<UBDocumentProxy> proxy);
+    void flush();
 
 signals:
    void finished();

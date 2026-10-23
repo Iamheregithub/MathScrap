@@ -36,3 +36,6 @@ SOURCES      += src/core/main.cpp \
                 src/core/UBTextTools.cpp \
     src/core/UBPersistenceWorker.cpp \
     $$PWD/UBForeignObjectsHandler.cpp
+
+HEADERS += src/core/UBLessonHistory.h
+SOURCES += src/core/UBLessonHistory.cpp

@@ -189,9 +189,13 @@ class UBGraphicsScene: public UBCoreGraphicsScene, public UBItem, public std::en
         QGraphicsItem *itemForUuid(QUuid uuid);
 
         void moveTo(const QPointF& pPoint);
+        bool isInputDevicePressed() const { return mInputDeviceIsPressed; }
         void drawLineTo(const QPointF& pEndPoint, const qreal& pWidth, bool bLineStyle);
         void drawLineTo(const QPointF& pEndPoint, const qreal& pStartWidth, const qreal& endWidth, bool bLineStyle);
         void eraseLineTo(const QPointF& pEndPoint, const qreal& pWidth);
+        void cancelCircleErase();
+        QPainterPath circleErasePreview() const;
+        bool circleEraseReady() const { return !mCircleEraseBoundary.isEmpty(); }
         void drawArcTo(const QPointF& pCenterPoint, qreal pSpanAngle);
         void drawCurve(const QList<QPair<QPointF, qreal> > &points);
         void drawCurve(const QList<QPointF>& points, qreal startWidth, qreal endWidth);
@@ -458,6 +462,11 @@ signals:
         qreal mPreviousWidth;
         qreal mDistanceFromLastStrokePoint;
         QPointF mCurrentPoint;
+        void eraseInkPath(const QPainterPath &path);
+        QPolygonF mEraseGesture;
+        QPainterPath mCircleEraseBoundary;
+        bool mCircleEraseGesture=false,mCircleEraseTap=false,mCircleEraseCancel=false;
+        qreal mEraseGestureScale=1;
 
         QList<UBGraphicsPolygonItem*> mPreviousPolygonItems;
 

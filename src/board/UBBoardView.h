@@ -67,6 +67,7 @@ public:
     bool isMultipleSelectionEnabled() { return mMultipleSelectionIsEnabled; }
 
     void setBoxing(const QMargins& margins);
+    void setPaperInkMargins(int left) { if(viewportMargins()!=QMargins(left,10,10,10))setViewportMargins(left,10,10,10); }
     void updateSnapIndicator(Qt::Corner corner, QPointF snapPoint, double angle = 0);
 
     // work around for handling tablet events on MAC OS with Qt 4.8.0 and above
@@ -205,6 +206,7 @@ private:
     QTimer mLongPressTimer;
 
     bool mIsDragInProgress;
+    bool mFormulaInputMouse = false;
     bool mMultipleSelectionIsEnabled;
     bool bIsControl;
     bool bIsDesktop;

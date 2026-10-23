@@ -80,6 +80,9 @@ bool UBExportPDF::associatedActionactionAvailableFor(const QModelIndex &selected
 
 bool UBExportPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumentProxy, const QString& filename)
 {
+    if (!pDocumentProxy) return false;
+    const auto pages = exportPageIndexes(pDocumentProxy->pageCount());
+    if (pages.isEmpty()) return false;
     QPdfWriter pdfWriter(filename);
 
     qDebug() << "exporting document to PDF" << filename;
@@ -97,12 +100,11 @@ bool UBExportPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumentPro
     QPainter pdfPainter;
     bool painterNeedsBegin = true;
 
-    int existingPageCount = pDocumentProxy->pageCount();
-
-    for(int pageIndex = 0 ; pageIndex < existingPageCount; pageIndex++) {
+    int exported = 0;
+    for (int pageIndex : pages) {
 
         std::shared_ptr<UBGraphicsScene> scene = UBPersistenceManager::persistenceManager()->loadDocumentScene(pDocumentProxy, pageIndex);
-        UBApplication::showMessage(tr("Exporting page %1 of %2").arg(pageIndex + 1).arg(existingPageCount));
+        UBApplication::showMessage(tr("Exporting page %1 of %2").arg(++exported).arg(pages.size()));
 
         // set background to white, no crossing for PDF output
         bool isDark = scene->isDarkBackground();
@@ -135,7 +137,7 @@ bool UBExportPDF::persistsDocument(std::shared_ptr<UBDocumentProxy> pDocumentPro
         if(painterNeedsBegin)
             painterNeedsBegin = !pdfPainter.begin(&pdfWriter);
 
-        else if (pageIndex < existingPageCount)
+        else
             pdfWriter.newPage();
 
         // Render the scene

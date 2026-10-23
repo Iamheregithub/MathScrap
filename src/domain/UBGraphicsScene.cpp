@@ -93,7 +93,8 @@ UBZLayerController::UBZLayerController(QGraphicsScene *scene) :
     scopeMap.insert(itemLayerType::BackgroundItem, ItemLayerTypeData(-1000000.0, -1000000.0 ));
     // DEFAULT_Z_VALUE isn't used because it allows to easily identify new objects
     scopeMap.insert(itemLayerType::ObjectItem,     ItemLayerTypeData(-1000000.0,  DEFAULT_Z_VALUE - 1.0));
-    scopeMap.insert(itemLayerType::DrawingItem,    ItemLayerTypeData( DEFAULT_Z_VALUE + 1.0, 1000000.0 ));
+    scopeMap.insert(itemLayerType::DrawingItem,    ItemLayerTypeData( 500000.0, 1000000.0 ));
+    scopeMap.insert(itemLayerType::HighlighterItem, ItemLayerTypeData(1.0, 499999.0));
     scopeMap.insert(itemLayerType::ToolItem,       ItemLayerTypeData( 1000000.0,  1000100.0 ));
     scopeMap.insert(itemLayerType::CppTool,        ItemLayerTypeData( 1000100.0,  1000200.0 ));
     scopeMap.insert(itemLayerType::Curtain,        ItemLayerTypeData( 1000200.0,  1001000.0 ));
@@ -472,6 +473,15 @@ bool UBGraphicsScene::inputDevicePress(const QPointF& scenePos, const qreal& pre
         else if (currentTool == UBStylusTool::Eraser) {
             mAddedItems.clear();
             mRemovedItems.clear();
+            // Defer this gesture until we can distinguish a loop from a scrub.
+            // No ink is removed while an enclosure is awaiting its confirming tap.
+            if(UBApplication::mainWindow&&UBApplication::mainWindow->property("paperInk").toBool()){
+                mEraseGesture=QPolygonF();mEraseGesture<<scenePos;mCircleEraseGesture=true;
+                mCircleEraseTap=mCircleEraseBoundary.contains(scenePos);
+                mCircleEraseCancel=!mCircleEraseBoundary.isEmpty()&&!mCircleEraseTap;
+                mEraseGestureScale=qMax(qreal(0.001),UBApplication::boardController->controlView()->transform().m11());
+                drawEraser(scenePos,true);update();return true;
+            }
             moveTo(scenePos);
 
             qreal eraserWidth = UBSettings::settings()->currentEraserWidth();
@@ -673,6 +683,10 @@ bool UBGraphicsScene::inputDeviceMove(const QPointF& scenePos, const qreal& pres
             eraserWidth /= UBApplication::boardController->systemScaleFactor();
             eraserWidth /= UBApplication::boardController->currentZoom();
 
+            if(mCircleEraseGesture){
+                if(mEraseGesture.isEmpty()||QLineF(mEraseGesture.last(),position).length()*mEraseGestureScale>=1)mEraseGesture<<position;
+                update();return true;
+            }
             eraseLineTo(position, eraserWidth);
         }
         else if (currentTool == UBStylusTool::Pointer)
@@ -689,6 +703,36 @@ bool UBGraphicsScene::inputDeviceMove(const QPointF& scenePos, const qreal& pres
 bool UBGraphicsScene::inputDeviceRelease(int tool, Qt::KeyboardModifiers modifiers)
 {
     bool accepted = false;
+    if(mCircleEraseGesture){
+        mCircleEraseGesture=false;mInputDeviceIsPressed=false;
+        const auto points=mEraseGesture;mEraseGesture.clear();
+        if(mCircleEraseCancel){cancelCircleErase();return true;}
+        qreal length=0;for(int i=1;i<points.size();++i)length+=QLineF(points[i-1],points[i]).length();
+        if(mCircleEraseTap){
+            const auto boundary=mCircleEraseBoundary;
+            const bool tap=length*mEraseGestureScale<=12&&!points.isEmpty()&&boundary.contains(points.last());
+            cancelCircleErase();
+            if(!tap)return true;
+            eraseInkPath(boundary);
+            // Continue through the normal undo transaction below.
+        }else{
+            const QRectF bounds=points.boundingRect();
+            const qreal shortSide=qMin(bounds.width(),bounds.height());
+            const qreal gap=points.size()>1?QLineF(points.first(),points.last()).length():0;
+            QPainterPath boundary;boundary.addPolygon(points);boundary.closeSubpath();
+            qreal twiceArea=0;for(int i=0;i<points.size();++i){auto a=points[i],b=points[(i+1)%points.size()];twiceArea+=a.x()*b.y()-b.x()*a.y();}
+            const bool loop=points.size()>=8&&shortSide*mEraseGestureScale>=28&&length*mEraseGestureScale>=100
+                &&gap<=qMax(qreal(12)/mEraseGestureScale,shortSide*0.22)
+                &&qAbs(twiceArea)*0.5>=bounds.width()*bounds.height()*0.22;
+            if(loop){mCircleEraseBoundary=boundary;update();return true;}
+            if(!points.isEmpty()){
+                const qreal width=UBSettings::settings()->currentEraserWidth()/UBApplication::boardController->systemScaleFactor()/UBApplication::boardController->currentZoom();
+                moveTo(points.first());for(const auto &point:points)eraseLineTo(point,width);
+            }
+            update();
+        }
+    }
+
 
     if (mPointer)
     {
@@ -976,7 +1020,21 @@ void UBGraphicsScene::drawLineTo(const QPointF &pEndPoint, const qreal &startWid
         mAddedItems.clear();
     }
 
-    UBGraphicsPolygonItem *polygonItem = lineToPolygonItem(QLineF(mPreviousPoint, pEndPoint), initialWidth, endWidth);
+    UBGraphicsPolygonItem *polygonItem;
+    if (bLineStyle && UBSettings::settings()->value("Teaching/DashedLines", false).toBool())
+    {
+        QPainterPath path;
+        path.moveTo(mPreviousPoint);
+        path.lineTo(pEndPoint);
+        QPainterPathStroker stroker;
+        stroker.setWidth(qMax(qreal(0.1), endWidth));
+        stroker.setCapStyle(Qt::FlatCap);
+        stroker.setDashPattern(Qt::DashLine);
+        polygonItem = new UBGraphicsPolygonItem(stroker.createStroke(path).toFillPolygon());
+        initPolygonItem(polygonItem);
+    }
+    else
+        polygonItem = lineToPolygonItem(QLineF(mPreviousPoint, pEndPoint), initialWidth, endWidth);
     addPolygonItemToCurrentStroke(polygonItem);
 
     if (!bLineStyle) {
@@ -1037,11 +1095,26 @@ void UBGraphicsScene::eraseLineTo(const QPointF &pEndPoint, const qreal &pWidth)
     mPreviousPoint = pEndPoint;
 
     const QPolygonF eraserPolygon = UBGeometryUtils::lineToPolygon(line, pWidth);
-    const QRectF eraserBoundingRect = eraserPolygon.boundingRect();
-
     QPainterPath eraserPath;
     eraserPath.addPolygon(eraserPolygon);
+    eraseInkPath(eraserPath);
+}
 
+void UBGraphicsScene::cancelCircleErase()
+{
+    mEraseGesture.clear();mCircleEraseBoundary=QPainterPath();
+    mCircleEraseGesture=false;mCircleEraseTap=false;mCircleEraseCancel=false;update();
+}
+QPainterPath UBGraphicsScene::circleErasePreview() const
+{
+    if(!mCircleEraseBoundary.isEmpty())return mCircleEraseBoundary;
+    QPainterPath path;if(mCircleEraseGesture&&!mCircleEraseTap&&!mCircleEraseCancel&&!mEraseGesture.isEmpty()){
+        path.moveTo(mEraseGesture.first());for(int i=1;i<mEraseGesture.size();++i)path.lineTo(mEraseGesture[i]);
+    }return path;
+}
+void UBGraphicsScene::eraseInkPath(const QPainterPath &eraserPath)
+{
+    const QRectF eraserBoundingRect=eraserPath.boundingRect();
     // Get all the items that are intersecting with the eraser path, except the eraser itself
     QList<QGraphicsItem*> collidItems = items(eraserBoundingRect, Qt::IntersectsItemBoundingRect);
     collidItems.removeOne(mEraser);
@@ -1263,6 +1336,7 @@ void UBGraphicsScene::initPolygonItem(UBGraphicsPolygonItem* polygonItem)
 
     if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Marker)
     {
+        polygonItem->setData(UBGraphicsItemData::itemLayerType, int(itemLayerType::HighlighterItem));
         colorOnDarkBG = UBApplication::boardController->markerColorOnDarkBackground();
         colorOnLightBG = UBApplication::boardController->markerColorOnLightBackground();
     }
@@ -1980,6 +2054,26 @@ void UBGraphicsScene::addItem(QGraphicsItem* item)
 {
     UBCoreGraphicsScene::addItem(item);
 
+    // Ink and highlights occupy separate bands above PDF/image objects. Infer
+    // old document strokes from their alpha, so reopened lessons behave alike.
+    if (auto strokes = dynamic_cast<UBGraphicsStrokesGroup*>(item))
+    {
+        const bool marker = strokes->color().alpha() < 255;
+        const auto layer = marker ? itemLayerType::HighlighterItem : itemLayerType::DrawingItem;
+        const qreal bottom = marker ? 1.0 : 500000.0;
+        const qreal top = marker ? 499999.0 : 1000000.0;
+        strokes->setData(UBGraphicsItemData::itemLayerType, int(layer));
+        if (strokes->zValue() == DEFAULT_Z_VALUE || strokes->zValue() == UBZLayerController::errorNum())
+            UBGraphicsItem::assignZValue(strokes, mZLayerController->generateZLevel(layer));
+        else if (strokes->zValue() <= bottom || strokes->zValue() >= top)
+        {
+            // Loading iterates a hash, so preserve old stacking order rather
+            // than assigning successive z-values in arbitrary load order.
+            const qreal ratio = qBound(qreal(0), (strokes->zValue() + 1000000.0) / 2000000.0, qreal(1));
+            UBGraphicsItem::assignZValue(strokes, bottom + 1.0 + ratio * (top - bottom - 2.0));
+        }
+    }
+
     // the default z value is already set. This is the case when a svg file is read
     if(item->zValue() == DEFAULT_Z_VALUE
             || item->zValue() == UBZLayerController::errorNum())
@@ -2431,6 +2525,7 @@ void UBGraphicsScene::stylusToolChanged(int tool, int previousTool)
 {
     if (tool != previousTool)
     {
+        cancelCircleErase();
         hideTool();
 
         if (mInputDeviceIsPressed)

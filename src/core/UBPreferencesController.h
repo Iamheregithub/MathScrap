@@ -34,6 +34,8 @@
 #include <QDialog>
 #include <QLineEdit>
 
+class QLabel;
+class QPushButton;
 class UBColorPicker;
 class UBApplication;
 class UBSettings;
@@ -107,8 +109,13 @@ class UBPreferencesController : public QObject
 
     private slots:
         void adjustScreensPreferences();
+        void createDocumentLocationTab();
+        void refreshDocumentLocation();
 
     private:
+        QLineEdit *mDocumentLocation = nullptr;
+        QLabel *mDocumentLocationNote = nullptr;
+        QPushButton *mCancelDocumentLocation = nullptr;
         static qreal sSliderRatio;
         static qreal sMinPenWidth;
         static qreal sMaxPenWidth;

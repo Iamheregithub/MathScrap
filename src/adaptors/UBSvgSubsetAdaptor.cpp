@@ -38,6 +38,7 @@
 #include <QElapsedTimer>
 
 #include "domain/UBGraphicsSvgItem.h"
+#include <QSaveFile>
 #include "domain/UBGraphicsPixmapItem.h"
 #include "domain/UBGraphicsPolygonItem.h"
 #include "domain/UBGraphicsMediaItem.h"
@@ -1179,10 +1180,10 @@ QGraphicsItem *UBSvgSubsetAdaptor::UBSvgSubsetReader::readElementFromGroup()
     return result;
 }
 
-void UBSvgSubsetAdaptor::persistScene(std::shared_ptr<UBDocumentProxy> proxy, std::shared_ptr<UBGraphicsScene> pScene, const int pageIndex)
+bool UBSvgSubsetAdaptor::persistScene(std::shared_ptr<UBDocumentProxy> proxy, std::shared_ptr<UBGraphicsScene> pScene, const int pageIndex)
 {
     UBSvgSubsetWriter writer(proxy, pScene, pageIndex);
-    writer.persistScene(proxy, pageIndex);
+    return writer.persistScene(proxy, pageIndex);
 }
 
 
@@ -1552,18 +1553,20 @@ bool UBSvgSubsetAdaptor::UBSvgSubsetWriter::persistScene(std::shared_ptr<UBDocum
     }
 
     mXmlWriter.writeEndDocument();
+    if (mAssetSaveFailed || mXmlWriter.hasError())
+        return false;
     QString fileName = mDocumentPath + UBFileSystemUtils::digitFileFormat("/page%1.svg", mPageIndex);
-    QFile file(fileName);
+    QSaveFile file(fileName);
 
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    if (!file.open(QIODevice::WriteOnly))
     {
         qCritical() << "cannot open " << fileName << " for writing. Error : " << file.errorString();
         return false;
     }
-    file.write(buffer.data());
-    file.flush();
-    file.close();
-
+    if (file.write(buffer.data()) != buffer.size() || !file.commit()) {
+        qCritical() << "Cannot commit lesson page" << fileName;
+        return false;
+    }
     return true;
 }
 
@@ -2199,9 +2202,28 @@ void UBSvgSubsetAdaptor::UBSvgSubsetWriter::svgItemToLinkedSvg(UBGraphicsSvgItem
 
     mXmlWriter.writeStartElement("image");
 
+    const auto assetData = svgItem->fileData();
+    if (svgItem->isTeachingShape()) {
+        // Duplicated pages can share an SVG asset. A new outline for a resized
+        // shape must not overwrite an asset still referenced by another page.
+        QFile previous(mDocumentPath + "/" + UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg");
+        if (previous.open(QIODevice::ReadOnly) && previous.readAll() != assetData)
+            svgItem->setUuid(QUuid::createUuid());
+    }
     QString fileName = UBPersistenceManager::imageDirectory + "/" + svgItem->uuid().toString() + ".svg";
 
 
+    if (svgItem->isTeachingShape() || svgItem->isLessonCover() || svgItem->fileData().contains("graphdesk-project"))
+    {
+        QDir().mkpath(mDocumentPath + "/" + UBPersistenceManager::imageDirectory);
+        QSaveFile asset(mDocumentPath + "/" + fileName);
+        if (!asset.open(QIODevice::WriteOnly)
+                || asset.write(assetData) != assetData.size()
+                || !asset.commit()) {
+            mAssetSaveFailed = true;
+            qWarning() << "Cannot persist editable SVG asset" << asset.fileName();
+        }
+    }
     mXmlWriter.writeAttribute(nsXLink, "href", fileName);
 
     graphicsItemToSvg(svgItem);

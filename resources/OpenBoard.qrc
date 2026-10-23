@@ -1,5 +1,14 @@
 <RCC>
+    <qresource prefix="/graphdesk"><file alias="GraphDesk.html">graphdesk/GraphDesk.html</file></qresource>
     <qresource prefix="/">
+        <file>images/teaching/favourites.svg</file>
+        <file>images/teaching/cover.svg</file>
+        <file>images/teaching/reveal.svg</file>
+        <file>images/teaching/history.svg</file>
+        <file>images/teaching/graph.svg</file>
+        <file>images/teaching/functions.svg</file>
+        <file>images/teaching/shapes.svg</file>
+        <file>images/teaching/dash.svg</file>
         <file>images/OpenBoard.png</file>
         <file>images/bigOpenBoard.png</file>
         <file>images/close.svg</file>

@@ -36,17 +36,20 @@
 #include "UBDownloadWidget.h"
 
 class QStackedLayout;
+class QTabWidget;
 
 #include "ui_mainWindow.h"
 
 class UBMainWindow : public QMainWindow, public Ui::MainWindow
 {
     Q_OBJECT
+    QTabWidget *mTeachingTabs = nullptr;
     public:
 
         UBMainWindow(QWidget *parent = 0, Qt::WindowFlags flags = {});
         virtual ~UBMainWindow();
 
+        QTabWidget* teachingTabs() const { return mTeachingTabs; }
         void addBoardWidget(QWidget *pWidget);
         void switchToBoardWidget();
 

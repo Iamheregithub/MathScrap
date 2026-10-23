@@ -1,0 +1,154 @@
+name: Windows teaching installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [graphdesk-teaching-fork]
+permissions:
+  contents: write
+concurrency:
+  group: windows-teaching-build
+  cancel-in-progress: true
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - name: Fetch upstream Windows dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - name: Restore native compilation
+        uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-
+            native-${{ env.VCToolsVersion }}-qt683-
+      - name: Build and stage application
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - name: Save native compilation
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: OpenBoard/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Native startup, drawing, and GraphDesk checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Favourites, reveal covers, versions and crash recovery checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-lesson-tools.ps1
+      - name: Fetch original OpenBoard 1.7.7 for file compatibility
+        uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard
+          ref: v1.7.7
+          path: OpenBoardOriginal
+      - name: Prepare original test entry point
+        shell: pwsh
+        run: |
+          python OpenBoard/release_scripts/teaching/prepare-original-compat.py OpenBoardOriginal
+          git -C OpenBoardOriginal diff --stat
+          git -C OpenBoardOriginal diff --name-only | Set-Content OpenBoard/dist/original-instrumentation.txt
+      - name: Restore original native compilation
+        uses: actions/cache/restore@v4
+        id: original-cache
+        with:
+          path: OpenBoardOriginal/build
+          key: original-compat-${{ env.VCToolsVersion }}-qt683-v177-${{ hashFiles('OpenBoard/src/board/UBFileCompatibilityTest.*', 'OpenBoard/release_scripts/teaching/prepare-original-compat.py', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}
+          restore-keys: |
+            original-compat-${{ env.VCToolsVersion }}-qt683-v177-
+      - name: Build original OpenBoard with test entry point
+        shell: pwsh
+        run: |
+          ./OpenBoardOriginal/release_scripts/teaching/build-windows.ps1
+          Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.config OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.config
+          Copy-Item OpenBoardOriginal/dist/app/etc/OpenBoard.css OpenBoardOriginal/dist/app/etc/OpenBoardCompatibilityTest.css
+      - name: Save original native compilation
+        if: always() && steps.original-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: OpenBoardOriginal/build
+          key: ${{ steps.original-cache.outputs.cache-primary-key }}
+      - name: Round trip original OpenBoard and Mathscrap files
+        shell: pwsh
+        run: |
+          python -m pip install Pillow
+          ./OpenBoard/release_scripts/teaching/test-compatibility.ps1
+      - name: Create installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup --yes --no-progress; if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' } }
+          & $iscc "$env:GITHUB_WORKSPACE\OpenBoard\release_scripts\teaching\OpenBoardTeaching.iss"
+          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed' }
+      - name: Hash installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem OpenBoard/dist/*Setup.exe
+          $hash = Get-FileHash $setup.FullName -Algorithm SHA256
+          "$($hash.Hash.ToLower())  $($setup.Name)" | Set-Content OpenBoard/dist/SHA256SUMS.txt
+      - name: Upload installer and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mathscrap-Windows-x64
+          path: |
+            OpenBoard/dist/*Setup.exe
+            OpenBoard/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish direct installer download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $version = (Select-String -Path OpenBoard/release_scripts/teaching/OpenBoardTeaching.iss -Pattern '#define AppVersion "([^"]+)"').Matches[0].Groups[1].Value
+          $tag = "mathscrap-v$version"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag OpenBoard/dist/Mathscrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --clobber
+          } else {
+            gh release create $tag OpenBoard/dist/Mathscrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "Mathscrap $version" --notes "Windows x64 installer. Native drawing, teaching tools, recovery and original OpenBoard file compatibility checks passed. Source code is available at the tagged commit under the repository licence."
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-validation-report
+          path: |
+            OpenBoard/dist/*report.json
+            OpenBoard/dist/*.log
+            OpenBoard/dist/*window.png
+            OpenBoard/dist/cover-*.png
+            OpenBoard/dist/pdf-*.pdf
+            OpenBoard/dist/original-instrumentation.txt
+            OpenBoard/dist/compatibility/**
+          if-no-files-found: ignore
+      - name: Preserve staged application for diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-staged-application
+          path: OpenBoard/dist/app
+          retention-days: 7

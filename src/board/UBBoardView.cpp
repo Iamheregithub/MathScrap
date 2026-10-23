@@ -253,24 +253,6 @@ void UBBoardView::keyPressEvent (QKeyEvent *event)
         {
             switch (event->key ())
             {
-            case Qt::Key_Plus:
-            {
-                mController->zoomIn ();
-                event->accept ();
-                break;
-            }
-            case Qt::Key_Minus:
-            {
-                mController->zoomOut ();
-                event->accept ();
-                break;
-            }
-            case Qt::Key_0:
-            {
-                mController->zoomRestore ();
-                event->accept ();
-                break;
-            }
             case Qt::Key_Left:
             {
                 mController->handScroll (-100, 0);
@@ -1120,6 +1102,11 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
     mMouseDownPos = eventPosition.toPoint();
 
     setMovingItem(scene()->itemAt(this->mapToScene(eventPosition.toPoint()), QTransform()));
+    for(auto hit=getMovingItem();hit;hit=hit->parentItem()) {
+        if(event->button()==Qt::LeftButton&&hit->data(0).toString()=="mathscrap-formula-input") {
+            mFormulaInputMouse=true;QGraphicsView::mousePressEvent(event);event->accept();return;
+        }
+    }
 
     if (event->button () == Qt::LeftButton && isInteractive())
     {
@@ -1244,6 +1231,7 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
 
 void UBBoardView::mouseMoveEvent (QMouseEvent *event)
 {
+    if(mFormulaInputMouse){QGraphicsView::mouseMoveEvent(event);return;}
     //    static QTime lastCallTime;
     //    if (!lastCallTime.isNull()) {
     //        qDebug() << "time interval is " << lastCallTime.msecsTo(QTime::currentTime());
@@ -1387,6 +1375,7 @@ void UBBoardView::movingItemDestroyed(QObject*)
 
 void UBBoardView::mouseReleaseEvent (QMouseEvent *event)
 {
+    if(mFormulaInputMouse){mFormulaInputMouse=false;QGraphicsView::mouseReleaseEvent(event);setMovingItem(nullptr);event->accept();return;}
     UBStylusTool::Enum currentTool = (UBStylusTool::Enum)UBDrawingController::drawingController ()->stylusTool ();
 
     setToolCursor (currentTool);
@@ -1911,6 +1900,20 @@ void UBBoardView::drawBackground (QPainter *painter, const QRectF &rect)
 
 void UBBoardView::drawForeground(QPainter* painter, const QRectF& rect)
 {
+    if(bIsControl&&scene()){
+        const auto boundary=scene()->circleErasePreview();
+        if(!boundary.isEmpty()){
+            painter->save();QPen pen(QColor("#428c79"),2,Qt::DashLine);pen.setCosmetic(true);
+            painter->setPen(pen);painter->setBrush(scene()->circleEraseReady()?QBrush(QColor(78,150,126,20)):Qt::NoBrush);painter->drawPath(boundary);
+            if(scene()->circleEraseReady()){
+                const QRectF bounds=boundary.boundingRect();
+                painter->resetTransform();const QPoint pos=mapFromScene(bounds.topLeft());
+                const QString label=tr("Tap inside to erase · Esc to cancel");const QRect box(pos-QPoint(0,28),QSize(painter->fontMetrics().horizontalAdvance(label)+16,24));
+                painter->setPen(Qt::NoPen);painter->setBrush(QColor("#fffdf7"));painter->drawRoundedRect(box,5,5);
+                painter->setPen(QColor("#285f50"));painter->drawText(box,Qt::AlignCenter,label);
+            }painter->restore();
+        }
+    }
     QTransform transform{viewportTransform()};
     QRect viewportRect(0, 0, viewport()->width(), viewport()->height());
     QRectF visible{mapToScene(viewportRect).boundingRect()};

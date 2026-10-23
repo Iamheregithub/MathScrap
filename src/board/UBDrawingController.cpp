@@ -64,7 +64,16 @@ UBDrawingController::UBDrawingController(QObject * parent)
     , mLatestDrawingTool((UBStylusTool::Enum)-1)
     , mIsDesktopMode(false)
 {
-    connect(UBSettings::settings(), SIGNAL(colorContextChanged()), this, SIGNAL(colorPaletteChanged()));
+    auto settings = UBSettings::settings();
+    // Seed stable defaults once, preserving the user's pre-upgrade widths.
+    // New colours must not inherit whichever tool happened to be used last.
+    for (const auto &mode : {"pen", "marker", "solid", "dashed"}) {
+        const QString key = "Teaching/ColourWidthDefaults/" + QString(mode);
+        if (!settings->value(key).isValid()) settings->setValue(key, QString(mode)=="marker" ? settings->markerWidthIndex() : settings->penWidthIndex());
+    }
+    connect(settings, &UBSettings::colorContextChanged, this, [this] {
+        restoreColourWidth(); emit colorPaletteChanged();
+    });
 
     connect(UBApplication::mainWindow->actionPen, SIGNAL(triggered(bool)), this, SLOT(penToolSelected(bool)));
     connect(UBApplication::mainWindow->actionEraser, SIGNAL(triggered(bool)), this, SLOT(eraserToolSelected(bool)));
@@ -110,20 +119,10 @@ void UBDrawingController::setStylusTool(int tool)
             mLatestDrawingTool = mStylusTool;
         }
 
-        if (tool == UBStylusTool::Pen || tool == UBStylusTool::Line)
-        {
-             emit lineWidthIndexChanged(UBSettings::settings()->penWidthIndex());
-             emit colorIndexChanged(UBSettings::settings()->penColorIndex());
-        }
-        else if (tool == UBStylusTool::Marker)
-        {
-            emit lineWidthIndexChanged(UBSettings::settings()->markerWidthIndex());
-            emit colorIndexChanged(UBSettings::settings()->markerColorIndex());
-        }
-
         UBStylusTool::Enum previousTool = mStylusTool;
         mStylusTool = (UBStylusTool::Enum)tool;
-
+        restoreColourWidth();
+        if (isDrawingTool()) emit colorIndexChanged(currentToolColorIndex());
 
         if (mStylusTool == UBStylusTool::Pen)
             UBApplication::mainWindow->actionPen->setChecked(true);
@@ -214,24 +213,15 @@ qreal UBDrawingController::currentToolWidth()
 
 void UBDrawingController::setLineWidthIndex(int index)
 {
-    if (stylusTool() == UBStylusTool::Marker)
-    {
-        UBSettings::settings()->setMarkerWidthIndex(index);
-    }
-    else
-    {
-        UBSettings::settings()->setPenWidthIndex(index);
-
-        if(stylusTool() != UBStylusTool::Line
-            && stylusTool() != UBStylusTool::Selector)
-        {
-            setStylusTool(UBStylusTool::Pen);
-        }
-    }
-
+    if (index < 0 || index > 2) return;
+    if (stylusTool() != UBStylusTool::Marker && stylusTool() != UBStylusTool::Line
+        && stylusTool() != UBStylusTool::Selector && stylusTool() != UBStylusTool::Pen)
+        setStylusTool(UBStylusTool::Pen);
+    if (stylusTool() == UBStylusTool::Marker) UBSettings::settings()->setMarkerWidthIndex(index);
+    else UBSettings::settings()->setPenWidthIndex(index);
+    rememberColourWidth(index);
     emit lineWidthIndexChanged(index);
 }
-
 
 int UBDrawingController::currentToolColorIndex()
 {
@@ -294,6 +284,7 @@ void UBDrawingController::setColorIndex(int index)
         UBSettings::settings()->setPenColorIndex(index);
     }
 
+    restoreColourWidth();
     emit colorIndexChanged(index);
 }
 
@@ -315,6 +306,7 @@ void UBDrawingController::setPenColor(bool onDarkBackground, const QColor& color
         UBSettings::settings()->boardPenLightBackgroundSelectedColors->setColor(pIndex, color);
     }
 
+    if (onDarkBackground == UBSettings::settings()->isDarkBackground() && pIndex == currentToolColorIndex() && stylusTool() != UBStylusTool::Marker) restoreColourWidth();
     emit colorPaletteChanged();
 }
 
@@ -330,6 +322,7 @@ void UBDrawingController::setMarkerColor(bool onDarkBackground, const QColor& co
         UBSettings::settings()->boardMarkerLightBackgroundSelectedColors->setColor(pIndex, color);
     }
 
+    if (onDarkBackground == UBSettings::settings()->isDarkBackground() && pIndex == currentToolColorIndex() && stylusTool() == UBStylusTool::Marker) restoreColourWidth();
     emit colorPaletteChanged();
 }
 
@@ -429,7 +422,7 @@ void UBDrawingController::pointerToolSelected(bool checked)
 void UBDrawingController::lineToolSelected(bool checked)
 {
     if (checked)
-        setStylusTool(UBStylusTool::Line);
+        setLineTool(false);
 }
 
 
@@ -446,3 +439,41 @@ void UBDrawingController::captureToolSelected(bool checked)
         setStylusTool(UBStylusTool::Capture);
 }
 
+
+QString UBDrawingController::colourWidthMode() const
+{
+    if (mStylusTool == UBStylusTool::Pen) return "pen";
+    if (mStylusTool == UBStylusTool::Marker) return "marker";
+    if (mStylusTool == UBStylusTool::Line)
+        return UBSettings::settings()->value("Teaching/DashedLines",false).toBool() ? "dashed" : "solid";
+    return {};
+}
+
+void UBDrawingController::restoreColourWidth()
+{
+    const auto mode = colourWidthMode(); if (mode.isEmpty()) return;
+    auto settings = UBSettings::settings();
+    // Identify the visible RGB colour, not the swatch position. Highlight
+    // transparency changes must not create a different thickness preference.
+    const QString key = "Teaching/ColourWidths/" + mode + "/" + currentToolColor().name(QColor::HexRgb).mid(1);
+    const int fallback = qBound(0,settings->value("Teaching/ColourWidthDefaults/"+mode,0).toInt(),2);
+    const int index = qBound(0,settings->value(key,fallback).toInt(),2);
+    if (mStylusTool == UBStylusTool::Marker) settings->setMarkerWidthIndex(index);
+    else settings->setPenWidthIndex(index);
+    emit lineWidthIndexChanged(index);
+}
+
+void UBDrawingController::rememberColourWidth(int index)
+{
+    const auto mode = colourWidthMode(); if (mode.isEmpty()) return;
+    const QString key = "Teaching/ColourWidths/" + mode + "/" + currentToolColor().name(QColor::HexRgb).mid(1);
+    UBSettings::settings()->setValue(key,index);
+    UBSettings::settings()->save();
+}
+
+void UBDrawingController::setLineTool(bool dashed)
+{
+    UBSettings::settings()->setValue("Teaching/DashedLines",dashed);
+    if (mStylusTool == UBStylusTool::Line) restoreColourWidth();
+    else setStylusTool(UBStylusTool::Line);
+}

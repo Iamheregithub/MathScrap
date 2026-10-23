@@ -32,6 +32,8 @@
 #include <QtGui>
 #include <QLayout>
 #include <QStyleOption>
+#include <QColorDialog>
+#include "core/UBSetting.h"
 
 #include "core/UBApplication.h"
 #include "core/UBSettings.h"
@@ -39,6 +41,25 @@
 #include "board/UBDrawingController.h"
 
 #include "core/memcheck.h"
+
+// Paint each swatch at one fixed size. QAction icon updates and platform
+// checked/disabled icon variants must not resize the coloured rectangle.
+namespace {
+class LessonColourButton : public QToolButton {
+public:
+    explicit LessonColourButton(QWidget *parent) : QToolButton(parent) {}
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.fillRect(rect(), isChecked()?QColor("#e4f1f5"):QColor("#c4c4c4"));
+        p.setPen(QPen(isChecked()?QColor("#147d92"):QColor("#777777"),isChecked()?2:1));
+        p.drawRect(rect().adjusted(1,1,-2,-2));
+        const QRect swatch((width()-18)/2,(height()-18)/2,18,18);
+        p.fillRect(swatch,property("swatchColour").value<QColor>());
+        if(hasFocus()){p.setPen(QPen(Qt::black,1,Qt::DotLine));p.drawRect(rect().adjusted(3,3,-4,-4));}
+    }
+};
+}
 
 UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QAction*> &actions, QString objectNameprefix)
     : QWidget(toolBar)
@@ -49,12 +70,16 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
 {
     Q_ASSERT(actions.size() > 0);
 
-    mToolButton = qobject_cast<QToolButton*>(toolBar->layout()->itemAt(0)->widget());
-    Q_ASSERT(mToolButton);
-
     QVBoxLayout *verticalLayout = new QVBoxLayout(this);
-    QHBoxLayout *horizontalLayout = new QHBoxLayout();
-    horizontalLayout->setSpacing(0);
+    const bool colourGrid = objectNameprefix == "colourPalette";
+    setProperty("colourGrid", colourGrid);
+    if (colourGrid) {
+        setObjectName("lessonColourPalette");
+        verticalLayout->setContentsMargins(4, 2, 4, 2);
+        mDisplayLabel = false;
+    }
+    auto horizontalLayout = new QGridLayout();
+    horizontalLayout->setSpacing(colourGrid ? 2 : 0);
     verticalLayout->addStretch();
     verticalLayout->addLayout(horizontalLayout);
     verticalLayout->addStretch();
@@ -70,7 +95,7 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
     {
         mActionGroup->addAction(action);
 
-        QToolButton *button = new QToolButton(this);
+        QToolButton *button = colourGrid ? new LessonColourButton(this) : new QToolButton(this);
         mButtons.append(button);
         button->setDefaultAction(action);
         button->setCheckable(true);
@@ -97,7 +122,13 @@ UBToolbarButtonGroup::UBToolbarButtonGroup(QToolBar *toolBar, const QList<QActio
 
         connect(button, SIGNAL(triggered(QAction*)), this, SLOT(selected(QAction*)));
 
-        horizontalLayout->addWidget(button);
+        if (colourGrid) {
+            button->setObjectName(QString("lessonColour%1").arg(i + 1));
+            button->setIconSize(QSize(18,18));
+            button->setStyleSheet("QToolButton {width:32px;height:28px;min-width:32px;max-width:32px;min-height:28px;max-height:28px;margin:0;padding:0;border:1px solid #777;border-radius:2px;background:#c4c4c4;} QToolButton:checked {border:2px solid #147d92;background:#e4f1f5;} QToolButton:pressed {background:#eeeeee;}");
+            button->setFixedSize(32,28);
+        }
+        horizontalLayout->addWidget(button, colourGrid ? i / 5 : 0, colourGrid ? i % 5 : i);
         mLabel = action->text();
         buttonSize = button->sizeHint();
         i++;
@@ -138,7 +169,35 @@ void UBToolbarButtonGroup::setIcon(const QIcon &icon, int index)
 
 void UBToolbarButtonGroup::setColor(const QColor &color, int index)
 {
-    QPixmap pixmap(12, 12);
+    // A context menu edits a swatch without leaving the lesson.
+    QToolButton *button = mButtons.value(index);
+    if (button && !button->property("paletteEditable").toBool())
+    {
+        button->setProperty("paletteEditable", true);
+        button->setContextMenuPolicy(Qt::CustomContextMenu);
+        button->setToolTip(tr("Select colour; right-click to change it"));
+        connect(button, &QWidget::customContextMenuRequested, this, [this, index]() {
+            auto settings = UBSettings::settings();
+            auto dc = UBDrawingController::drawingController();
+            const bool marker = dc->stylusTool() == UBStylusTool::Marker;
+            // Edit the palette for the background currently being taught on.
+            const bool dark = settings->isDarkBackground();
+            QColorDialog dialog(this);
+            dialog.setWindowTitle(tr("Change colour %1").arg(index + 1));
+            dialog.setCurrentColor(marker ? settings->markerColors(dark).value(index)
+                                         : settings->penColors(dark).value(index));
+            if (dialog.exec() != QDialog::Accepted)
+                return;
+            const QColor chosen = dialog.selectedColor();
+            if (marker) {
+                dc->setMarkerColor(dark, chosen, index);
+            } else {
+                dc->setPenColor(dark, chosen, index);
+            }
+        });
+    }
+    if (button && property("colourGrid").toBool()) { button->setProperty("swatchColour",color);button->update(); }
+    QPixmap pixmap(property("colourGrid").toBool() ? 18 : 12, property("colourGrid").toBool() ? 18 : 12);
     pixmap.fill(color);
     QIcon icon(pixmap);
     setIcon(icon, index);
@@ -192,23 +251,27 @@ void UBToolbarButtonGroup::setCurrentIndex(int index)
 
 void UBToolbarButtonGroup::paintEvent(QPaintEvent *)
 {
+    if (property("colourGrid").toBool()) return;
     QPainter painter(this);
     QStyleOptionToolButton option;
     QPixmap emptyPixmap(32, 32);
     emptyPixmap.fill(Qt::transparent);
     QIcon emptyIcon(emptyPixmap);
 
-    option.initFrom(mToolButton);
+    // Use an owned button: toolbar customization can delete and recreate
+    // the toolbar's original QToolButtons.
+    auto labelButton = mButtons.first();
+    option.initFrom(labelButton);
 
     option.text = mLabel;
-    option.font = mToolButton->font();
+    option.font = labelButton->font();
 
-    int pointSize = mToolButton->font().pointSize();
+    int pointSize = labelButton->font().pointSize();
     if (pointSize > 0)
         option.font.setPointSize(pointSize);
     else
     {
-        int pixelSize = mToolButton->font().pixelSize();
+        int pixelSize = labelButton->font().pixelSize();
         if (pixelSize > 0)
             option.font.setPixelSize(pixelSize);
     }
@@ -246,7 +309,7 @@ void UBToolbarButtonGroup::colorPaletteChanged()
 
 void UBToolbarButtonGroup::displayText(QVariant display)
 {
-    mDisplayLabel = display.toBool();
+    mDisplayLabel = !property("colourGrid").toBool() && display.toBool();
     QVBoxLayout* verticalLayout = (QVBoxLayout*)layout();
     verticalLayout->setStretch(2, mDisplayLabel ? 1 : 0);
     update();

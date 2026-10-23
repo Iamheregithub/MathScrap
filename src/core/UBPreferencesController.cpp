@@ -28,6 +28,7 @@
 
 
 #include "UBPreferencesController.h"
+#include <QtWidgets>
 
 #include "UBSettings.h"
 #include "UBApplication.h"
@@ -85,6 +86,7 @@ UBPreferencesController::UBPreferencesController(QWidget *parent)
     mPreferencesWindow = new UBPreferencesDialog(this,parent, Qt::Dialog);
     mPreferencesUI = new Ui::preferencesDialog();  // deleted in destructor
     mPreferencesUI->setupUi(mPreferencesWindow);
+    createDocumentLocationTab();
     adjustScreensPreferences();
 
     connect(UBApplication::displayManager, &UBDisplayManager::availableScreenCountChanged, this, &UBPreferencesController::adjustScreensPreferences);
@@ -142,6 +144,7 @@ void UBPreferencesController::adjustScreensPreferences()
 void UBPreferencesController::show()
 {
     init();
+    refreshDocumentLocation();
 
     mPreferencesWindow->exec();
 }
@@ -948,4 +951,64 @@ QValidator::State UBStringListValidator::validate(QString &input, int &) const
 void UBStringListValidator::setValidationStringList(const QStringList &list)
 {
     mList = list;
+}
+
+void UBPreferencesController::refreshDocumentLocation()
+{
+    auto settings = UBSettings::settings();
+    const QString pending = settings->pendingDocumentDirectory();
+    mDocumentLocation->setText(QDir::toNativeSeparators(pending.isEmpty() ? UBSettings::userDocumentDirectory() : pending));
+    mDocumentLocationNote->setText(pending.isEmpty()
+        ? tr("Mathscrap stores your lessons in this folder.")
+        : tr("Current location: %1. The new location will be used next time you start Mathscrap.")
+            .arg(QDir::toNativeSeparators(UBSettings::userDocumentDirectory())));
+    mCancelDocumentLocation->setEnabled(!pending.isEmpty());
+}
+
+void UBPreferencesController::createDocumentLocationTab()
+{
+    auto tab = new QWidget;
+    tab->setObjectName("documentsStorageTab");
+    auto layout = new QVBoxLayout(tab);
+    auto group = new QGroupBox(tr("My Documents location"));
+    auto form = new QVBoxLayout(group);
+    auto row = new QHBoxLayout;
+    mDocumentLocation = new QLineEdit;
+    mDocumentLocation->setObjectName("documentStoragePath");
+    mDocumentLocation->setReadOnly(true);
+    auto browse = new QPushButton(tr("Browse…"));
+    browse->setObjectName("browseDocumentStorage");
+    row->addWidget(mDocumentLocation, 1); row->addWidget(browse);
+    form->addLayout(row);
+    mDocumentLocationNote = new QLabel;
+    mDocumentLocationNote->setWordWrap(true);
+    form->addWidget(mDocumentLocationNote);
+    mCancelDocumentLocation = new QPushButton(tr("Cancel pending folder change"));
+    form->addWidget(mCancelDocumentLocation);
+    layout->addWidget(group);
+    auto help = new QLabel(tr("Choose a dedicated folder for Mathscrap lessons. You can move your existing documents to an empty folder, or use an empty/existing OpenBoard folder without moving them. Changes take effect on the next launch, after your current work has been saved."));
+    help->setWordWrap(true); layout->addWidget(help); layout->addStretch();
+    mPreferencesUI->mainTabWidget->addTab(tab, tr("Documents"));
+    connect(mCancelDocumentLocation, &QPushButton::clicked, this, [this] {
+        UBSettings::settings()->cancelDocumentDirectoryChange();
+        refreshDocumentLocation();
+    });
+    connect(browse, &QPushButton::clicked, this, [this] {
+        const QString selected = QFileDialog::getExistingDirectory(mPreferencesWindow, tr("Choose My Documents location"), mDocumentLocation->text());
+        if (selected.isEmpty()) return;
+        QMessageBox choice(mPreferencesWindow);
+        choice.setWindowTitle(tr("Change My Documents location"));
+        choice.setText(tr("How should Mathscrap use %1?").arg(QDir::toNativeSeparators(selected)));
+        choice.setInformativeText(tr("Move existing documents requires an empty destination. Using the folder without moving leaves your current documents in their original folder. The change takes effect on the next launch."));
+        auto move = choice.addButton(tr("Move existing documents"), QMessageBox::AcceptRole);
+        auto use = choice.addButton(tr("Use folder without moving"), QMessageBox::ActionRole);
+        choice.addButton(QMessageBox::Cancel);
+        choice.exec();
+        if (choice.clickedButton() != move && choice.clickedButton() != use) return;
+        QString error;
+        if (!UBSettings::settings()->scheduleDocumentDirectoryChange(selected, choice.clickedButton() == move, &error))
+            QMessageBox::warning(mPreferencesWindow, tr("Cannot change documents folder"), error);
+        refreshDocumentLocation();
+    });
+    refreshDocumentLocation();
 }

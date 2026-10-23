@@ -51,7 +51,7 @@ int UBSettings::defaultCrossSize = 24;
 int UBSettings::minCrossSize = 12;
 int UBSettings::maxCrossSize = 96; //TODO: user-settable?
 bool UBSettings::intermediateLines = false;
-int UBSettings::colorPaletteSize = 5;
+int UBSettings::colorPaletteSize = 10;
 int UBSettings::objectFrameWidth = 20;
 int UBSettings::boardMargin = 10;
 
@@ -316,16 +316,19 @@ void UBSettings::init()
 
     QStringList penDarkBackgroundColors;
     penDarkBackgroundColors << "#FFFFFF" << "#FF3400" <<"#66C0FF" << "#81FF5C" << "#FFFF00" << "#B68360" << "#FF497E" << "#8D69FF" << "#000000";
+    penDarkBackgroundColors << "#FF8C00";
     boardPenDarkBackgroundColors = new UBColorListSetting(this, "Board", "PenDarkBackgroundColors", penDarkBackgroundColors, 1.0);
 
     boardMarkerAlpha = new UBSetting(this, "Board", "MarkerAlpha", 0.5);
 
     QStringList markerLightBackgroundColors;
     markerLightBackgroundColors << "#E3FF00" << "#FF0000" <<"#004080" << "#008000" << "#C87400" << "#800040" << "#008080"  << "#000000";
+    markerLightBackgroundColors << "#FF69B4" << "#8A2BE2";
     boardMarkerLightBackgroundColors = new UBColorListSetting(this, "Board", "MarkerLightBackgroundColors", markerLightBackgroundColors, boardMarkerAlpha->get().toDouble());
 
     QStringList markerDarkBackgroundColors;
     markerDarkBackgroundColors << "#FFFF00" << "#FF4400" <<"#66C0FF" << "#81FF5C" << "#B68360" << "#FF497E" << "#8D69FF" << "#FFFFFF";
+    markerDarkBackgroundColors << "#FF8C00" << "#00CED1";
     boardMarkerDarkBackgroundColors = new UBColorListSetting(this, "Board", "MarkerDarkBackgroundColors", markerDarkBackgroundColors, boardMarkerAlpha->get().toDouble());
 
     QStringList penLightBackgroundSelectedColors;
@@ -1071,15 +1074,158 @@ QString UBSettings::userPodcastRecordingDirectory()
     return dirPath;
 }
 
+namespace {
+const QString documentDirectoryKey = "Teaching/DocumentDirectory";
+const QString pendingDirectoryKey = "Teaching/DocumentDirectoryChange";
+QString storagePath(const QString &path) {
+    const QFileInfo info(path);
+    return QDir::cleanPath(info.exists() ? info.canonicalFilePath() : info.absoluteFilePath());
+}
+bool storageError(QString *error, const QString &message) {
+    if (error) *error = message;
+    return false;
+}
+QByteArray storageHash(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&file)) return {};
+    return hash.result();
+}
+bool copyDocumentStorage(const QString &source, const QString &target, QString *error) {
+    QDirIterator files(source, QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System,
+                       QDirIterator::Subdirectories);
+    const QDir root(source);
+    while (files.hasNext()) {
+        files.next();
+        const auto info = files.fileInfo();
+        const QString destination = QDir(target).filePath(root.relativeFilePath(info.filePath()));
+        if (info.isSymLink()
+#if QT_VERSION >= QT_VERSION_CHECK(6, 2, 0)
+            || info.isJunction()
+#endif
+        )
+            return storageError(error, QObject::tr("The documents folder contains a symbolic link: %1. The original documents were kept.").arg(info.filePath()));
+        if (info.isDir()) {
+            if (!QDir().mkpath(destination)) return storageError(error, QObject::tr("Cannot create folder: %1").arg(destination));
+        } else {
+            if (!info.isFile() || !QFile::copy(info.filePath(), destination))
+                return storageError(error, QObject::tr("Cannot copy document file: %1. The original documents were kept.").arg(info.filePath()));
+            const auto originalHash = storageHash(info.filePath());
+            if (originalHash.isEmpty() || originalHash != storageHash(destination))
+                return storageError(error, QObject::tr("Could not verify the copied file: %1. The original documents were kept.").arg(info.filePath()));
+        }
+    }
+    return true;
+}
+}
+
 QString UBSettings::userDocumentDirectory()
 {
-    static QString documentDirectory = "";
-    if(documentDirectory.isEmpty()){
-        documentDirectory = userDataDirectory() + "/document";
-        checkDirectory(documentDirectory);
+    const QString configured = settings()->value(documentDirectoryKey).toString();
+    QString directory = configured.isEmpty() ? userDataDirectory() + "/document" : configured;
+    checkDirectory(directory);
+    return directory;
+}
+
+QString UBSettings::pendingDocumentDirectory()
+{
+    return QJsonDocument::fromJson(value(pendingDirectoryKey).toByteArray()).object().value("path").toString();
+}
+
+bool UBSettings::validateDocumentDirectory(const QString &current, const QString &target, bool moveExisting, QString *error)
+{
+    const QString source = storagePath(current), destination = storagePath(target);
+#ifdef Q_OS_WIN
+    const auto sensitivity = Qt::CaseInsensitive;
+#else
+    const auto sensitivity = Qt::CaseSensitive;
+#endif
+    if (source.compare(destination, sensitivity) == 0 || destination.startsWith(source.endsWith("/") ? source : source + "/", sensitivity)
+        || source.startsWith(destination.endsWith("/") ? destination : destination + "/", sensitivity))
+        return storageError(error, tr("Choose a different folder outside the current documents folder. Parent and child folders cannot be used."));
+    if (!QFileInfo(destination).isDir()) return storageError(error, tr("The selected folder does not exist."));
+    const auto entries = QDir(destination).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+    if (moveExisting && !entries.isEmpty())
+        return storageError(error, tr("To move your documents, choose an empty folder. Existing files will not be overwritten."));
+    if (!moveExisting && !entries.isEmpty()) {
+        for (const auto &entry : entries) {
+            if (entry.fileName() == "folders.xml" || entry.fileName() == "desktop.ini" || entry.fileName() == ".DS_Store") continue;
+            if (!entry.isDir() || !QFileInfo(QDir(entry.filePath()).filePath("metadata.rdf")).isFile())
+                return storageError(error, tr("Choose an empty folder or a folder containing OpenBoard documents."));
+        }
     }
-    qDebug() << "userDocumentDirectory()" << documentDirectory;
-    return documentDirectory;
+    QTemporaryFile probe(QDir(destination).filePath(".openboard-write-check-XXXXXX"));
+    if (!probe.open()) return storageError(error, tr("You do not have permission to write to this folder."));
+    return true;
+}
+
+bool UBSettings::scheduleDocumentDirectoryChange(const QString &path, bool moveExisting, QString *error)
+{
+    const QString destination = storagePath(path);
+    if (!validateDocumentDirectory(userDocumentDirectory(), destination, moveExisting, error)) return false;
+    QJsonObject request;
+    request["path"] = destination;
+    request["move"] = moveExisting;
+    setValue(pendingDirectoryKey, QJsonDocument(request).toJson(QJsonDocument::Compact));
+    save();
+    if (mUserSettings->status() != QSettings::NoError) {
+        cancelDocumentDirectoryChange();
+        return storageError(error, tr("Could not save the folder preference. Your current documents location has not changed."));
+    }
+    return true;
+}
+
+void UBSettings::cancelDocumentDirectoryChange()
+{
+    setValue(pendingDirectoryKey, QVariant());
+    save();
+}
+
+bool UBSettings::applyPendingDocumentDirectoryChange(QString *error)
+{
+    const QString pending = pendingDocumentDirectory();
+    if (pending.isEmpty()) return true;
+    const auto request = QJsonDocument::fromJson(value(pendingDirectoryKey).toByteArray()).object();
+    const bool move = request.value("move").toBool();
+    const QString source = storagePath(userDocumentDirectory()), destination = storagePath(pending);
+    if (!validateDocumentDirectory(source, destination, move, error)) {
+        cancelDocumentDirectoryChange();
+        return false;
+    }
+    if (move) {
+        // Copy to a private staging folder and verify every file before changing
+        // the active repository. This also supports moving between drives.
+        QTemporaryDir stage(QDir(QFileInfo(destination).absolutePath()).filePath(".OpenBoard-move-XXXXXX"));
+        if (!stage.isValid() || !copyDocumentStorage(source, stage.path(), error)) {
+            cancelDocumentDirectoryChange();
+            return storageError(error, error && !error->isEmpty() ? *error : tr("Cannot prepare the new folder. The original documents were kept."));
+        }
+        // Recheck: another program may have written to the chosen folder.
+        if (!validateDocumentDirectory(source, destination, true, error) || !QDir().rmdir(destination)) {
+            cancelDocumentDirectoryChange();
+            return storageError(error, tr("The destination folder changed or cannot be replaced. The original documents were kept."));
+        }
+        if (!QDir().rename(stage.path(), destination)) {
+            QDir().mkpath(destination);
+            cancelDocumentDirectoryChange();
+            return storageError(error, tr("Cannot activate the new folder. The original documents were kept."));
+        }
+        stage.setAutoRemove(false);
+    }
+    const QVariant previous = value(documentDirectoryKey);
+    setValue(documentDirectoryKey, destination);
+    setValue(pendingDirectoryKey, QVariant());
+    save();
+    if (mUserSettings->status() != QSettings::NoError) {
+        setValue(documentDirectoryKey, previous);
+        save();
+        return storageError(error, tr("Could not save the new location. Original documents are still in %1; the new copy was also kept.").arg(source));
+    }
+    if (move && !QDir(source).removeRecursively()) {
+        if (error) *error = tr("Your documents are now in %1. Some files in the old folder could not be removed.").arg(destination);
+    }
+    return true;
 }
 
 QString UBSettings::userFavoriteListFilePath()

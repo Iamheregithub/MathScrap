@@ -44,6 +44,10 @@ class UBStylusPalette : public UBActionPalette
         virtual ~UBStylusPalette();
 
         void initPosition();
+        void applyTeachingLayout(const QStringList &order);
+
+    protected:
+        void contextMenuEvent(QContextMenuEvent *event) override;
 
     private slots:
 

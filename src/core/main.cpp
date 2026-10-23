@@ -34,6 +34,9 @@
 
 #include "UBApplication.h"
 #include "UBSettings.h"
+#include "board/UBTeachingSmokeTest.h"
+#include "board/UBFileCompatibilityTest.h"
+#include "board/UBLessonToolsTest.h"
 
 /* Uncomment this for memory leaks detection */
 /*
@@ -132,9 +135,15 @@ int main(int argc, char *argv[])
         argc++;
     }
 
+    for (int i = 1; i < argc; ++i)
+        if (QString::fromLocal8Bit(argv[i]) == "--teaching-smoke-test" || QString::fromLocal8Bit(argv[i]) == "--lesson-tools-test") installTeachingCrashDiagnostics();
+
     UBApplication app("OpenBoard", argc, argv);
 
     QStringList args = app.arguments();
+    if (args.contains("--teaching-smoke-test")) scheduleTeachingSmokeTest(&app);
+    if (args.contains("--file-compatibility-test")) scheduleFileCompatibilityTest(&app);
+    if (args.contains("--lesson-tools-test")) scheduleLessonToolsTest(&app);
 
     QString dumpPath = UBSettings::userDataDirectory() + "/log";
     QDir logDir(dumpPath);

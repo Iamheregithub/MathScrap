@@ -105,7 +105,13 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
 
     setOrganizationName("Open Education Foundation");
     setOrganizationDomain("oe-f.org");
+#ifdef UB_TEACHING_FORK
+    // Keep the existing profile identity so renaming does not strand lessons or settings.
+    setApplicationName("OpenBoardTeaching");
+    setApplicationDisplayName("Mathscrap");
+#else
     setApplicationName("OpenBoard");
+#endif
 
 #ifdef Q_OS_OSX
     // With Qt 6.9 on macOS 15 (at least), icons aren't shown in menus. This forces their display.
@@ -115,7 +121,11 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
     QString version = UBVERSION;
     if(version.endsWith("."))
         version = version.left(version.length()-1);
+#ifdef UB_TEACHING_FORK
+    setApplicationVersion("1.7.7.8");
+#else
     setApplicationVersion(version);
+#endif
 
     QStringList args = arguments();
 
@@ -308,13 +318,31 @@ void UBApplication::setupTranslators(QStringList args)
 
 int UBApplication::exec(const QString& pFileToImport)
 {
+    QString storageMessage;
+    const bool storageChanged = UBSettings::settings()->applyPendingDocumentDirectoryChange(&storageMessage);
+    if (!storageMessage.isEmpty()) {
+        if (arguments().contains("--teaching-smoke-test")) {
+            qCritical() << storageMessage;
+            if (!storageChanged) return 20;
+        } else {
+            QMessageBox::warning(nullptr, tr("My Documents location"), storageMessage);
+        }
+    }
     QPixmapCache::setCacheLimit(1024 * 100);
 
+#if defined(UB_TEACHING_FORK) && defined(Q_OS_WIN)
+    // Upgrade existing frameless profiles as well as new installations.
+    // The control window keeps native Windows controls; projector views still
+    // use the display manager's separate full-screen windows.
+    UBSettings::settings()->appRunInWindow->set(true);
+#endif
     displayManager = new UBDisplayManager(staticMemoryCleaner);
 
     if (UBSettings::settings()->appRunInWindow->get().toBool()) {
         mainWindow = new UBMainWindow(0,
                 Qt::Window |
+                Qt::WindowTitleHint |
+                Qt::WindowSystemMenuHint |
                 Qt::WindowCloseButtonHint |
                 Qt::WindowMinimizeButtonHint |
                 Qt::WindowMaximizeButtonHint |
@@ -416,6 +444,11 @@ int UBApplication::exec(const QString& pFileToImport)
     else
         applicationController->showBoard();
 
+#if defined(UB_TEACHING_FORK) && defined(Q_OS_WIN)
+    if (UBSettings::settings()->appStartMode->get().toInt() != 1)
+        mainWindow->showMaximized();
+#endif
+
     if(UBSettings::settings()->appStartupHintsEnabled->get().toBool())
     {
         UBApplication::boardController->paletteManager()->tipsPalette()->show();
@@ -490,6 +523,17 @@ void UBApplication::toolBarPositionChanged(QVariant topOrBottom)
     mainWindow->addToolBar(area, mainWindow->boardToolBar);
     mainWindow->addToolBar(area, mainWindow->webToolBar);
     mainWindow->addToolBar(area, mainWindow->documentToolBar);
+#ifdef UB_TEACHING_FORK
+    // Keep the contextual row after the main toolbar when startup/preferences
+    // relocate the standard toolbars. Otherwise it can consume their row.
+    if (!mainWindow->property("paperInk").toBool()) {
+        if (auto shapes = mainWindow->findChild<QToolBar*>("lessonShapeToolbar")) {
+            mainWindow->removeToolBarBreak(shapes);
+            mainWindow->addToolBarBreak(area);
+            mainWindow->addToolBar(area, shapes);
+        }
+    }
+#endif
 
     webController->showTabAtTop(topOrBottom.toBool());
 
