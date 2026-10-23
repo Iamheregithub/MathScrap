@@ -6,7 +6,7 @@ function Run-Smoke([string]$Tag, [string]$RelocateTo = '', [string]$Mode = 'move
     $env:TEACHING_SMOKE_REPORT = Join-Path $dist "$Tag-report.json"
     $env:TEACHING_TEST_RELOCATE_TO = $RelocateTo
     $env:TEACHING_TEST_RELOCATE_MODE = $Mode
-    $process = Start-Process "$dist\app\LessonBoard.exe" -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory "$dist\app" -PassThru -RedirectStandardError "$dist\$Tag-stderr.log" -RedirectStandardOutput "$dist\$Tag-stdout.log"
+    $process = Start-Process "$dist\app\Mathscrap.exe" -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory "$dist\app" -PassThru -RedirectStandardError "$dist\$Tag-stderr.log" -RedirectStandardOutput "$dist\$Tag-stdout.log"
     if (!$process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw 'Native smoke test timed out' }
     Copy-Item "$dist\app\teaching-crash.log" $dist -ErrorAction SilentlyContinue
     if ($process.ExitCode -ne 0) { throw "Native smoke test failed with exit code $($process.ExitCode)" }

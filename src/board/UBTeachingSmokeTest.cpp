@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingSmokeTest.h"
 #include "UBPaperInk.h"
+#include "UBMathFormulaTest.h"
 #include <QtWidgets>
 #include <QWebEngineView>
 #include <QWebEnginePage>
@@ -445,6 +446,7 @@ bool checkPdfSelection(QString *error)
     }
     UBApplication::applicationController->showDocument();
     UBApplication::documentController->selectDocument(doc);
+    UBApplication::mainWindow->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("mathscrap-documents-window.png"));
     QCoreApplication::processEvents();
     auto thumbnails = UBApplication::mainWindow->findChild<UBDocumentThumbnailWidget*>("thumbnailWidget");
     UBExportFullPDF *exporter = nullptr;
@@ -583,6 +585,7 @@ void scheduleTeachingSmokeTest(QObject *context)
         }
         QString chromeError;
         if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError)) { finish(false, chromeError); return; }
+        if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;
         auto first=UBQuadraticFormula::render(example);

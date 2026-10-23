@@ -2265,7 +2265,9 @@ void UBDocumentController::setupViews()
             "QToolButton:pressed,QToolButton:checked{background:#dceae4;border-color:#77a99a;}"
         );
         mMainWindow->documentToolBar->setIconSize(QSize(25,25));
-        mMainWindow->documentToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        mMainWindow->actionNewDocument->setText(tr("New lesson"));
+        mMainWindow->actionOpen->setText(tr("Open lesson"));
+        mMainWindow->documentToolBar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
         int thumbWidth = UBSettings::settings()->documentThumbnailWidth->get().toInt();
 

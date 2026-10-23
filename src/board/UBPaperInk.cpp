@@ -37,6 +37,7 @@ QIcon inkIcon(const QString &name)
         {"pages","M4 3h12v15H4z M8 21h12V7"},{"plus","M12 4v16 M4 12h16"},
         {"more","M5 12h.1 M12 12h.1 M19 12h.1"},{"close","M5 5l14 14 M19 5L5 19"},
         {"actionTeachingGraphDesk","M4 3v17h17 M5 17l5-8 5 5 5-10"},
+        {"actionTeachingFunctions","M2 9h7 M3 21q3 1 4-6L9 5q1-4 4-3 M14 6q-5 6 0 12 M21 6q3 6 0 12 M16 9l4 6 M20 9l-4 6"},
         {"actionDocument","M3 7h7l2-3h8v16H3z M8 10h8v7H8z"},
         {"actionPlay","M7 4l13 8-13 8z"},
         {"actionZoomIn","M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14 M15 15l6 6 M7 10h6 M10 7v6"},
@@ -87,14 +88,14 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
 {
     auto b=new QToolButton(parent);b->setObjectName("paper-"+source->objectName());b->setAutoRaise(true);
     auto dash=source->objectName()=="actionLine"?mWindow->findChild<QAction*>("actionTeachingDash"):nullptr;
-    auto proxy=new QAction(b);proxy->setText(label);proxy->setToolTip(source->toolTip());
+    auto proxy=new QAction(b);proxy->setMenu(source->menu());proxy->setText(label);proxy->setToolTip(source->toolTip());
     auto update=[source,proxy,label,dash]{const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();proxy->setText(dash?(dashed?tr("Dashed"):tr("Line")):label);proxy->setIcon(inkIcon(dashed?QString("actionTeachingDash"):source->objectName()));proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());proxy->setChecked(source->isChecked()||(dash&&dash->isChecked()));};
     connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);connect(proxy,&QAction::triggered,this,[this,source,b,dash]{
         const bool same=mTrayOpen&&mTrayAction==source->objectName()&&UBDrawingController::drawingController()->stylusTool()==trayTool();
         if(dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool())dash->trigger();else source->trigger();
         if(b->property("paperTray").toBool()){if(same)closeTray();else openTray(b);}
     });update();
-    b->setDefaultAction(proxy);b->setIconSize(QSize(26,26));return b;
+    b->setDefaultAction(proxy);if(source->menu()){b->setMenu(source->menu());b->setPopupMode(QToolButton::InstantPopup);}b->setIconSize(QSize(26,26));return b;
 }
 UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
 {
@@ -205,16 +206,16 @@ void UBPaperInk::rebuild()
     closeTray();
     delete mMore;mMore=nullptr;mOverflowActions.clear();
     auto layout=qobject_cast<QHBoxLayout*>(mDock->layout());while(auto item=layout->takeAt(0)){delete item->widget();delete item;}
-    const QStringList defaults={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"};
+    const QStringList defaults={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions"};
     QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();order.removeDuplicates();for(const auto &id:defaults)if(!order.contains(id))order<<id;
-    const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingDash",tr("Dashed")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")}};
+    const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingDash",tr("Dashed")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")}};
     mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
     const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
     mHeader->setMaximumHeight(touch?70:58);mHeader->setStyleSheet(mHeader->property("paperBaseStyle").toString()+(touch?QString(" QToolButton{height:40px;min-height:40px;max-height:44px;min-width:36px;}"):QString()));
     for(const auto &id:order){if(id=="actionTeachingDash")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){mMore->addAction(source);continue;}
-        auto b=button(source,labels.value(id,source->text()),mDock);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setFixedSize(touch?76:64,touch?76:62);b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
+        auto b=button(source,labels.value(id,source->text()),mDock);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setFixedSize(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64),touch?76:62);b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
         const bool tray=id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
@@ -226,7 +227,7 @@ void UBPaperInk::rebuild()
     auto page=mMore->addMenu(tr("Page and paper"));
     for(const auto &id:QStringList{"actionNewPage","actionDuplicatePage","actionImportPage","actionBackgrounds","actionClearPage"})if(auto a=mWindow->findChild<QAction*>(id))page->addAction(a);
     auto zoom=mMore->addMenu(tr("Zoom"));for(const auto &id:QStringList{"actionTeachingZoomIn","actionTeachingZoomOut","actionTeachingZoomReset"})if(auto a=mWindow->findChild<QAction*>(id))zoom->addAction(a);
-    if(auto a=mWindow->findChild<QAction*>("actionTeachingQuadratic"))mMore->addAction(a);
+    if(auto a=mWindow->findChild<QAction*>("actionTeachingFunctions"))mMore->addAction(a);
     for(const auto &id:QStringList{"actionDocument","actionLessonHistory","actionLessonSaveVersion"})if(auto a=mWindow->findChild<QAction*>(id))mMore->addAction(a);
     mMore->addSeparator();mMore->addAction(mWindow->findChild<QAction*>("actionTeachingCustomize"));
     auto more=new QToolButton(mDock);more->setObjectName("paperMore");more->setText(tr("More"));more->setIcon(inkIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setIconSize(QSize(26,26));more->setFixedSize(touch?76:64,touch?76:62);more->setMenu(mMore);more->setPopupMode(QToolButton::InstantPopup);layout->addWidget(more);
@@ -301,7 +302,7 @@ void UBPaperInk::layoutPanels()
     mDock->layout()->activate();
     for(int i=mDock->layout()->count()-2;i>=0&&mDock->sizeHint().width()>available;--i){
         auto b=qobject_cast<QToolButton*>(mDock->layout()->itemAt(i)->widget());if(!b)continue;
-        b->hide();mMore->addAction(b->defaultAction());mOverflowActions.prepend(b->defaultAction());mDock->layout()->invalidate();mDock->layout()->activate();
+        b->hide();if(b->property("paperSource").toString()=="actionTeachingFunctions")continue;mMore->addAction(b->defaultAction());mOverflowActions.prepend(b->defaultAction());mDock->layout()->invalidate();mDock->layout()->activate();
     }
     mDock->adjustSize();mDock->move(left+(available-mDock->width())/2,view->height()-mDock->height()-14);mDock->raise();
     mPenPanel->adjustSize();const int anchor=mTrayAnchor&&!mTrayAnchor->isHidden()?mTrayAnchor->mapTo(view,QPoint(mTrayAnchor->width()/2,0)).x():mDock->x()+mDock->width()/2;mPenPanel->move(qBound(left,anchor-mPenPanel->width()/2,qMax(left,view->width()-mPenPanel->width()-12)),mDock->y()-mPenPanel->height()-9);mPenPanel->raise();

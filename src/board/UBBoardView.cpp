@@ -1102,6 +1102,11 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
     mMouseDownPos = eventPosition.toPoint();
 
     setMovingItem(scene()->itemAt(this->mapToScene(eventPosition.toPoint()), QTransform()));
+    for(auto hit=getMovingItem();hit;hit=hit->parentItem()) {
+        if(event->button()==Qt::LeftButton&&hit->data(0).toString()=="mathscrap-formula-input") {
+            mFormulaInputMouse=true;QGraphicsView::mousePressEvent(event);event->accept();return;
+        }
+    }
 
     if (event->button () == Qt::LeftButton && isInteractive())
     {
@@ -1226,6 +1231,7 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
 
 void UBBoardView::mouseMoveEvent (QMouseEvent *event)
 {
+    if(mFormulaInputMouse){QGraphicsView::mouseMoveEvent(event);return;}
     //    static QTime lastCallTime;
     //    if (!lastCallTime.isNull()) {
     //        qDebug() << "time interval is " << lastCallTime.msecsTo(QTime::currentTime());
@@ -1369,6 +1375,7 @@ void UBBoardView::movingItemDestroyed(QObject*)
 
 void UBBoardView::mouseReleaseEvent (QMouseEvent *event)
 {
+    if(mFormulaInputMouse){mFormulaInputMouse=false;QGraphicsView::mouseReleaseEvent(event);setMovingItem(nullptr);event->accept();return;}
     UBStylusTool::Enum currentTool = (UBStylusTool::Enum)UBDrawingController::drawingController ()->stylusTool ();
 
     setToolCursor (currentTool);

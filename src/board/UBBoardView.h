@@ -206,6 +206,7 @@ private:
     QTimer mLongPressTimer;
 
     bool mIsDragInProgress;
+    bool mFormulaInputMouse = false;
     bool mMultipleSelectionIsEnabled;
     bool bIsControl;
     bool bIsDesktop;

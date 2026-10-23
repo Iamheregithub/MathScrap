@@ -1,23 +1,23 @@
 #define AppRoot "..\..\dist\app"
-#define AppVersion "1.7.7.15"
+#define AppVersion "1.7.7.16"
 [Setup]
 AppId={{2269D566-C066-4763-8D2D-48EE7AE1C83C}
-AppName=LessonBoard
+AppName=Mathscrap
 AppVersion={#AppVersion}
-AppPublisher=LessonBoard fork
+AppPublisher=Mathscrap fork
 DefaultDirName={localappdata}\Programs\OpenBoardTeaching
-DefaultGroupName=LessonBoard
+DefaultGroupName=Mathscrap
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
-OutputBaseFilename=LessonBoard-Windows-x64-Setup
+OutputBaseFilename=Mathscrap-Windows-x64-Setup
 SetupIconFile=..\..\resources\win\OpenBoard.ico
 LicenseFile=..\..\LICENSE
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\LessonBoard.exe
+UninstallDisplayIcon={app}\Mathscrap.exe
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
@@ -26,10 +26,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "..\..\dist\vc_redist.x64.exe"; Flags: dontcopy
 Source: "{#AppRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{group}\LessonBoard"; Filename: "{app}\LessonBoard.exe"
-Name: "{autodesktop}\LessonBoard"; Filename: "{app}\LessonBoard.exe"; Tasks: desktopicon
+Name: "{group}\Mathscrap"; Filename: "{app}\Mathscrap.exe"
+Name: "{autodesktop}\Mathscrap"; Filename: "{app}\Mathscrap.exe"; Tasks: desktopicon
 [Run]
-Filename: "{app}\LessonBoard.exe"; Description: "Open LessonBoard"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\Mathscrap.exe"; Description: "Open Mathscrap"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function NextVersionPart(var Value: String): Integer;
@@ -87,3 +87,7 @@ end;
 Type: files; Name: "{app}\OpenBoardTeaching.exe"
 Type: files; Name: "{group}\OpenBoard Teaching.lnk"
 Type: files; Name: "{autodesktop}\OpenBoard Teaching.lnk"
+
+Type: files; Name: "{app}\LessonBoard.exe"
+Type: files; Name: "{group}\LessonBoard.lnk"
+Type: files; Name: "{autodesktop}\LessonBoard.lnk"

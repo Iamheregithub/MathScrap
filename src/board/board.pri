@@ -33,3 +33,6 @@ SOURCES += src/board/UBLessonToolsTest.cpp
 
 HEADERS += src/board/UBPaperInk.h
 SOURCES += src/board/UBPaperInk.cpp
+
+HEADERS += src/board/UBMathFormulaTest.h
+SOURCES += src/board/UBMathFormulaTest.cpp

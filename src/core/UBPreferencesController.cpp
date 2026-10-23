@@ -959,8 +959,8 @@ void UBPreferencesController::refreshDocumentLocation()
     const QString pending = settings->pendingDocumentDirectory();
     mDocumentLocation->setText(QDir::toNativeSeparators(pending.isEmpty() ? UBSettings::userDocumentDirectory() : pending));
     mDocumentLocationNote->setText(pending.isEmpty()
-        ? tr("LessonBoard stores your lessons in this folder.")
-        : tr("Current location: %1. The new location will be used next time you start LessonBoard.")
+        ? tr("Mathscrap stores your lessons in this folder.")
+        : tr("Current location: %1. The new location will be used next time you start Mathscrap.")
             .arg(QDir::toNativeSeparators(UBSettings::userDocumentDirectory())));
     mCancelDocumentLocation->setEnabled(!pending.isEmpty());
 }
@@ -986,7 +986,7 @@ void UBPreferencesController::createDocumentLocationTab()
     mCancelDocumentLocation = new QPushButton(tr("Cancel pending folder change"));
     form->addWidget(mCancelDocumentLocation);
     layout->addWidget(group);
-    auto help = new QLabel(tr("Choose a dedicated folder for LessonBoard lessons. You can move your existing documents to an empty folder, or use an empty/existing OpenBoard folder without moving them. Changes take effect on the next launch, after your current work has been saved."));
+    auto help = new QLabel(tr("Choose a dedicated folder for Mathscrap lessons. You can move your existing documents to an empty folder, or use an empty/existing OpenBoard folder without moving them. Changes take effect on the next launch, after your current work has been saved."));
     help->setWordWrap(true); layout->addWidget(help); layout->addStretch();
     mPreferencesUI->mainTabWidget->addTab(tab, tr("Documents"));
     connect(mCancelDocumentLocation, &QPushButton::clicked, this, [this] {
@@ -998,7 +998,7 @@ void UBPreferencesController::createDocumentLocationTab()
         if (selected.isEmpty()) return;
         QMessageBox choice(mPreferencesWindow);
         choice.setWindowTitle(tr("Change My Documents location"));
-        choice.setText(tr("How should LessonBoard use %1?").arg(QDir::toNativeSeparators(selected)));
+        choice.setText(tr("How should Mathscrap use %1?").arg(QDir::toNativeSeparators(selected)));
         choice.setInformativeText(tr("Move existing documents requires an empty destination. Using the folder without moving leaves your current documents in their original folder. The change takes effect on the next launch."));
         auto move = choice.addButton(tr("Move existing documents"), QMessageBox::AcceptRole);
         auto use = choice.addButton(tr("Use folder without moving"), QMessageBox::ActionRole);

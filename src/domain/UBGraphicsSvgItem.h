@@ -39,6 +39,9 @@
 
 class UBGraphicsItemDelegate;
 class UBGraphicsPixmapItem;
+class QGraphicsProxyWidget;
+class QLineEdit;
+class QWidget;
 
 class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphicsItem
 {
@@ -56,6 +59,8 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         void setTeachingSvg(const QByteArray &data);
         void commitTeachingSvg(const QByteArray &before);
         void refreshTeachingHandles();
+        void refreshFormulaInputs();
+        QWidget *formulaInputWidget() const;
 
         void setFileData(const QByteArray& pFileData)
         {
@@ -97,6 +102,11 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         QList<QGraphicsItem*> mTeachingHandles;
         bool mTeachingDetached = false;
         int mQuadraticPressedButton = -1;
+        QPointer<QGraphicsProxyWidget> mFormulaProxy;
+        QList<QLineEdit*> mFormulaInputs;
+        QString mFormulaLayoutKey;
+        QByteArray mFormulaEditBefore;
+        bool mFormulaSyncing = false;
         QByteArray mFileData;
 };
 

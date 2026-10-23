@@ -108,7 +108,7 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
 #ifdef UB_TEACHING_FORK
     // Keep the existing profile identity so renaming does not strand lessons or settings.
     setApplicationName("OpenBoardTeaching");
-    setApplicationDisplayName("LessonBoard");
+    setApplicationDisplayName("Mathscrap");
 #else
     setApplicationName("OpenBoard");
 #endif

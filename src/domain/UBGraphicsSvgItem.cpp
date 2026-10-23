@@ -29,6 +29,8 @@
 
 #include "UBGraphicsSvgItem.h"
 #include "UBQuadraticFormula.h"
+#include "UBMathFormula.h"
+#include <QtWidgets>
 #include "UBUndoCommand.h"
 
 #include <QtGui>
@@ -64,6 +66,7 @@ UBGraphicsSvgItem::UBGraphicsSvgItem(const QString& pFilePath, QGraphicsItem* pa
         f.close();
     }
     initTeachingHandles();
+    refreshFormulaInputs();
 }
 
 UBGraphicsSvgItem::UBGraphicsSvgItem(const QByteArray& pFileData, QGraphicsItem* parent)
@@ -76,6 +79,7 @@ UBGraphicsSvgItem::UBGraphicsSvgItem(const QByteArray& pFileData, QGraphicsItem*
     setSharedRenderer(renderer);
     mFileData = pFileData;
     initTeachingHandles();
+    refreshFormulaInputs();
 }
 
 
@@ -103,6 +107,9 @@ void UBGraphicsSvgItem::init()
 
 UBGraphicsSvgItem::~UBGraphicsSvgItem()
 {
+    mFormulaSyncing=true;
+    for(auto input:mFormulaInputs)disconnect(input,nullptr,this,nullptr);
+    if(mFormulaProxy)delete mFormulaProxy.data();
 }
 
 
@@ -202,8 +209,9 @@ QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant
 
 void UBGraphicsSvgItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    mQuadraticPressedButton = UBQuadraticFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
+    mQuadraticPressedButton = UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
     if (mQuadraticPressedButton >= 0) {
+        for(auto input:mFormulaInputs)input->clearFocus();
         event->accept();
         return;
     }
@@ -223,6 +231,7 @@ void UBGraphicsSvgItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void UBGraphicsSvgItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
+    if(mQuadraticPressedButton>=0){event->accept();return;}
     if (Delegate()->mouseMoveEvent(event))
     {
         // NOOP;
@@ -236,17 +245,17 @@ void UBGraphicsSvgItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 
 void UBGraphicsSvgItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
-    const int direction = UBQuadraticFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
+    const int direction = UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
     if (mQuadraticPressedButton >= 0) {
         const bool clicked = direction == mQuadraticPressedButton;
         mQuadraticPressedButton = -1;
-        UBQuadraticFormula::State state;
-        if (clicked && UBQuadraticFormula::read(mFileData, &state)) {
-            const int next=qBound(0,state.step+(direction?1:-1),5);
+        UBMathFormula::State state;
+        if (clicked && UBMathFormula::read(mFileData, &state)) {
+            const int next=qBound(0,state.step+(direction?1:-1),UBMathFormula::lastStep(state));
             if (next!=state.step) {
                 const QByteArray before=mFileData;
                 state.step=next;
-                setTeachingSvg(UBQuadraticFormula::render(state));
+                setTeachingSvg(UBMathFormula::render(state));
                 commitTeachingSvg(before);
             }
         }
@@ -276,7 +285,7 @@ UBItem* UBGraphicsSvgItem::deepCopy() const
 {
     UBGraphicsSvgItem* copy = new UBGraphicsSvgItem(this->fileData());
 
-    if (!isTeachingShape() && !mFileData.contains("graphdesk-project") && !mFileData.contains("lessonboard-quadratic"))
+    if (!isTeachingShape() && !mFileData.contains("graphdesk-project") && !mFileData.contains("lessonboard-quadratic") && !mFileData.contains("mathscrap-formula"))
         copy->setUuid(this->uuid());
 
     copyItemParameters(copy);
@@ -470,7 +479,7 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
     if (!mTeachingDetached) { setUuid(QUuid::createUuid()); mTeachingDetached = true; }
     prepareGeometryChange();
     mFileData = data;
-    if(data.contains("lessonboard-quadratic")) {
+    if(data.contains("lessonboard-quadratic")||data.contains("mathscrap-formula")) {
         // QGraphicsSvgItem caches the default bounds when a renderer is assigned.
         // Merely loading taller data squeezes every added line into the old bounds.
         QPointer<QSvgRenderer> previous=renderer();
@@ -479,6 +488,7 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
         if(isSelected())Delegate()->update();
     } else renderer()->load(data);
     refreshTeachingHandles();
+    refreshFormulaInputs();
     update();
     if (scene()) scene()->setModified(true);
 }
@@ -492,4 +502,39 @@ void UBGraphicsSvgItem::commitTeachingSvg(const QByteArray &before)
 bool UBGraphicsSvgItem::isLessonCover() const
 {
     return mFileData.contains("lessonboard-cover");
+}
+
+QWidget *UBGraphicsSvgItem::formulaInputWidget() const {return mFormulaProxy?mFormulaProxy->widget():nullptr;}
+void UBGraphicsSvgItem::refreshFormulaInputs()
+{
+    if(mFormulaSyncing)return;
+    UBMathFormula::State state;if(!UBMathFormula::read(mFileData,&state))return;
+    mFormulaSyncing=true;
+    const QString key=state.kind+QString::number(state.mode);
+    if(!mFormulaProxy||key!=mFormulaLayoutKey){
+        mFormulaLayoutKey=key;
+        if(mFormulaProxy){mFormulaProxy->hide();mFormulaProxy->deleteLater();}
+        mFormulaInputs.clear();
+        auto row=new QWidget;row->setObjectName("mathscrapFormulaInputs");row->setProperty("mathscrapInputs",true);
+        row->setAttribute(Qt::WA_TranslucentBackground);row->setStyleSheet("QWidget{background:transparent;color:#253e3c;} QFrame#mathscrapField{background:#f1eee5;border:1px solid transparent;border-radius:7px;} QLineEdit{background:transparent;border:0;border-radius:3px;padding:0;font-family:'Cambria Math';font-size:22px;color:#253e3c;selection-background-color:#c9ded4;} QLineEdit:focus{background:#fffdf7;border:1px solid #77a99a;} QLabel{font-family:'Cambria Math';font-size:22px;} QComboBox{background:#f1eee5;color:#253e3c;border:1px solid #d8d1c3;border-radius:5px;padding:4px;font-size:17px;}");
+        const auto names=UBMathFormula::labels(state);const bool function=names.size()==1;
+        for(int i=0;i<names.size();++i){auto frame=new QFrame(row);frame->setObjectName("mathscrapField");frame->setGeometry(i*144,0,function?480:132,40);auto layout=new QHBoxLayout(frame);layout->setContentsMargins(10,0,8,0);layout->setSpacing(4);auto label=new QLabel(names[i]+" =",frame);if(function)label->setStyleSheet("font-size:18px;");layout->addWidget(label);auto input=new QLineEdit(frame);input->setObjectName(QString("formulaValue%1").arg(i));input->setAccessibleName(names[i]);input->setMinimumWidth(0);input->setMaxLength(function?180:14);input->setPlaceholderText(function?"e.g. x^2 + 6x + 7":"");if(function)input->setStyleSheet("font-size:18px;");layout->addWidget(input,1);mFormulaInputs<<input;
+            if(i>0)QWidget::setTabOrder(mFormulaInputs[i-1],input);
+            connect(input,&QLineEdit::textEdited,this,[this,key](const QString &){
+                if(mFormulaSyncing||key!=mFormulaLayoutKey)return;
+                UBMathFormula::State s;if(!UBMathFormula::read(mFileData,&s))return;
+                if(mFormulaEditBefore.isEmpty())mFormulaEditBefore=mFileData;
+                s.values.clear();for(auto field:mFormulaInputs)s.values<<field->text();s.step=0;
+                if(UBMathFormula::error(s).isEmpty())s.step=qMin(1,UBMathFormula::lastStep(s));
+                setTeachingSvg(UBMathFormula::render(s));
+            });
+            connect(input,&QLineEdit::editingFinished,this,[this,key]{if(key!=mFormulaLayoutKey||mFormulaEditBefore.isEmpty())return;const auto before=mFormulaEditBefore;mFormulaEditBefore.clear();commitTeachingSvg(before);});
+        }
+        const auto choices=UBMathFormula::modes(state);
+        if(!choices.isEmpty()){auto mode=new QComboBox(row);mode->setObjectName("formulaMode");mode->setGeometry(0,47,270,34);mode->addItems(choices);mode->setCurrentIndex(qBound(0,state.mode,int(choices.size())-1));connect(mode,QOverload<int>::of(&QComboBox::activated),this,[this,key](int index){if(mFormulaSyncing||key!=mFormulaLayoutKey)return;UBMathFormula::State s;if(!UBMathFormula::read(mFileData,&s))return;const auto before=mFileData;s.mode=index;s.values.clear();s.step=0;mFormulaEditBefore.clear();setTeachingSvg(UBMathFormula::render(s));commitTeachingSvg(before);});}
+        mFormulaProxy=new QGraphicsProxyWidget(this);mFormulaProxy->setWidget(row);mFormulaProxy->setData(0,"mathscrap-formula-input");mFormulaProxy->setZValue(20);mFormulaProxy->setData(UBGraphicsItemData::ItemLayerType,UBItemLayerType::Control);mFormulaProxy->setCacheMode(QGraphicsItem::NoCache);
+    }
+    const auto geometry=UBMathFormula::inputRect(state);mFormulaProxy->setPos(geometry.topLeft());mFormulaProxy->widget()->setFixedSize(geometry.size().toSize());
+    for(int i=0;i<mFormulaInputs.size();++i){auto input=mFormulaInputs[i];if(input->text()!=state.values.value(i)){QSignalBlocker block(input);input->setText(state.values.value(i));}}
+    mFormulaSyncing=false;
 }

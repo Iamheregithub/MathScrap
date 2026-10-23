@@ -18,20 +18,20 @@ function Run-Compatibility([string]$App,[string]$Mode) {
 function Folder-Hashes([string]$Path) {
     $r=@{};Get-ChildItem $Path -Recurse -File | ForEach-Object {$r[$_.FullName.Substring($Path.Length)]=(Get-FileHash $_.FullName -Algorithm SHA256).Hash};return $r
 }
-$first=Run-Compatibility "$original\dist\app\LessonBoard.exe" 'original-create'
+$first=Run-Compatibility "$original\dist\app\Mathscrap.exe" 'original-create'
 $sourceHashes=Folder-Hashes $first.documentPath
 $sourceArchiveHash=(Get-FileHash "$root\original.ubz" -Algorithm SHA256).Hash
-Run-Compatibility "$fork\dist\app\LessonBoard.exe" 'lessonboard-edit' | Out-Null
+Run-Compatibility "$fork\dist\app\Mathscrap.exe" 'lessonboard-edit' | Out-Null
 $after=Folder-Hashes $first.documentPath
-if ($sourceHashes.Count -ne $after.Count) {throw 'LessonBoard changed original lesson file count'}
-foreach($k in $sourceHashes.Keys) {if($after[$k] -ne $sourceHashes[$k]) {throw "LessonBoard modified the original lesson: $k"}}
+if ($sourceHashes.Count -ne $after.Count) {throw 'Mathscrap changed original lesson file count'}
+foreach($k in $sourceHashes.Keys) {if($after[$k] -ne $sourceHashes[$k]) {throw "Mathscrap modified the original lesson: $k"}}
 if((Get-FileHash "$root\original.ubz" -Algorithm SHA256).Hash -ne $sourceArchiveHash) {throw 'Original UBZ archive was modified'}
 $forkHash=(Get-FileHash "$root\lessonboard.ubz" -Algorithm SHA256).Hash
-Run-Compatibility "$original\dist\app\LessonBoard.exe" 'original-edit' | Out-Null
-if((Get-FileHash "$root\lessonboard.ubz" -Algorithm SHA256).Hash -ne $forkHash) {throw 'OpenBoard modified the LessonBoard source archive'}
+Run-Compatibility "$original\dist\app\Mathscrap.exe" 'original-edit' | Out-Null
+if((Get-FileHash "$root\lessonboard.ubz" -Algorithm SHA256).Hash -ne $forkHash) {throw 'OpenBoard modified the Mathscrap source archive'}
 $originalResaveHash=(Get-FileHash "$root\original-resaved.ubz" -Algorithm SHA256).Hash
-Run-Compatibility "$fork\dist\app\LessonBoard.exe" 'lessonboard-reopen' | Out-Null
-if((Get-FileHash "$root\original-resaved.ubz" -Algorithm SHA256).Hash -ne $originalResaveHash) {throw 'LessonBoard modified the resaved source archive'}
+Run-Compatibility "$fork\dist\app\Mathscrap.exe" 'lessonboard-reopen' | Out-Null
+if((Get-FileHash "$root\original-resaved.ubz" -Algorithm SHA256).Hash -ne $originalResaveHash) {throw 'Mathscrap modified the resaved source archive'}
 'Original lesson repository and all source UBZ archives preserved byte for byte during cross-application imports.' | Set-Content "$root\source-integrity.log"
 python "$fork\release_scripts\teaching\compare-compatibility.py" $root
 if($LASTEXITCODE -ne 0) {throw 'Compatibility comparison failed'}
