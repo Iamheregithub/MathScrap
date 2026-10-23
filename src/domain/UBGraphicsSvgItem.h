@@ -60,6 +60,7 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         void commitTeachingSvg(const QByteArray &before);
         void refreshTeachingHandles();
         void refreshFormulaInputs();
+        void fitFormulaInView();
         QWidget *formulaInputWidget() const;
 
         void setFileData(const QByteArray& pFileData)

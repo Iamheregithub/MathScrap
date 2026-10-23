@@ -72,7 +72,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         mWindow->teachingTabs()->setCurrentIndex(0);auto board=UBApplication::boardController;auto scene=board->activeScene();if(!scene)return;
         UBMathFormula::State state;state.kind=kind;
         auto item=scene->addSvg(QUrl(),board->controlView()->mapToScene(board->controlView()->viewport()->rect().center()),UBMathFormula::render(state));
-        mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);
+        item->fitFormulaInView();mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);
         if(auto inputs=item->formulaInputWidget())if(auto field=inputs->findChild<QLineEdit*>("formulaValue0"))field->setFocus();
     };
     auto quadratic=add("actionTeachingQuadratic",tr("Quadratic formula"),":/images/teaching/functions.svg");

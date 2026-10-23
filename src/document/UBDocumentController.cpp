@@ -2547,6 +2547,14 @@ void UBDocumentController::setupPalettes()
 
 void UBDocumentController::show()
 {
+    // Full captions must survive language refresh and narrow windows.
+    const QMap<QString,QString> captions={{"actionNewDocument",tr("New lesson")},{"actionNewFolder",tr("New folder")},{"actionDuplicate",tr("Duplicate")},{"actionOpen",tr("Open lesson")},{"actionAddToWorkingDocument",tr("Add to lesson")},{"actionDocumentAdd",tr("Add pages")},{"actionBoard",tr("Lesson")},{"actionDocument",tr("Documents")}};
+    for(auto action:mMainWindow->documentToolBar->actions())if(auto button=qobject_cast<QToolButton*>(mMainWindow->documentToolBar->widgetForAction(action))){
+        const QString caption=captions.value(action->objectName(),action->text());
+        button->setText(caption);button->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        button->setMinimumWidth(button->fontMetrics().horizontalAdvance(caption)+28);
+    }
+
     selectDocument(mBoardController->selectedDocument());
 
     reorderDocuments();

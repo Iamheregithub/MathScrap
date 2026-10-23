@@ -50,6 +50,14 @@ bool checkMathFormulae(QString *error){
     insert->trigger();if(QApplication::activeModalWidget())return fail("Formula insertion opened a dialog");
     UBGraphicsSvgItem *item=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State s;if(UBMathFormula::read(svg->fileData(),&s)&&s.kind=="quadratic"){item=svg;break;}}
     if(!item||!item->formulaInputWidget())return fail("On-page formula inputs missing");
+    auto fitsCanvas=[board,item]{
+        auto view=board->controlView();
+        const auto bounds=view->viewportTransform().mapRect(item->sceneBoundingRect());
+        QRectF available=view->viewport()->rect();
+        if(auto dock=view->findChild<QWidget*>("paperDock"))if(dock->isVisible())available.setBottom(dock->mapTo(view->viewport(),QPoint(0,0)).y());
+        return available.contains(bounds);
+    };
+    if(!fitsCanvas())return fail("Inserted formula is outside the visible canvas or behind the dock");
     auto fields=item->formulaInputWidget()->findChildren<QLineEdit*>();std::sort(fields.begin(),fields.end(),[](QLineEdit*a,QLineEdit*b){return a->objectName()<b->objectName();});if(fields.size()!=3)return fail("Expected three coefficient inputs");
     // Inputs must accept taps while the pen is active without laying down ink.
     UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Pen);
@@ -61,6 +69,7 @@ bool checkMathFormulae(QString *error){
     type(fields[0],"1");type(fields[1],"6");type(fields[2],"7");QMetaObject::invokeMethod(fields[2],"editingFinished",Qt::DirectConnection);
     UBMathFormula::State state;if(!UBMathFormula::read(item->fileData(),&state)||state.values!=QStringList{"1","6","7"}||state.step!=1)return fail("Typing coefficients did not update substitution");
     const qreal beforeHeight=item->boundingRect().height();state.step=UBMathFormula::lastStep(state);item->setTeachingSvg(UBMathFormula::render(state));if(item->boundingRect().height()<=beforeHeight)return fail("Formula object did not grow with steps");
+    if(!fitsCanvas())return fail("Expanded formula is outside the visible canvas or behind the dock");
     type(fields[2],"-");if(!UBMathFormula::read(item->fileData(),&state)||state.step!=0||description(item->fileData()).contains("-1.586"))return fail("Incomplete new value retained old answers");
     type(fields[2],"6");QMetaObject::invokeMethod(fields[2],"editingFinished",Qt::DirectConnection);if(!UBMathFormula::read(item->fileData(),&state)||state.step!=1)return fail("Reused formula did not restart at substitution");
     const auto changed=item->fileData();UBApplication::undoStack->undo();if(!UBMathFormula::read(item->fileData(),&state)||state.values!=QStringList{"1","6","7"}||state.step!=5)return fail("Input undo did not restore the prior solution");UBApplication::undoStack->redo();if(item->fileData()!=changed)return fail("Input redo failed");

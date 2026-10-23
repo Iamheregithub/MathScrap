@@ -48,6 +48,7 @@
 #include "core/UBPersistenceManager.h"
 
 #include "board/UBBoardController.h"
+#include "board/UBBoardView.h"
 
 #include "frameworks/UBFileSystemUtils.h"
 
@@ -489,6 +490,7 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
     } else renderer()->load(data);
     refreshTeachingHandles();
     refreshFormulaInputs();
+    if(data.contains("mathscrap-formula"))fitFormulaInView();
     update();
     if (scene()) scene()->setModified(true);
 }
@@ -537,4 +539,24 @@ void UBGraphicsSvgItem::refreshFormulaInputs()
     const auto geometry=UBMathFormula::inputRect(state);mFormulaProxy->setPos(geometry.topLeft());mFormulaProxy->widget()->setFixedSize(geometry.size().toSize());
     for(int i=0;i<mFormulaInputs.size();++i){auto input=mFormulaInputs[i];if(input->text()!=state.values.value(i)){QSignalBlocker block(input);input->setText(state.values.value(i));}}
     mFormulaSyncing=false;
+}
+
+void UBGraphicsSvgItem::fitFormulaInView()
+{
+    if(!scene()||!UBApplication::boardController)return;
+    auto view=UBApplication::boardController->controlView();
+    if(!view||view->scene()!=scene())return;
+    auto viewport=view->viewport();QRectF safe=viewport->rect().adjusted(16,16,-16,-16);
+    if(auto pages=view->findChild<QWidget*>("paperPages"))if(pages->isVisible())safe.setLeft(pages->mapTo(viewport,QPoint(pages->width(),0)).x()+16);
+    if(auto dock=view->findChild<QWidget*>("paperDock"))if(dock->isVisible())safe.setBottom(dock->mapTo(viewport,QPoint(0,0)).y()-16);
+    if(safe.width()<160||safe.height()<160)return;
+    auto bounds=view->viewportTransform().mapRect(sceneBoundingRect());
+    if(bounds.isEmpty())return;
+    const qreal factor=qMin(1.0,qMin(safe.width()/bounds.width(),safe.height()/bounds.height()));
+    if(factor<1)setScale(scale()*factor);
+    bounds=view->viewportTransform().mapRect(sceneBoundingRect());
+    const qreal dx=bounds.left()<safe.left()?safe.left()-bounds.left():bounds.right()>safe.right()?safe.right()-bounds.right():0;
+    const qreal dy=bounds.top()<safe.top()?safe.top()-bounds.top():bounds.bottom()>safe.bottom()?safe.bottom()-bounds.bottom():0;
+    const QPointF origin=view->mapToScene(QPoint(0,0)),shift=view->mapToScene(QPoint(qRound(dx),qRound(dy)))-origin;
+    setPos(pos()+shift);
 }
