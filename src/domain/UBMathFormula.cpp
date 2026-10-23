@@ -86,7 +86,7 @@ bool parsePolynomial(QString source,Polynomial &p){
 int choose(int n,int k){int r=1;for(int i=1;i<=k;++i)r=r*(n-i+1)/i;return r;}
 Math polynomial(const Terms &terms){
     QList<Math> lines,parts;bool first=true;qreal width=0;
-    for(auto it=terms.crbegin();it!=terms.crend();++it){const double c=it.value();if(qAbs(c)<1e-10)continue;
+    for(auto it=terms.cend();it!=terms.cbegin();){--it;const double c=it.value();if(qAbs(c)<1e-10)continue;
         QList<Math> t;QString sign=c<0?(first?"−":" − "):(first?"":" + ");if(!sign.isEmpty())t<<text(sign);
         const int xp=it.key().first,hp=it.key().second;
         if(qAbs(qAbs(c)-1)>1e-10||(!xp&&!hp))t<<text(nfmt(qAbs(c)));
@@ -97,7 +97,7 @@ Math polynomial(const Terms &terms){
     if(parts.isEmpty()&&lines.isEmpty())return text("0");if(!parts.isEmpty())lines<<join(parts);return lines.size()==1?lines.first():stack(lines);
 }
 Terms asTerms(const Polynomial &p){Terms t;for(auto it=p.cbegin();it!=p.cend();++it)t[{it.key(),0}]=it.value();return t;}
-Math polynomialAt(const Polynomial &p,const QString &variable){QList<Math> parts;bool first=true;for(auto it=p.crbegin();it!=p.crend();++it){double c=it.value();if(qAbs(c)<1e-10)continue;const QString sign=c<0?(first?"−":" − "):(first?"":" + ");parts<<text(sign);if(qAbs(qAbs(c)-1)>1e-10||it.key()==0)parts<<text(nfmt(qAbs(c)));if(it.key())parts<<power(variable,it.key());first=false;}return first?text("0"):join(parts);}
+Math polynomialAt(const Polynomial &p,const QString &variable){QList<Math> parts;bool first=true;for(auto it=p.cend();it!=p.cbegin();){--it;double c=it.value();if(qAbs(c)<1e-10)continue;const QString sign=c<0?(first?"−":" − "):(first?"":" + ");parts<<text(sign);if(qAbs(qAbs(c)-1)>1e-10||it.key()==0)parts<<text(nfmt(qAbs(c)));if(it.key())parts<<power(variable,it.key());first=false;}return first?text("0"):join(parts);}
 Math limit(const Math &inside){return join({stack({text("lim",24),text("h → 0",16)}),inside},12);}
 Work build(const UBMathFormula::State &s){
     Work w;const QString k=s.kind;
