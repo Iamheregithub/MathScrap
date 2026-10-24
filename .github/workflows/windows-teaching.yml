@@ -16,6 +16,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: OpenBoard
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: JavaScript security and browser isolation checks
+        working-directory: OpenBoard/tests/teaching
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install chromium
+          npm test
+          node security-browser.cjs
       - name: Fetch upstream Windows dependencies
         uses: actions/checkout@v4
         with:
