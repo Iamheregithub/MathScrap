@@ -294,7 +294,7 @@
             }
             else {
 
-                var appendTo = opts.appendTo === "parent" ? boundElement.parent() : (typeof opts.appendTo === "string" ? $(document).find(opts.appendTo) : $(opts.appendTo));
+                var appendTo = opts.appendTo === "parent" ? boundElement.parent() : $(document).find(opts.appendTo);
                 if (appendTo.length !== 1) {
                     appendTo = $("body");
                 }

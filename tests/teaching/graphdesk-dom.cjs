@@ -40,6 +40,27 @@ assert.equal(w.document.querySelectorAll('[data-injected]').length,0);
 assert.equal(w.hacked,undefined);
 assert.ok(w.document.getElementById('pagePreview').textContent.includes('</text><img'));
 assert.ok(w.document.querySelector('#printArea .print-sheet svg'));
+// Project and worksheet-snapshot imports must validate attributes before mutation.
+for(const kind of ['plot','snapshotPlot','snapshotFont','snapshotColor']){
+ const before=w.eval('JSON.stringify(project())');
+ const malformed=JSON.parse(before);
+ if(kind==='plot')malformed.plots[0].width='2.5" data-injected="yes';
+ else{
+  const item=JSON.parse(before);delete item.pageItems;
+  if(kind==='snapshotPlot')item.plots[0].width='2.5" data-injected="yes';
+  if(kind==='snapshotFont')item.settings.fontSize='14" onload="window.hacked=1';
+  if(kind==='snapshotColor')item.settings.axisColor='#000000" onload="window.hacked=1';
+  malformed.pageItems=[item];
+ }
+ assert.throws(()=>w.importProject(malformed),undefined,kind);
+ assert.equal(w.eval('JSON.stringify(project())'),before,kind+' must not alter the current lesson');
+ assert.equal(w.document.querySelectorAll('[data-injected],[onload]').length,0,kind);
+}
+{
+ const item=JSON.parse(w.eval('JSON.stringify(project())'));delete item.pageItems;
+ item.settings.fontSize='14" onload="window.hacked=1';
+ assert.throws(()=>w.GraphDesk.exportScene(item,'key'));
+}
 // Exercise the exact metadata format passed between C++ and GraphDesk.
 const metadata=Buffer.from(result.serialized).toString('base64');
 const svgdoc=new JSDOM(result.svg,{contentType:'image/svg+xml'});
