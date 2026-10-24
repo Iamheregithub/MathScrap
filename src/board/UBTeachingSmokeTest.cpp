@@ -121,10 +121,10 @@ bool checkPreferencesRedesign(QString *error)
             if(target.isValid()&&proxy&&edit){
                 table->selectRow(proxy->mapFromSource(target).row());
                 QTimer::singleShot(0,dialog,[&]{auto editor=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!editor||editor->objectName()!="preferencesShortcutEditor")return;
-                    auto key=editor->findChild<QKeySequenceEdit*>("preferencesShortcutKey");auto buttons=editor->findChild<QDialogButtonBox*>();if(key&&buttons){key->setKeySequence(QKeySequence("Ctrl+Alt+Shift+F12"));buttons->button(QDialogButtonBox::Save)->click();shortcutChanged=target.data(UBShortcutManager::PrimaryShortcutRole).toString()==QKeySequence("Ctrl+Alt+Shift+F12").toString();}if(editor->isVisible())editor->reject();});
+                    auto key=editor->findChild<QKeySequenceEdit*>("preferencesShortcutKey");auto buttons=editor->findChild<QDialogButtonBox*>();if(key&&buttons){key->setKeySequence(QKeySequence("Ctrl+Alt+Shift+F12, Ctrl+Alt+Shift+F11"));buttons->button(QDialogButtonBox::Save)->click();shortcutChanged=target.data(UBShortcutManager::PrimaryShortcutRole).toString()==QKeySequence("Ctrl+Alt+Shift+F12, Ctrl+Alt+Shift+F11").toString();}if(editor->isVisible())editor->reject();});
                 edit->click();model->setData(target,oldKey);
             }
-            good=good&&shortcutChanged;
+            good=good&&shortcutChanged&&target.data(UBShortcutManager::ShortcutsRole).toStringList().contains(oldKey.toString());
             const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
             for(int row=0;row<nav->count();++row){nav->setCurrentRow(row);QApplication::processEvents();dialog->grab().save(output.filePath("preferences-"+nav->item(row)->data(Qt::UserRole).toString()+"-window.png"));}
             for(const auto &name : {"preferencesWritingTabs","preferencesAboutTabs"}) {

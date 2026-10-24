@@ -53,7 +53,8 @@ public:
     enum {
         ActionRole = Qt::UserRole,      // bool, true if row contains editable action
         GroupHeaderRole,                // bool, true if row is group header
-        PrimaryShortcutRole             // QString, primary shortcut, only valid on column 2
+        PrimaryShortcutRole,            // QString, primary shortcut, only valid on column 2
+        ShortcutsRole                   // QStringList, complete shortcut sequences without display separators
     };
 
     void addActions(const QString& group, const QList<QAction*> actions, QWidget* widget = nullptr);

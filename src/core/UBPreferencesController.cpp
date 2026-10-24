@@ -1098,7 +1098,7 @@ void UBPreferencesController::rebuildPreferences()
         connect(clear,&QPushButton::clicked,key,&QKeySequenceEdit::clear);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
         connect(buttons,&QDialogButtonBox::accepted,&dialog,[&]{
             const auto chosen=key->keySequence();auto model=UBShortcutManager::shortcutManager();
-            if(!chosen.isEmpty())for(int row=0;row<model->rowCount();++row){if(row==index.row())continue;const auto other=model->index(row,2);for(const auto &text:other.data().toString().split(", ",Qt::SkipEmptyParts)){
+            if(!chosen.isEmpty())for(int row=0;row<model->rowCount();++row){if(row==index.row())continue;const auto other=model->index(row,2);for(const auto &text:other.data(UBShortcutManager::ShortcutsRole).toStringList()){
                 const QKeySequence existing(text);if(chosen.matches(existing)!=QKeySequence::NoMatch||existing.matches(chosen)!=QKeySequence::NoMatch){message->setText(tr("This shortcut conflicts with %1. Choose another combination.").arg(other.siblingAtColumn(0).data().toString().remove('&')));return;}
             }}
             model->setData(index,chosen.toString());UBSettings::settings()->save();dialog.accept();

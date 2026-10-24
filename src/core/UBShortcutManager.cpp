@@ -417,6 +417,13 @@ QVariant UBShortcutManager::data(const QModelIndex &index, int role) const
     case UBShortcutManager::PrimaryShortcutRole:
         return (index.column() == 2 && action) ? action->shortcut().toString() : QVariant();
 
+    case UBShortcutManager::ShortcutsRole:
+    {
+        QStringList sequences;
+        if (action) for (const auto &shortcut : action->shortcuts()) sequences << shortcut.toString();
+        return sequences;
+    }
+
     case Qt::DecorationRole:
     case Qt::EditRole:
     case Qt::StatusTipRole:
