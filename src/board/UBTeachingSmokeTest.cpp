@@ -290,6 +290,8 @@ bool checkExploratoryInteractions(QString *error)
             choice->trigger();
             qWarning("Exploration: drawing rectangle");
             const QPointF topLeft(375, 120), bottomRight(475, 205);
+            const QPointF sceneSize = view->mapToScene(bottomRight.toPoint())
+                                      - view->mapToScene(topLeft.toPoint());
             send(QEvent::MouseButtonPress, topLeft, Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, bottomRight, Qt::NoButton, Qt::LeftButton);
             QGraphicsPathItem *preview = nullptr;
@@ -307,13 +309,13 @@ bool checkExploratoryInteractions(QString *error)
             for (auto candidate : scene->selectedItems())
                 if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate); svg && svg->isTeachingShape()) shape = svg;
             if (!shape || !pointsClose(shapeAt(shape, QPointF(12,12)), topLeft)
-                       || !pointsClose(shapeAt(shape, QPointF(112,97)), bottomRight)
+                       || !pointsClose(shapeAt(shape, QPointF(12,12) + sceneSize), bottomRight)
                        || UBApplication::undoStack->index() <= undoBeforeShape) {
                 window->grab().save(output.filePath("explore-shape-failure-window.png"));
                 return fail(QString("Drawn rectangle placement or Undo is wrong: %1, shape=%2, top=%3, bottom=%4, undo=%5/%6")
                     .arg(context).arg(shape != nullptr)
                     .arg(shape ? QString("%1,%2").arg(shapeAt(shape,QPointF(12,12)).x()).arg(shapeAt(shape,QPointF(12,12)).y()) : "missing")
-                    .arg(shape ? QString("%1,%2").arg(shapeAt(shape,QPointF(112,97)).x()).arg(shapeAt(shape,QPointF(112,97)).y()) : "missing")
+                    .arg(shape ? QString("%1,%2").arg(shapeAt(shape,QPointF(12,12) + sceneSize).x()).arg(shapeAt(shape,QPointF(12,12) + sceneSize).y()) : "missing")
                     .arg(UBApplication::undoStack->index()).arg(undoBeforeShape));
             }
             UBApplication::undoStack->undo();
