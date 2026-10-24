@@ -1091,7 +1091,7 @@ void UBPreferencesController::rebuildPreferences()
         const QPersistentModelIndex index(proxy->mapToSource(shortcuts->currentIndex()).siblingAtColumn(2));
         if(!index.isValid()||!index.data(UBShortcutManager::ActionRole).toBool())return;
         QDialog dialog(mPreferencesWindow);dialog.setObjectName("preferencesShortcutEditor");dialog.setWindowTitle(tr("Change shortcut"));auto layout=new QVBoxLayout(&dialog);
-        layout->addWidget(new QLabel(index.siblingAtColumn(0).data().toString().remove('&')));
+        layout->addWidget(new QLabel(index.sibling(index.row(),0).data().toString().remove('&')));
         auto key=new QKeySequenceEdit(QKeySequence(index.data(UBShortcutManager::PrimaryShortcutRole).toString()));key->setObjectName("preferencesShortcutKey");layout->addWidget(key);
         auto message=note(tr("Press the new shortcut. Clear leaves the command without a keyboard shortcut."));layout->addWidget(message);
         auto buttons=new QDialogButtonBox(QDialogButtonBox::Save|QDialogButtonBox::Cancel);auto clear=buttons->addButton(tr("Clear"),QDialogButtonBox::ResetRole);layout->addWidget(buttons);
