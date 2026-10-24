@@ -599,7 +599,7 @@ jQuery.extend = jQuery.fn.extend = function() {
 				if ( deep && copy && typeof copy === "object" && !copy.nodeType )
 					target[ name ] = jQuery.extend( deep, 
 						// Never move original objects, clone them
-						src || ( copy.length != null ? [ ] : { } )
+						( src && typeof src === "object" && !src.nodeType && src !== Object.prototype && src !== Array.prototype ? src : ( copy.length != null ? [ ] : { } ) )
 					, copy );
 
 				// Don't bring in undefined values

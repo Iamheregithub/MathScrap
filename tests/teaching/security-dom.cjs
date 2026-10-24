@@ -71,6 +71,9 @@ async function main(){
   const dom=environment(source),w=dom.window;
   w.eval('jQuery.extend(true, {}, JSON.parse(\'{"__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}}\'))');
   assert.equal(w.eval('({}).polluted'),undefined);
+  w.eval('jQuery.extend(true, {constructor:Object}, JSON.parse(\'{"constructor":{"prototype":{"polluted":true}}}\'))');
+  w.eval('jQuery.extend(true, {prototype:Object.prototype}, JSON.parse(\'{"prototype":{"polluted":true}}\'))');
+  assert.equal(w.eval('({}).polluted'),undefined);
   const result=w.$.extend(true,{}, {nested:{value:'kept'},values:[1,2]});
   assert.equal(result.nested.value,'kept');assert.equal(result.values.length,2);
   // The selector form of .load must strip mixed-case scripts using a parser.
