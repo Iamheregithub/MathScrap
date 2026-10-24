@@ -224,8 +224,8 @@ Work build(const UBMathFormula::State &s){
         const double b=v[0],c=v[1],A=v[2];if(b<=0||c<=0||A<=0||A>=180)return fail("Use positive sides and an included angle between 0° and 180°.");
         // The expanded cosine law loses the small difference when b and c
         // are similar and A is small. This equivalent form avoids cancellation.
-        const double side=std::hypot(b-c,2*qSqrt(b)*qSqrt(c)*qSin(qDegreesToRadians(A/2)));
-        const double rad=side*side;
+        const double side=A==90?std::hypot(b,c):std::hypot(b-c,2*qSqrt(b)*qSqrt(c)*qSin(qDegreesToRadians(A/2)));
+        const double rad=A==90?b*b+c*c:side*side;
         w.rows<<relation(squared("a"),join({squared(nfmt(b)),T(" + "),squared(nfmt(c)),T(" − 2"+par(b)+par(c)+" cos("+nfmt(A)+"°)")}));
         w.rows<<relation(squared("a"),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(2*b*c)+" cos("+nfmt(A)+"°)"));
         w.rows<<relation(squared("a"),T(nfmt(rad)));
@@ -239,9 +239,11 @@ Work build(const UBMathFormula::State &s){
         if(denominator==0)return fail("These side lengths differ too much to calculate the angle reliably.");
         const double ratio=(bn*bn+cn*cn-an*an)/denominator;
         w.rows<<relation(squared(nfmt(a)),join({squared(nfmt(b)),T(" + "),squared(nfmt(c)),T(" − 2"+par(b)+par(c)+" cos A")}));
-        w.rows<<relation(T(nfmt(a*a)),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(2*b*c)+" cos A"));
-        w.rows<<relation(T(nfmt(2*b*c)+" cos A"),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(a*a)));
-        w.rows<<eq("cos A",divide(T(nfmt(b*b+c*c-a*a)),T(nfmt(2*b*c))));
+        if(a*a>0&&b*b>0&&c*c>0&&2*b*c>0){
+            w.rows<<relation(T(nfmt(a*a)),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(2*b*c)+" cos A"));
+            w.rows<<relation(T(nfmt(2*b*c)+" cos A"),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(a*a)));
+            w.rows<<eq("cos A",divide(T(nfmt(b*b+c*c-a*a)),T(nfmt(2*b*c))));
+        }else w.rows<<eq("cos A",divide(join({squared(par(b)),T(" + "),squared(par(c)),T(" − "),squared(par(a))}),T("2"+par(b)+par(c))));
         w.rows<<eq("cos A",T(nfmt(ratio)));w.rows<<eq("A",join({power("cos",-1),T("("+nfmt(ratio)+")")}));w.rows<<text("A ≈ "+dec(qRadiansToDegrees(qAcos(qBound(-1.0,ratio,1.0))))+"°");
     }
     return w;
