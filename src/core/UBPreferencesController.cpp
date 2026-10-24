@@ -153,6 +153,7 @@ void UBPreferencesController::show()
     init();
     refreshDocumentLocation();
     refreshWorkspacePreferences();
+    if (auto shortcuts = mPreferencesWindow->findChild<QSortFilterProxyModel*>("preferencesShortcutProxy")) shortcuts->invalidate();
 
     mPreferencesWindow->exec();
 }
@@ -1080,7 +1081,7 @@ void UBPreferencesController::rebuildPreferences()
     auto keyboard = page(tr("Keyboard & shortcuts"),tr("Choose your on-screen keyboard and personalize keyboard shortcuts. Select a command below to change its shortcut."));
     auto keyboardLayout = qobject_cast<QVBoxLayout*>(keyboard->layout());keyboardLayout->addWidget(mPreferencesUI->keyboardGroupBox);
     auto filter = new QLineEdit;filter->setObjectName("preferencesShortcutSearch");filter->setPlaceholderText(tr("Find a command…"));filter->setClearButtonEnabled(true);keyboardLayout->addWidget(filter);
-    auto proxy = new QSortFilterProxyModel(keyboard);proxy->setSourceModel(UBShortcutManager::shortcutManager());proxy->setFilterKeyColumn(-1);proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+    auto proxy = new QSortFilterProxyModel(keyboard);proxy->setObjectName("preferencesShortcutProxy");proxy->setSourceModel(UBShortcutManager::shortcutManager());proxy->setFilterKeyColumn(-1);proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
     auto shortcuts = new QTableView;shortcuts->setObjectName("preferencesShortcuts");shortcuts->setModel(proxy);
     shortcuts->setSelectionBehavior(QAbstractItemView::SelectRows);shortcuts->setSelectionMode(QAbstractItemView::SingleSelection);shortcuts->setEditTriggers(QAbstractItemView::NoEditTriggers);
     shortcuts->setColumnHidden(1,true);shortcuts->setColumnHidden(3,true);shortcuts->setColumnHidden(4,true);shortcuts->verticalHeader()->hide();shortcuts->horizontalHeader()->setSectionResizeMode(0,QHeaderView::Stretch);shortcuts->horizontalHeader()->setSectionResizeMode(2,QHeaderView::ResizeToContents);shortcuts->setMinimumHeight(220);keyboardLayout->addWidget(shortcuts,1);
@@ -1104,7 +1105,7 @@ void UBPreferencesController::rebuildPreferences()
             model->setData(index,chosen.toString());UBSettings::settings()->save();dialog.accept();
         });dialog.exec();
     });
-    keyboardLayout->addWidget(note(tr("Mouse and tablet-button assignments already saved in your profile are preserved. Single-letter drawing shortcuts are ignored while typing in text and formula fields.")));
+    keyboardLayout->addWidget(note(tr("Reset keyboard options affects only the on-screen keyboard. Shortcut bindings are changed individually. Saved mouse and tablet-button assignments are preserved. Single-letter drawing shortcuts are ignored while typing in text and formula fields.")));
     addSection(keyboard,"keyboard",tr("Keyboard"),tr("shortcut keys virtual keyboard tablet commands"));
 
     auto projector=page(tr("Display & projector"),tr("Select the screens used for the lesson and presentation views."));auto projectorLayout=qobject_cast<QVBoxLayout*>(projector->layout());
@@ -1125,10 +1126,17 @@ void UBPreferencesController::rebuildPreferences()
     mPreferencesUI->softwareUpdateGroupBox->hide();mPreferencesUI->aboutTab->show();mPreferencesUI->thirdPartyLicence->show();mPreferencesUI->creditsTab->show();aboutLayout->addWidget(notices,1);
     addSection(about,"about",tr("About"),tr("version updates releases licence credits copyright"));
     auto empty=note(tr("No matching settings sections."));empty->hide();contentLayout->addWidget(empty);
-    connect(mNavigation,&QListWidget::currentRowChanged,this,[=](int row){if(row<0)return;tabs->setCurrentIndex(row);mPreferencesUI->defaultSettingsButton->setEnabled(row!=7);});
+    auto refreshResetButton=[=]{
+        const int row=mNavigation->currentRow();
+        const QStringList titles={tr("Reset workspace options…"),mWritingTabs->currentIndex()==0?tr("Reset pen options…"):tr("Reset highlighter options…"),tr("Reset page & PDF options…"),tr("Reset document options…"),tr("Reset keyboard options…"),tr("Reset display options…"),tr("Reset browser options…"),tr("Reset this section…")};
+        if(row>=0&&row<titles.size())mPreferencesUI->defaultSettingsButton->setText(titles[row]);
+    };
+    connect(mNavigation,&QListWidget::currentRowChanged,this,[=](int row){if(row<0)return;tabs->setCurrentIndex(row);mPreferencesUI->defaultSettingsButton->setEnabled(row!=7);refreshResetButton();});
+    connect(mWritingTabs,&QTabWidget::currentChanged,this,[=]{refreshResetButton();});
     connect(search,&QLineEdit::textChanged,this,[=](const QString &text){
         int first=-1;for(int i=0;i<mNavigation->count();++i){auto item=mNavigation->item(i);bool match=item->data(Qt::UserRole+1).toString().contains(text,Qt::CaseInsensitive);item->setHidden(!match);if(match&&first<0)first=i;}
         tabs->setVisible(first>=0);empty->setVisible(first<0);if(first>=0&&(mNavigation->currentRow()<0||mNavigation->currentItem()->isHidden()))mNavigation->setCurrentRow(first);
+        mPreferencesUI->defaultSettingsButton->setEnabled(first>=0&&mNavigation->currentRow()!=7);
     });
     mPreferencesUI->toolbarGroupBox->hide();mPreferencesUI->stylusPaletteGroupBox->hide();
     mPreferencesUI->versionLabel->setText(tr("MathScrap Preferences"));auto headingFont=mPreferencesUI->versionLabel->font();headingFont.setPointSize(18);headingFont.setBold(true);mPreferencesUI->versionLabel->setFont(headingFont);
