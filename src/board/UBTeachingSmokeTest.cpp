@@ -263,9 +263,13 @@ bool checkExploratoryInteractions(QString *error)
             const int undoBeforeMove = UBApplication::undoStack->index();
             qWarning("Exploration: dragging object");
             send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+            qWarning("Exploration: object pressed");
             send(QEvent::MouseMove, start + QPointF(30, 17), Qt::NoButton, Qt::LeftButton);
+            qWarning("Exploration: object moved halfway");
             send(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+            qWarning("Exploration: object moved to end");
             send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+            qWarning("Exploration: object released");
             const QPointF moved = item->pos();
             const QPointF expected = initial + view->mapToScene(end.toPoint()) - view->mapToScene(start.toPoint());
             if (!pointsClose(moved, expected) || !pointsClose(shapeAt(item, item->boundingRect().center()), end)
