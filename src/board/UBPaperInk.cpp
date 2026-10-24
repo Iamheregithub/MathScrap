@@ -4,6 +4,7 @@
 #include <QSvgRenderer>
 #include "gui/UBMainWindow.h"
 #include "gui/UBStylusPalette.h"
+#include "gui/UBZoomPalette.h"
 #include "gui/UBDockPalette.h"
 #include "core/UBApplication.h"
 #include "core/UBApplicationController.h"
@@ -195,6 +196,7 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool){sync();});
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this,lesson,graph](int index){lesson->setChecked(index==0);graph->setChecked(index!=0);sync();});
     connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,[this]{closeTray();refreshPages();sync();});
+    connect(UBApplication::boardController,&UBBoardController::zoomChanged,this,[this](qreal){scheduleLayout();});
     auto dc=UBDrawingController::drawingController();
     connect(dc,&UBDrawingController::stylusToolChanged,this,[this](int,int){closeTray();sync();});
     connect(dc,&UBDrawingController::colorIndexChanged,this,[this](int){refreshPen();});connect(dc,&UBDrawingController::lineWidthIndexChanged,this,[this](int){refreshPen();});connect(dc,&UBDrawingController::colorPaletteChanged,this,&UBPaperInk::refreshPen);
@@ -330,7 +332,12 @@ void UBPaperInk::layoutPanels()
     if(auto doc=UBApplication::boardController->selectedDocument())mTitle->setText(mTitle->fontMetrics().elidedText(doc->name(),Qt::ElideRight,qMax(0,titleWidth-32)));
     const int rail=mPagesOpen&&view->width()>740?158:0;view->setPaperInkMargins(rail);
     mPages->setGeometry(0,0,rail,view->height());mPages->setVisible(mDock->isVisible()&&rail>0);mPages->raise();
-    const int left=rail+12,available=qMax(220,view->width()-left-12);mDock->adjustSize();
+    const int left=rail+12;
+    int right=view->width()-12;
+    if (auto zoom=UBApplication::boardController->controlContainer()->findChild<UBZoomPalette*>();
+        zoom && zoom->isVisible())
+        right=qMin(right,zoom->mapTo(view,QPoint(0,0)).x()-12);
+    const int available=qMax(220,right-left);mDock->adjustSize();
     // Keep readable labels and move overflow tools into More on small windows.
     if(mMore){for(auto a:mOverflowActions)mMore->removeAction(a);mOverflowActions.clear();}
     for(int i=0;i<mDock->layout()->count();++i)if(auto b=qobject_cast<QToolButton*>(mDock->layout()->itemAt(i)->widget()))b->show();
@@ -430,6 +437,8 @@ bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
         QPointer<QWidget> palette=qobject_cast<QWidget*>(object);QTimer::singleShot(0,this,[palette]{if(palette)palette->hide();});
     }
     if(object==view&&(event->type()==QEvent::Resize||event->type()==QEvent::Show))scheduleLayout();
+    if(qobject_cast<UBZoomPalette*>(object)
+       &&(event->type()==QEvent::Show||event->type()==QEvent::Hide||event->type()==QEvent::Resize))scheduleLayout();
     if(auto bar=qobject_cast<QToolBar*>(object);bar&&(bar->objectName()=="lessonShapeToolbar"||bar->objectName()=="lessonCoverToolbar")&&(event->type()==QEvent::Show||event->type()==QEvent::Hide||event->type()==QEvent::Resize))scheduleLayout();
     return false;
 }
