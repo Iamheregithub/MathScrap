@@ -368,10 +368,16 @@ bool checkExploratoryInteractions(QString *error)
 
             const int beforeCancel = UBApplication::undoStack->index();
             choice->trigger();
+            if (!view->viewport()->testAttribute(Qt::WA_SetCursor)
+                || view->viewport()->cursor().shape() != Qt::CrossCursor)
+                return fail("Shape tool did not show its drawing cursor: " + context);
             send(QEvent::MouseButtonPress, QPointF(525,275), Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, QPointF(625,345), Qt::NoButton, Qt::LeftButton);
             window->actionPen->trigger();
             qWarning("Exploration: tool switched");
+            if (!view->viewport()->testAttribute(Qt::WA_SetCursor)
+                || view->viewport()->cursor().shape() != Qt::CrossCursor)
+                return fail("Switching from Shapes lost the Pen cursor: " + context);
             send(QEvent::MouseButtonRelease, QPointF(625,345), Qt::LeftButton, Qt::NoButton);
             bool previewLeft = false;
             for (auto candidate : scene->items())
