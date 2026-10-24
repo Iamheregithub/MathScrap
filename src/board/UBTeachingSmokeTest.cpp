@@ -256,7 +256,7 @@ bool checkExploratoryInteractions(QString *error)
             window->actionSelector->trigger();
             auto item = scene->addSvg(QUrl(), view->mapToScene(QPoint(230, 170)), square);
             if (!item) return fail("Could not add draggable object: " + context);
-            scene->clearSelection(); item->setSelected(true);
+            scene->clearSelection();
             const QPointF start = shapeAt(item, item->boundingRect().center());
             const QPointF end = start + QPointF(60, 35);
             const QPointF initial = item->pos();
