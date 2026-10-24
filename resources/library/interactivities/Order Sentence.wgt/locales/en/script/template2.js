@@ -359,7 +359,7 @@ function modeEdit()
     wgtState = true;
 
     $( "#mp_word").css( "margin-left", 0 ).empty()
-    .append('<textarea cols="50" rows="5">'+sentence+'</textarea>');
+    .append($(document.createElement('textarea')).attr({cols: 50, rows: 5}).val(sentence));
 }
 
 if (window.widget) {

@@ -574,7 +574,7 @@ function addText(dest, source){
  
     var text_block = $("<div class='img_block' style='text-align: center;'>").insertBefore(source);
     $("<div class='close_img'>").appendTo(text_block);            
-    $("<input type='hidden' value='" + dest.find("input[name='mask']").val() + "'/>").appendTo(text_block);
+    $(document.createElement("input")).attr("type", "hidden").val(dest.find("input[name='mask']").val()).appendTo(text_block);
     $("<div class='text_cont' contenteditable='true'>" + sankoreLang.text + "</div>").appendTo(text_block);    
 }
 

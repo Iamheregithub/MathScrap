@@ -132,7 +132,7 @@ async function start(){
                     ans_container.remove();
                     var ul_cont = $("<ul id='sortable' class='imgs_answers_gray'>").insertAfter(container.find(".sub_cont"));
                     for(var j in answer){
-                        var tmp_letter = $("<li class='ui-state-default'>" + answer[j] + "</li>");
+                        var tmp_letter = $(document.createElement("li")).addClass("ui-state-default").text(answer[j]);
                         tmp_array.push(tmp_letter);
                     }                        
                     tmp_array = shuffle(tmp_array);
@@ -166,7 +166,7 @@ async function start(){
                     .attr("ondragleave", "$(this).removeClass('audio_gray'); return false;")
                     .attr("ondragover", "$(this).addClass('audio_gray'); return false;")
                     .attr("ondrop", "$(this).removeClass('audio_gray'); return onDropAudio(this,event);");                    
-                    $("<div class='audio_answer' contenteditable>" + container.find("ul").next().val() + "</div>").appendTo(container);
+                    $(document.createElement("div")).addClass("audio_answer").attr("contenteditable", "true").text(container.find("ul").next().val()).appendTo(container);
                     container.find("ul").remove();
                 });                
 //                $("<div class='add_block'>" + sankoreLang.add + "</div>").appendTo("#data");

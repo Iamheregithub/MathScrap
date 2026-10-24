@@ -15,7 +15,7 @@ $("#ok").click(function()
     $("#codediv").html("");
     $("#codediv").qrcode({text: text});
     $("#formdiv").addClass("hidden");
-    $("#display").html(text);
+    $("#display").text(text);
     $("body").removeClass("grey");
     $("#codediv").removeClass("hidden");
     $("#textdiv").removeClass("hidden");

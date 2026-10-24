@@ -193,7 +193,7 @@
 				.hide();
        	
        		for(var i=0; i<list.length; i++){       		
-       			var newLine = $("<li>"+list[i]+"</li>")
+			var newLine = $(document.createElement("li")).text(list[i])
        				.addClass("out")
        				.bind("mouseenter mouseleave", function(){
        					$(this).toggleClass("over");
@@ -203,7 +203,7 @@
        						func(list[e.data.i]);
        						button.find(".ubw-button-content")
        							.empty()
-       							.append(list[e.data.i]);
+							.text(list[e.data.i]);
        						button.find(".ubw-button-body")
        							.trigger("click");
        							//.bind("mouseenter", jQuery.fn.ubwbutton.buttonOverHandler);
