@@ -88,11 +88,22 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
 {
     auto b=new QToolButton(parent);b->setObjectName("paper-"+source->objectName());b->setAutoRaise(true);
     auto dash=source->objectName()=="actionLine"?mWindow->findChild<QAction*>("actionTeachingDash"):nullptr;
+    auto zoom=source->objectName()=="actionZoomIn"?mWindow->actionZoomOut:nullptr;
     auto proxy=new QAction(b);proxy->setMenu(source->menu());proxy->setText(label);proxy->setToolTip(source->toolTip());
-    auto update=[source,proxy,label,dash]{const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();proxy->setText(dash?(dashed?tr("Dashed"):tr("Line")):label);proxy->setIcon(inkIcon(dashed?QString("actionTeachingDash"):source->objectName()));proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());proxy->setChecked(source->isChecked()||(dash&&dash->isChecked()));};
-    connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);connect(proxy,&QAction::triggered,this,[this,source,b,dash]{
+    auto update=[source,proxy,label,dash,zoom]{
+        const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();
+        const bool out=zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool();
+        proxy->setText(zoom?(out?tr("Zoom −"):tr("Zoom +")):dash?(dashed?tr("Dashed"):tr("Line")):label);
+        proxy->setIcon(inkIcon(out?QString("actionZoomOut"):dashed?QString("actionTeachingDash"):source->objectName()));
+        proxy->setToolTip(zoom?tr("Zoom: double-click to switch zoom in / out"):source->toolTip());
+        proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());
+        proxy->setChecked(source->isChecked()||(dash&&dash->isChecked())||(zoom&&zoom->isChecked()));
+    };
+    connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);if(zoom)connect(zoom,&QAction::changed,b,update);
+    connect(proxy,&QAction::triggered,this,[this,source,b,dash,zoom]{
         const bool same=mTrayOpen&&mTrayAction==source->objectName()&&UBDrawingController::drawingController()->stylusTool()==trayTool();
-        if(dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool())dash->trigger();else source->trigger();
+        if(zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool())zoom->trigger();
+        else if(dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool())dash->trigger();else source->trigger();
         if(b->property("paperTray").toBool()){if(same)closeTray();else openTray(b);}
     });update();
     b->setDefaultAction(proxy);if(source->menu()){b->setMenu(source->menu());b->setPopupMode(QToolButton::InstantPopup);}b->setIconSize(QSize(26,26));return b;
@@ -108,6 +119,14 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
         if(!order.contains("actionLine")&&order.contains("actionTeachingDash"))order[order.indexOf("actionTeachingDash")]=QString("actionLine");
         order.removeAll("actionTeachingDash");if(!order.isEmpty())settings->setValue("Teaching/BottomOrder",order);
         settings->setValue("Teaching/CombinedLineButton",true);settings->save();
+    }
+    if(!settings->value("Teaching/CombinedZoomButton",false).toBool()){
+        const bool shown=settings->value("Teaching/Bottom/actionZoomIn",false).toBool()||settings->value("Teaching/Bottom/actionZoomOut",false).toBool();
+        settings->setValue("Teaching/Bottom/actionZoomIn",shown);settings->setValue("Teaching/Bottom/actionZoomOut",false);
+        auto order=settings->value("Teaching/BottomOrder").toStringList();
+        if(!order.contains("actionZoomIn")&&order.contains("actionZoomOut"))order[order.indexOf("actionZoomOut")]=QString("actionZoomIn");
+        order.removeAll("actionZoomOut");if(!order.isEmpty())settings->setValue("Teaching/BottomOrder",order);
+        settings->setValue("Teaching/CombinedZoomButton",true);settings->save();
     }
     auto view=UBApplication::boardController->controlView();
     // Keep legacy actions registered for shortcuts, menus and saved preferences.
@@ -212,7 +231,7 @@ void UBPaperInk::rebuild()
     mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
     const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
     mHeader->setMaximumHeight(touch?70:58);mHeader->setStyleSheet(mHeader->property("paperBaseStyle").toString()+(touch?QString(" QToolButton{height:40px;min-height:40px;max-height:44px;min-width:36px;}"):QString()));
-    for(const auto &id:order){if(id=="actionTeachingDash")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
+    for(const auto &id:order){if(id=="actionTeachingDash"||id=="actionZoomOut")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){mMore->addAction(source);continue;}
         auto b=button(source,labels.value(id,source->text()),mDock);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setFixedSize(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64),touch?76:62);b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
@@ -220,7 +239,7 @@ void UBPaperInk::rebuild()
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
     }
-    for(const auto &id:QStringList{"actionHand","actionPlay","actionZoomIn","actionZoomOut","actionPointer","actionCapture","actionVirtualKeyboard","actionSnap"})if(auto a=mWindow->findChild<QAction*>(id);a&&!mMore->actions().contains(a))mMore->addAction(a);
+    for(const auto &id:QStringList{"actionHand","actionPlay","actionZoomIn","actionPointer","actionCapture","actionVirtualKeyboard","actionSnap"})if(auto a=mWindow->findChild<QAction*>(id);a&&!mMore->actions().contains(a))mMore->addAction(a);
     mMore->addSeparator();
     auto library=mMore->addAction(tr("Library"));library->setCheckable(true);library->setChecked(mLibraryOpen);
     connect(library,&QAction::triggered,this,[this](bool show){mLibraryOpen=show;UBApplication::boardController->paletteManager()->rightPalette()->setVisible(show);});
@@ -365,6 +384,17 @@ bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
                 tool->setDown(false);tool->setProperty("paperIgnoreRelease",true);openTray(tool);return true;
             }
         }else if(event->type()==QEvent::MouseButtonRelease&&tool->property("paperIgnoreRelease").toBool()){
+            tool->setProperty("paperIgnoreRelease",false);tool->setDown(false);return true;
+        }
+    }
+    if(tool&&tool->objectName()=="paper-actionZoomIn"){
+        if(event->type()==QEvent::MouseButtonDblClick&&static_cast<QMouseEvent*>(event)->button()==Qt::LeftButton){
+            const bool out=!UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool();
+            UBSettings::settings()->setValue("Teaching/ZoomOutTool",out);UBSettings::settings()->save();
+            (out?mWindow->actionZoomOut:mWindow->actionZoomIn)->trigger();
+            tool->setDown(false);tool->setProperty("paperIgnoreRelease",true);return true;
+        }
+        if(event->type()==QEvent::MouseButtonRelease&&tool->property("paperIgnoreRelease").toBool()){
             tool->setProperty("paperIgnoreRelease",false);tool->setDown(false);return true;
         }
     }

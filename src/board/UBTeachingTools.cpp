@@ -197,6 +197,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     const QStringList paperOrder={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions"};
     const auto remaining=mDefaultBottom;mDefaultBottom=paperOrder;for(const auto &id:remaining)if(!mDefaultBottom.contains(id))mDefaultBottom<<id;
     mDefaultBottom.removeAll("actionTeachingDash");
+    mDefaultBottom.removeAll("actionZoomOut");
     auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
     customizeAction->setObjectName("actionTeachingCustomize");
