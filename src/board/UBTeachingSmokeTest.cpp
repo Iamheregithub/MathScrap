@@ -199,7 +199,8 @@ bool checkSelectionOrigin(QString *error)
                 QApplication::sendEvent(view->viewport(),&release);
                 if(view->findChild<QRubberBand*>()) {good=false;failure="Selection rectangle remained after pointer release";}
             }
-            scene->removeItem(inside);delete inside;scene->removeItem(outside);delete outside;
+            // UBCoreGraphicsScene owns detached items until scene teardown.
+            scene->removeItem(inside);scene->removeItem(outside);
         }
     }
     scene->setURStackEnable(undoEnabled);
