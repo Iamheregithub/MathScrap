@@ -1,0 +1,73 @@
+name: Windows exploratory interactions
+on:
+  workflow_dispatch:
+  push:
+    branches: [qa-exploratory]
+permissions:
+  contents: read
+concurrency:
+  group: mathscrap-exploratory
+  cancel-in-progress: true
+jobs:
+  explore:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: exploration-native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
+          restore-keys: |
+            exploration-native-${{ env.VCToolsVersion }}-qt683-
+      - name: Build and stage MathScrap
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - uses: actions/cache/save@v4
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: OpenBoard/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Exercise live canvas interactions
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:GITHUB_WORKSPACE 'OpenBoard/dist'
+          $env:TEACHING_SMOKE_REPORT = Join-Path $dist 'exploration-report.json'
+          $env:TEACHING_EXPLORE_ONLY = '1'
+          $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
+          $process = Start-Process (Join-Path $dist 'app/MathScrap.exe') -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory (Join-Path $dist 'app') -PassThru -RedirectStandardError (Join-Path $dist 'exploration-stderr.log') -RedirectStandardOutput (Join-Path $dist 'exploration-stdout.log')
+          if (!$process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw 'Exploration timed out' }
+          Copy-Item (Join-Path $dist 'app/teaching-crash.log') $dist -ErrorAction SilentlyContinue
+          if (!(Test-Path $env:TEACHING_SMOKE_REPORT)) { throw 'No exploration report' }
+          $report = Get-Content $env:TEACHING_SMOKE_REPORT -Raw | ConvertFrom-Json
+          if ($process.ExitCode -ne 0 -or !$report.passed -or !$report.exploratoryInteractionsChecked) { throw "Exploration failed: $($report.detail) (exit $($process.ExitCode))" }
+      - name: Preserve exploration report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-exploratory-report
+          path: |
+            OpenBoard/dist/exploration-*.json
+            OpenBoard/dist/exploration-*.log
+            OpenBoard/dist/explore-*window.png
+            OpenBoard/dist/teaching-crash.log
+          if-no-files-found: ignore
+          retention-days: 30

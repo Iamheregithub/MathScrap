@@ -20,6 +20,8 @@
 #include "UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBGraphicsTextItem.h"
+#include "domain/UBMathFormula.h"
 #include "domain/UBQuadraticFormula.h"
 #include "domain/UBGraphicsStrokesGroup.h"
 #include "document/UBDocumentProxy.h"
@@ -211,6 +213,183 @@ bool checkSelectionOrigin(QString *error)
     QApplication::processEvents();
     if(!good){*error=failure;return false;}
     window->setProperty("selectionOriginChecked",true);return true;
+}
+
+bool checkExploratoryInteractions(QString *error)
+{
+    auto fail = [error](const QString &message) { *error = message; return false; };
+    auto window = UBApplication::mainWindow;
+    auto board = UBApplication::boardController;
+    auto view = board->controlView();
+    auto settings = UBSettings::settings();
+    auto manager = UBPersistenceManager::persistenceManager();
+    auto doc = manager->createNewDocument(UBPersistenceManager::myDocumentsName,
+                                           "Exploratory pointer and tool checks", true);
+    const auto previousPages = settings->value("Teaching/PaperInkPages", true);
+    const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
+    auto send = [view](QEvent::Type type, QPointF p, Qt::MouseButton button, Qt::MouseButtons buttons) {
+        QMouseEvent event(type, p, view->viewport()->mapToGlobal(p.toPoint()), button, buttons, Qt::NoModifier);
+        QApplication::sendEvent(view->viewport(), &event);
+    };
+    auto near = [](QPointF actual, QPointF expected, qreal tolerance = 2.5) {
+        return QLineF(actual, expected).length() <= tolerance;
+    };
+    auto shapeAt = [view](UBGraphicsSvgItem *item, QPointF local) {
+        return view->mapFromScene(item->mapToScene(local));
+    };
+    const QByteArray square = "<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect width='36' height='36' fill='#147d92'/></svg>";
+    int page = 0;
+    for (bool pages : {false, true}) {
+        settings->setValue("Teaching/PaperInkPages", pages);
+        if (auto paper = window->findChild<UBPaperInk*>()) paper->applyPreferences();
+        QApplication::processEvents();
+        for (qreal zoom : {0.7, 1.0, 1.7}) {
+            if (page > 0) manager->createDocumentSceneAt(doc, page, false);
+            board->setActiveDocumentScene(doc, page);
+            auto scene = board->activeScene();
+            board->zoom(zoom / board->currentZoom(), view->mapToScene(view->viewport()->rect().center()));
+            QApplication::processEvents();
+            const QString context = QString("Pages=%1, zoom=%2, page=%3").arg(pages).arg(zoom).arg(page);
+            window->actionSelector->trigger();
+            auto item = scene->addSvg(QUrl(), view->mapToScene(QPoint(230, 170)), square);
+            if (!item) return fail("Could not add draggable object: " + context);
+            scene->clearSelection(); item->setSelected(true);
+            const QPointF start = shapeAt(item, item->boundingRect().center());
+            const QPointF end = start + QPointF(60, 35);
+            const QPointF initial = item->pos();
+            const int undoBeforeMove = UBApplication::undoStack->index();
+            send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+            send(QEvent::MouseMove, start + QPointF(30, 17), Qt::NoButton, Qt::LeftButton);
+            send(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
+            send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
+            const QPointF moved = item->pos();
+            const QPointF expected = initial + view->mapToScene(end.toPoint()) - view->mapToScene(start.toPoint());
+            if (!near(moved, expected) || !near(shapeAt(item, item->boundingRect().center()), end)
+                || UBApplication::undoStack->index() <= undoBeforeMove)
+                return fail("Selected object did not follow the drag or record Undo: " + context);
+            UBApplication::undoStack->undo();
+            if (!near(item->pos(), initial)) return fail("Object move Undo missed its origin: " + context);
+            UBApplication::undoStack->redo();
+            if (!near(item->pos(), moved)) return fail("Object move Redo missed its destination: " + context);
+
+            auto shapes = window->findChild<QAction*>("actionTeachingShapes");
+            if (!shapes) return fail("Shape tool missing");
+            shapes->trigger();
+            auto bar = window->findChild<QToolBar*>("lessonShapeToolbar");
+            auto choice = bar ? bar->findChild<QAction*>("lessonShape0") : nullptr;
+            if (!choice) return fail("Rectangle choice missing");
+            choice->trigger();
+            const QPointF topLeft(375, 120), bottomRight(475, 205);
+            send(QEvent::MouseButtonPress, topLeft, Qt::LeftButton, Qt::LeftButton);
+            send(QEvent::MouseMove, bottomRight, Qt::NoButton, Qt::LeftButton);
+            QGraphicsPathItem *preview = nullptr;
+            for (auto candidate : scene->items())
+                if (auto path = dynamic_cast<QGraphicsPathItem*>(candidate); path && path->zValue() == 1900000)
+                    preview = path;
+            if (!preview || !near(view->mapFromScene(preview->path().boundingRect().topLeft()), topLeft)
+                         || !near(view->mapFromScene(preview->path().boundingRect().bottomRight()), bottomRight))
+                return fail("Shape preview is offset from the drag: " + context);
+            if (pages && zoom == 1.0)
+                window->grab().save(output.filePath("explore-shape-preview-window.png"));
+            const int undoBeforeShape = UBApplication::undoStack->index();
+            send(QEvent::MouseButtonRelease, bottomRight, Qt::LeftButton, Qt::NoButton);
+            UBGraphicsSvgItem *shape = nullptr;
+            for (auto candidate : scene->selectedItems())
+                if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate); svg && svg->isTeachingShape()) shape = svg;
+            if (!shape || !near(shapeAt(shape, QPointF(12,12)), topLeft)
+                       || !near(shapeAt(shape, QPointF(112,97)), bottomRight)
+                       || UBApplication::undoStack->index() <= undoBeforeShape)
+                return fail("Drawn rectangle placement or Undo is wrong: " + context);
+            UBApplication::undoStack->undo();
+            if (shape->scene() == scene.get()) return fail("Shape Undo left the object on the page: " + context);
+            UBApplication::undoStack->redo();
+            if (shape->scene() != scene.get() || !near(shapeAt(shape, QPointF(12,12)), topLeft))
+                return fail("Shape Redo moved the object: " + context);
+
+            window->actionText->trigger();
+            const QPointF textStart(375, 275), textEnd(490, 345);
+            send(QEvent::MouseButtonPress, textStart, Qt::LeftButton, Qt::LeftButton);
+            send(QEvent::MouseMove, textEnd, Qt::NoButton, Qt::LeftButton);
+            QRubberBand *textBand = nullptr;
+            for (auto band : view->findChildren<QRubberBand*>()) if (band->isVisible()) textBand = band;
+            if (!textBand || !near(textBand->mapToGlobal(QPoint()),
+                                    view->viewport()->mapToGlobal(textStart.toPoint())))
+                return fail("Text preview starts away from the pointer: " + context);
+            if (pages && zoom == 1.0)
+                window->grab().save(output.filePath("explore-text-preview-window.png"));
+            send(QEvent::MouseButtonRelease, textEnd, Qt::LeftButton, Qt::NoButton);
+            UBGraphicsTextItem *textItem = nullptr;
+            for (auto candidate : scene->items())
+                if (auto t = dynamic_cast<UBGraphicsTextItem*>(candidate)) textItem = t;
+            if (!textItem || !near(view->mapFromScene(textItem->scenePos()), textStart))
+                return fail("Text box starts away from the pointer: " + context);
+            textItem->setPlainText("Classroom note");
+            scene->clearFocus(); window->actionSelector->trigger();
+
+            const int beforeCancel = UBApplication::undoStack->index();
+            choice->trigger();
+            send(QEvent::MouseButtonPress, QPointF(525,275), Qt::LeftButton, Qt::LeftButton);
+            send(QEvent::MouseMove, QPointF(625,345), Qt::NoButton, Qt::LeftButton);
+            window->actionPen->trigger();
+            send(QEvent::MouseButtonRelease, QPointF(625,345), Qt::LeftButton, Qt::NoButton);
+            bool previewLeft = false;
+            for (auto candidate : scene->items())
+                if (auto path = dynamic_cast<QGraphicsPathItem*>(candidate); path && path->zValue() == 1900000)
+                    previewLeft = true;
+            if (previewLeft || UBApplication::undoStack->index() != beforeCancel)
+                return fail("Switching tools left a shape preview or changed Undo: " + context);
+
+            manager->persistDocumentScene(doc, scene, page, true, true);
+            auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
+            bool savedMoved = false, savedShape = false;
+            for (auto candidate : reopened->items()) if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
+                if (svg->uuid() == item->uuid()) savedMoved = near(svg->pos(), moved);
+                if (svg->uuid() == shape->uuid()) savedShape = near(svg->pos(), shape->pos());
+            }
+            if (!savedMoved || !savedShape) return fail("Saved objects reopened at different positions: " + context);
+            if (pages && zoom == 1.0)
+                window->grab().save(output.filePath("explore-saved-objects-window.png"));
+            if (pages && zoom == 1.7) {
+                const qreal beforeZoomClick = board->currentZoom();
+                window->actionZoomIn->trigger();
+                send(QEvent::MouseButtonPress, QPointF(690,180), Qt::LeftButton, Qt::LeftButton);
+                send(QEvent::MouseButtonRelease, QPointF(690,180), Qt::LeftButton, Qt::NoButton);
+                const qreal afterZoomClick = board->currentZoom();
+                if (afterZoomClick <= beforeZoomClick + 0.01)
+                    return fail("Zoom tool click did not change zoom");
+                window->actionSelector->trigger();
+                for (const auto &kind : {"derivative", "quotient"}) {
+                    auto insert = window->findChild<QAction*>(QString("insertFormula-%1").arg(kind));
+                    if (!insert) return fail(QString("Missing %1 function tool").arg(kind));
+                    insert->trigger();
+                    UBGraphicsSvgItem *formula = nullptr;
+                    for (auto candidate : scene->selectedItems())
+                        if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
+                            UBMathFormula::State state;
+                            if (UBMathFormula::read(svg->fileData(), &state) && state.kind == kind) formula = svg;
+                        }
+                    if (!formula) return fail(QString("%1 formula was not inserted").arg(kind));
+                    QRectF safe = view->viewport()->rect().adjusted(10,10,-10,-10);
+                    if (auto dock = view->findChild<QWidget*>("paperDock"); dock && dock->isVisible())
+                        safe.setBottom(dock->mapTo(view->viewport(), QPoint()).y() - 10);
+                    const QRectF bounds = view->viewportTransform().mapRect(formula->sceneBoundingRect());
+                    if (!safe.contains(bounds))
+                        return fail(QString("%1 formula extends outside the visible lesson").arg(kind));
+                    scene->clearSelection();
+                    send(QEvent::MouseButtonPress, QPointF(690,300), Qt::LeftButton, Qt::LeftButton);
+                    send(QEvent::MouseButtonRelease, QPointF(690,300), Qt::LeftButton, Qt::NoButton);
+                    if (qAbs(board->currentZoom() - afterZoomClick) > 0.001)
+                        return fail(QString("Selecting after %1 insertion unexpectedly changed zoom").arg(kind));
+                    window->grab().save(output.filePath(QString("explore-%1-after-zoom-window.png").arg(kind)));
+                }
+            }
+            ++page;
+        }
+    }
+    settings->setValue("Teaching/PaperInkPages", previousPages); settings->save();
+    if (auto paper = window->findChild<UBPaperInk*>()) paper->applyPreferences();
+    window->setProperty("exploratoryInteractionsChecked", true);
+    return true;
 }
 
 bool checkWindowAndToolbar(QString *error)
@@ -709,6 +888,7 @@ void finish(bool passed, const QString &detail) {
     report["formulaZoomRegressionChecked"] = UBApplication::mainWindow->property("formulaZoomRegressionChecked").toBool();
     report["preferencesRedesignChecked"] = UBApplication::mainWindow->property("preferencesRedesignChecked").toBool();
     report["selectionOriginChecked"] = UBApplication::mainWindow->property("selectionOriginChecked").toBool();
+    report["exploratoryInteractionsChecked"] = UBApplication::mainWindow->property("exploratoryInteractionsChecked").toBool();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
     report["shapeToolbarChecked"] = UBApplication::mainWindow->property("shapeToolbarChecked").toBool();
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
@@ -727,6 +907,12 @@ void scheduleTeachingSmokeTest(QObject *context)
         auto board = UBApplication::boardController;
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
+        }
+        if (qEnvironmentVariable("TEACHING_EXPLORE_ONLY") == "1") {
+            QString detail;
+            if (!checkExploratoryInteractions(&detail)) { finish(false, detail); return; }
+            finish(true, "Exploratory pointer, object, tool, Undo/Redo and save/reopen checks passed");
+            return;
         }
         QString chromeError;
         if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
