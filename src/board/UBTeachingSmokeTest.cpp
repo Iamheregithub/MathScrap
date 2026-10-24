@@ -30,6 +30,7 @@
 #include "core/UBPersistenceManager.h"
 #include "core/UBApplicationController.h"
 #include "core/UBSetting.h"
+#include "core/UBShortcutManager.h"
 #include "adaptors/UBExportPDF.h"
 #include "adaptors/UBExportFullPDF.h"
 #include "adaptors/UBImportPDF.h"
@@ -87,6 +88,59 @@ void installTeachingCrashDiagnostics() {
 }
 
 namespace {
+bool checkPreferencesRedesign(QString *error)
+{
+    auto settings=UBSettings::settings();auto window=UBApplication::mainWindow;
+    const auto touch=settings->value("Teaching/TouchFriendly",false),labels=settings->value("Teaching/ToolLabels",true),pages=settings->value("Teaching/PaperInkPages",true);
+    const auto palette=settings->boardPenLightBackgroundSelectedColors->get(),order=settings->value("Teaching/BottomOrder"),home=settings->webHomePage->get();
+    const auto penWidth=settings->boardPenFineWidth->get();const auto folder=UBSettings::userDocumentDirectory(),pending=settings->pendingDocumentDirectory();
+    bool checked=false,good=true,shortcutChanged=false;QTimer timer;
+    QObject::connect(&timer,&QTimer::timeout,[&]{
+        auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
+        auto nav=dialog?dialog->findChild<QListWidget*>("preferencesNavigation"):nullptr;
+        if(!nav||checked)return;checked=true;timer.stop();
+        auto search=dialog->findChild<QLineEdit*>("preferencesSearch");auto tabs=dialog->findChild<QTabWidget*>("mainTabWidget");
+        good=search&&tabs&&nav->count()==8&&tabs->count()==8&&tabs->tabBar()->isHidden();
+        auto touchBox=dialog->findChild<QCheckBox*>("preferencesTouchControls");auto labelsBox=dialog->findChild<QCheckBox*>("preferencesToolLabels");auto pagesBox=dialog->findChild<QCheckBox*>("preferencesShowPages");
+        good=good&&touchBox&&labelsBox&&pagesBox&&dialog->findChild<QPushButton*>("preferencesCustomizeWorkspace");
+        if(good){
+            const bool previous=touchBox->isChecked();touchBox->click();good=good&&settings->value("Teaching/TouchFriendly").toBool()!=previous;touchBox->click();
+            labelsBox->click();auto pen=window->findChild<QToolButton*>("paper-actionPen");good=good&&pen&&pen->toolButtonStyle()==(labelsBox->isChecked()?Qt::ToolButtonTextUnderIcon:Qt::ToolButtonIconOnly);labelsBox->click();
+            pagesBox->click();good=good&&settings->value("Teaching/PaperInkPages").toBool()==pagesBox->isChecked();pagesBox->click();
+            search->setText("projector");good=good&&nav->currentItem()->data(Qt::UserRole).toString()=="projector";search->clear();
+            search->setText("no-such-setting-987");good=good&&!tabs->isVisible();search->clear();
+            // Exercise the real shortcut editor, then restore the saved binding.
+            nav->setCurrentRow(4);auto table=dialog->findChild<QTableView*>("preferencesShortcuts");auto edit=dialog->findChild<QPushButton*>("preferencesEditShortcut");
+            auto model=UBShortcutManager::shortcutManager();QModelIndex target;
+            for(int row=0;row<model->rowCount();++row)if(model->index(row,0).data().toString().remove('&')==window->actionPen->text().remove('&')){target=model->index(row,2);break;}
+            const auto oldKey=target.data(UBShortcutManager::PrimaryShortcutRole);auto proxy=table?qobject_cast<QSortFilterProxyModel*>(table->model()):nullptr;
+            if(target.isValid()&&proxy&&edit){
+                table->selectRow(proxy->mapFromSource(target).row());
+                QTimer::singleShot(0,dialog,[&]{auto editor=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!editor||editor->objectName()!="preferencesShortcutEditor")return;
+                    auto key=editor->findChild<QKeySequenceEdit*>("preferencesShortcutKey");auto buttons=editor->findChild<QDialogButtonBox*>();if(key&&buttons){key->setKeySequence(QKeySequence("Ctrl+Alt+Shift+F12"));buttons->button(QDialogButtonBox::Save)->click();shortcutChanged=target.data(UBShortcutManager::PrimaryShortcutRole).toString()==QKeySequence("Ctrl+Alt+Shift+F12").toString();}if(editor->isVisible())editor->reject();});
+                edit->click();model->setData(target,oldKey);
+            }
+            good=good&&shortcutChanged;
+            const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
+            for(int row=0;row<nav->count();++row){nav->setCurrentRow(row);QApplication::processEvents();dialog->grab().save(output.filePath("preferences-"+nav->item(row)->data(Qt::UserRole).toString()+".png"));}
+            nav->setCurrentRow(0);
+            auto reset=dialog->findChild<QPushButton*>("defaultSettingsButton");
+            QTimer::singleShot(0,dialog,[]{if(auto question=qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))question->button(QMessageBox::Yes)->click();});
+            reset->click();good=good&&!touchBox->isChecked()&&labelsBox->isChecked()&&pagesBox->isChecked();
+            good=good&&settings->value("Teaching/BottomOrder")==order&&settings->boardPenLightBackgroundSelectedColors->get()==palette&&settings->boardPenFineWidth->get()==penWidth;
+            good=good&&UBSettings::userDocumentDirectory()==folder&&settings->pendingDocumentDirectory()==pending;
+            nav->setCurrentRow(6);dialog->findChild<QLineEdit*>("webHomePage")->setText("https://example.org/mathscrap-preferences-test");
+        }
+        dialog->close(); // Window-close must save the same fields as Done.
+    });
+    timer.start(50);window->actionPreferences->trigger();timer.stop();
+    good=good&&settings->webHomePage->get().toString()=="https://example.org/mathscrap-preferences-test";
+    settings->webHomePage->set(home);settings->setValue("Teaching/TouchFriendly",touch);settings->setValue("Teaching/ToolLabels",labels);settings->setValue("Teaching/PaperInkPages",pages);settings->save();
+    if(auto paper=window->findChild<UBPaperInk*>())paper->applyPreferences();
+    if(!checked||!good){*error="Preferences navigation, live workspace controls, shortcut editing, scoped reset or window-close persistence failed";return false;}
+    window->setProperty("preferencesRedesignChecked",true);return true;
+}
+
 bool checkWindowAndToolbar(QString *error)
 {
     auto window = UBApplication::mainWindow;
@@ -581,6 +635,7 @@ void finish(bool passed, const QString &detail) {
     report["detail"] = storageError.isEmpty() ? detail : storageError;
     report["qt"] = qVersion();
     report["formulaZoomRegressionChecked"] = UBApplication::mainWindow->property("formulaZoomRegressionChecked").toBool();
+    report["preferencesRedesignChecked"] = UBApplication::mainWindow->property("preferencesRedesignChecked").toBool();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
     report["shapeToolbarChecked"] = UBApplication::mainWindow->property("shapeToolbarChecked").toBool();
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
@@ -601,7 +656,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;

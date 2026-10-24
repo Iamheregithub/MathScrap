@@ -594,16 +594,13 @@ void UBApplicationController::downloadJsonFinished(QString currentJson)
 
 void UBApplicationController::checkAtLaunch()
 {
-    if(UBSettings::settings()->appEnableAutomaticSoftwareUpdates->get().toBool()){
-        isNoUpdateDisplayed = false;
-        checkUpdate();
-    }
+    // MathScrap releases are distributed through this fork's Releases page.
+    // The inherited OpenBoard update feed does not describe this application.
 }
 
 void UBApplicationController::checkUpdateRequest()
 {
-    isNoUpdateDisplayed = true;
-    checkUpdate();
+    QDesktopServices::openUrl(QUrl("https://github.com/Iamheregithub/MathScrap/releases/latest"));
 }
 
 void UBApplicationController::hideDesktop()

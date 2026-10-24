@@ -35,6 +35,9 @@
 #include <QLineEdit>
 
 class QLabel;
+class QListWidget;
+class QTabWidget;
+class QCheckBox;
 class QPushButton;
 class UBColorPicker;
 class UBApplication;
@@ -76,6 +79,7 @@ class UBPreferencesController : public QObject
     public slots:
 
         void show();
+        void savePendingFields();
 
     protected:
 
@@ -113,6 +117,14 @@ class UBPreferencesController : public QObject
         void refreshDocumentLocation();
 
     private:
+        void rebuildPreferences();
+        void refreshWorkspacePreferences();
+        void applyWorkspacePreferences();
+        QListWidget *mNavigation = nullptr;
+        QTabWidget *mWritingTabs = nullptr;
+        QCheckBox *mTouchControls = nullptr;
+        QCheckBox *mToolLabels = nullptr;
+        QCheckBox *mShowPages = nullptr;
         QLineEdit *mDocumentLocation = nullptr;
         QLabel *mDocumentLocationNote = nullptr;
         QPushButton *mCancelDocumentLocation = nullptr;
