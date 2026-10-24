@@ -79,15 +79,16 @@ async function init(){
             $("#ubwidget").append(loadWindow);        
             searchWrap.hide();
 
-            if(/<object/.test(embed)){
-                loadWindow.append(embed);
-                loadWindow.find("embed").attr("wmode","opaque");
-                var loadWindow_content = loadWindow.html();
-                loadWindow.empty().html(loadWindow_content);
-            }
-            else {
-                loadWindow.append(embed);				
-            }
+            // Embed code belongs in an opaque sandbox, outside the widget's
+            // origin and native application bridge. Do not add allow-same-origin.
+            var frame = document.createElement("iframe");
+            frame.setAttribute("sandbox", "allow-scripts allow-forms");
+            frame.setAttribute("title", "Embedded content");
+            frame.style.width = "100%";
+            frame.style.height = "100%";
+            frame.style.border = "0";
+            frame.srcdoc = embed;
+            loadWindow.empty().append(frame);
 
             if(window.sankore){
                 //window.sankore.resize($(document).width(),$(document).height());

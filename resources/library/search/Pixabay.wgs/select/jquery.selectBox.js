@@ -784,13 +784,13 @@ if(jQuery) (function($) {
 						for( var i in data ) {
 							if( data[i] === null ) continue;
 							if( typeof(data[i]) === 'object' ) {
-								var optgroup = $('<optgroup label="' + i + '" />');
+								var optgroup = $(document.createElement('optgroup')).attr('label', i);
 								for( var j in data[i] ) {
-									optgroup.append('<option value="' + j + '">' + data[i][j] + '</option>');
+									optgroup.append($(document.createElement('option')).val(j).text(data[i][j]));
 								}
 								select.append(optgroup);
 							} else {
-								var option = $('<option value="' + i + '">' + data[i] + '</option>');
+								var option = $(document.createElement('option')).val(i).text(data[i]);
 								select.append(option);
 							}
 						}

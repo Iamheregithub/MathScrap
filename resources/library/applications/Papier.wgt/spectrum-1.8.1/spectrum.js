@@ -131,27 +131,27 @@
     })();
 
     function paletteTemplate (p, color, className, opts) {
-        var html = [];
+        var row = $(document.createElement('div')).addClass('sp-cf ' + className);
         for (var i = 0; i < p.length; i++) {
-            var current = p[i];
-            if(current) {
+            var current = p[i], swatch;
+            if (current) {
                 var tiny = tinycolor(current);
-                var c = tiny.toHsl().l < 0.5 ? "sp-thumb-el sp-thumb-dark" : "sp-thumb-el sp-thumb-light";
-                c += (tinycolor.equals(color, current)) ? " sp-thumb-active" : "";
-                var formattedString = tiny.toString(opts.preferredFormat || "rgb");
-                var swatchStyle = rgbaSupport ? ("background-color:" + tiny.toRgbString()) : "filter:" + tiny.toFilter();
-                html.push('<span title="' + formattedString + '" data-color="' + tiny.toRgbString() + '" class="' + c + '"><span class="sp-thumb-inner" style="' + swatchStyle + ';"></span></span>');
+                var c = tiny.toHsl().l < 0.5 ? 'sp-thumb-el sp-thumb-dark' : 'sp-thumb-el sp-thumb-light';
+                if (tinycolor.equals(color, current)) c += ' sp-thumb-active';
+                swatch = $(document.createElement('span')).addClass(c)
+                    .attr('title', tiny.toString(opts.preferredFormat || 'rgb'))
+                    .attr('data-color', tiny.toRgbString());
+                var inner = $(document.createElement('span')).addClass('sp-thumb-inner');
+                inner.css(rgbaSupport ? 'background-color' : 'filter', rgbaSupport ? tiny.toRgbString() : tiny.toFilter());
+                swatch.append(inner);
             } else {
-                var cls = 'sp-clear-display';
-                html.push($('<div />')
-                    .append($('<span data-color="" style="background-color:transparent;" class="' + cls + '"></span>')
-                        .attr('title', opts.noColorSelectedText)
-                    )
-                    .html()
-                );
+                swatch = $(document.createElement('span')).addClass('sp-clear-display')
+                    .attr('data-color', '').attr('title', opts.noColorSelectedText)
+                    .css('background-color', 'transparent');
             }
+            row.append(swatch);
         }
-        return "<div class='sp-cf " + className + "'>" + html.join('') + "</div>";
+        return row[0];
     }
 
     function hideAll() {
@@ -294,7 +294,7 @@
             }
             else {
 
-                var appendTo = opts.appendTo === "parent" ? boundElement.parent() : $(opts.appendTo);
+                var appendTo = opts.appendTo === "parent" ? boundElement.parent() : (typeof opts.appendTo === "string" ? $(document).find(opts.appendTo) : $(opts.appendTo));
                 if (appendTo.length !== 1) {
                     appendTo = $("body");
                 }
@@ -552,14 +552,14 @@
                 html.push(paletteTemplate(getUniqueSelectionPalette(), currentColor, "sp-palette-row sp-palette-row-selection", opts));
             }
 
-            paletteContainer.html(html.join(""));
+            paletteContainer.empty().append(html);
         }
 
         function drawInitial() {
             if (opts.showInitial) {
                 var initial = colorOnShow;
                 var current = get();
-                initialColorContainer.html(paletteTemplate([initial, current], current, "sp-palette-row-initial", opts));
+                initialColorContainer.empty().append(paletteTemplate([initial, current], current, "sp-palette-row-initial", opts));
             }
         }
 

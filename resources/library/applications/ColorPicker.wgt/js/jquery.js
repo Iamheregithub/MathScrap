@@ -586,7 +586,10 @@ jQuery.extend = jQuery.fn.extend = function() {
 		if ( (options = arguments[ i ]) != null )
 			// Extend the base object
 			for ( var name in options ) {
-				var src = target[ name ], copy = options[ name ];
+				// Do not follow prototype setters or merge inherited target objects.
+                if ( name === "__proto__" ) continue;
+                var src = Object.prototype.hasOwnProperty.call(target, name) ? target[ name ] : undefined,
+                    copy = options[ name ];
 
 				// Prevent never-ending loop
 				if ( target === copy )
@@ -3269,7 +3272,14 @@ jQuery.fn.extend({
 						jQuery("<div/>")
 							// inject the contents of the document in, removing the scripts
 							// to avoid any 'Permission Denied' errors in IE
-							.append(res.responseText.replace(/<script(.|\s)*?\/script>/g, ""))
+							.append((function() {
+                                var parsed = new DOMParser().parseFromString(res.responseText, "text/html");
+                                var scripts = parsed.querySelectorAll("script");
+                                for (var i = 0; i < scripts.length; i++) scripts[i].parentNode.removeChild(scripts[i]);
+                                return Array.prototype.map.call(parsed.body.childNodes, function(node) {
+                                    return document.importNode(node, true);
+                                });
+                            })())
 
 							// Locate the specified elements
 							.find(selector) :

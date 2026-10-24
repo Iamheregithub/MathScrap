@@ -82,18 +82,12 @@
 
 			// init and build editor
 			function init() {
-				id = ''; nameSpace = '';
-				if (options.id) {
-					id = 'id="'+options.id+'"';
-				} else if ($$.attr("id")) {
-					id = 'id="markItUp'+($$.attr("id").substr(0, 1).toUpperCase())+($$.attr("id").substr(1))+'"';
+                id = options.id || ($$.attr("id") ? 'markItUp' + $$.attr("id").charAt(0).toUpperCase() + $$.attr("id").slice(1) : '');
+                $$.wrap($(document.createElement('div')).addClass(options.nameSpace || ''));
+                var editorWrapper = $(document.createElement('div')).addClass('markItUp');
+                if (id) editorWrapper.attr('id', id);
+                $$.wrap(editorWrapper);
 
-				}
-				if (options.nameSpace) {
-					nameSpace = 'class="'+options.nameSpace+'"';
-				}
-				$$.wrap('<div '+nameSpace+'></div>');
-				$$.wrap('<div '+id+' class="markItUp"></div>');
 				$$.wrap('<div class="markItUpContainer"></div>');
 				$$.addClass("markItUpEditor");
 
@@ -443,17 +437,22 @@
 			function refreshPreview() {
 					$('iframe').width($(window).width()-24)
 							   .height($(window).height()-49);
-				if (previewWindow.document) {			
-					try {
-						sp = previewWindow.document.documentElement.scrollTop
-					} catch(e) {
-						sp = 0;
-					}					
-					previewWindow.document.open();
-					previewWindow.document.write(renderPreview());
-					previewWindow.document.close();
-					previewWindow.document.documentElement.scrollTop = sp;
-				}
+                // User-authored HTML may contain scripts. Render it in an opaque
+                // sandbox so it cannot access the editor or its native bridge.
+                var previewFrame;
+                if (iFrame) {
+                    previewFrame = iFrame[0];
+                } else if (previewWindow && previewWindow.document) {
+                    previewFrame = previewWindow.document.createElement('iframe');
+                    previewFrame.style.cssText = 'width:100%;height:100%;border:0';
+                    previewWindow.document.body.replaceChildren(previewFrame);
+                }
+                if (previewFrame) {
+                    previewFrame.setAttribute('sandbox', 'allow-scripts allow-forms');
+                    previewFrame.setAttribute('title', 'HTML preview');
+                    previewFrame.srcdoc = renderPreview();
+                }
+
 				if (options.previewInWindow) {
 					previewWindow.focus();
 				}
