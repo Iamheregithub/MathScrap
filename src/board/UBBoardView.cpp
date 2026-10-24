@@ -1161,7 +1161,7 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
                 scene()->deselectAllItems();
 
                 if (!mRubberBand)
-                    mRubberBand = new UBRubberBand (QRubberBand::Rectangle, this);
+                    mRubberBand = new UBRubberBand (QRubberBand::Rectangle, viewport());
                 mRubberBand->setGeometry (QRect (mMouseDownPos, QSize ()));
                 mRubberBand->show();
                 mIsCreatingTextZone = true;
@@ -1174,7 +1174,7 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
             scene ()->deselectAllItems ();
 
             if (!mRubberBand)
-                mRubberBand = new UBRubberBand (QRubberBand::Rectangle, this);
+                mRubberBand = new UBRubberBand (QRubberBand::Rectangle, viewport());
 
             mRubberBand->setGeometry (QRect (mMouseDownPos, QSize ()));
             mRubberBand->show ();
@@ -1289,8 +1289,10 @@ void UBBoardView::mouseMoveEvent (QMouseEvent *event)
 
             bandRect = bandRect.normalized();
 
+            // Pointer positions and item hit tests use viewport coordinates.
+            // Keep the overlay in that space, including when Pages adds margins.
             if (!mUBRubberBand) {
-                mUBRubberBand = new UBRubberBand(QRubberBand::Rectangle, this);
+                mUBRubberBand = new UBRubberBand(QRubberBand::Rectangle, viewport());
             }
             mUBRubberBand->setGeometry(bandRect);
             mUBRubberBand->show();

@@ -127,6 +127,17 @@ bool checkPreferencesRedesign(QString *error)
             good=good&&shortcutChanged;
             const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
             for(int row=0;row<nav->count();++row){nav->setCurrentRow(row);QApplication::processEvents();dialog->grab().save(output.filePath("preferences-"+nav->item(row)->data(Qt::UserRole).toString()+"-window.png"));}
+            for(const auto &name : {"preferencesWritingTabs","preferencesAboutTabs"}) {
+                auto inner=dialog->findChild<QTabWidget*>(name);good=good&&inner;
+                if(!inner)continue;
+                nav->setCurrentRow(QString(name)=="preferencesWritingTabs"?1:7);
+                for(int selected=0;selected<inner->count();++selected) {
+                    inner->setCurrentIndex(selected);QApplication::processEvents();
+                    for(int page=0;page<inner->count();++page)good=good&&(inner->widget(page)->isVisible()==(page==selected));
+                    if(QString(name)=="preferencesWritingTabs"&&selected==1)dialog->grab().save(output.filePath("preferences-highlighter-window.png"));
+                }
+                inner->setCurrentIndex(0);
+            }
             nav->setCurrentRow(0);
             auto reset=dialog->findChild<QPushButton*>("defaultSettingsButton");
             QTimer::singleShot(0,dialog,[]{if(auto question=qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))question->button(QMessageBox::Yes)->click();});
@@ -146,6 +157,59 @@ bool checkPreferencesRedesign(QString *error)
     if(auto paper=window->findChild<UBPaperInk*>())paper->applyPreferences();
     if(!checked||!good){*error="Preferences navigation, live workspace controls, shortcut editing, scoped reset or window-close persistence failed";return false;}
     window->setProperty("preferencesRedesignChecked",true);return true;
+}
+
+bool checkSelectionOrigin(QString *error)
+{
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
+    auto view=board->controlView();auto settings=UBSettings::settings();
+    const auto savedPages=settings->value("Teaching/PaperInkPages",true);
+    const int savedTool=UBDrawingController::drawingController()->stylusTool();
+    const qreal savedZoom=board->currentZoom();
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Selection origin regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();
+    const bool undoEnabled=scene->isURStackIsEnabled();scene->setURStackEnable(false);
+    bool good=true;QString failure;
+    for(bool pages : {false,true}) {
+        settings->setValue("Teaching/PaperInkPages",pages);
+        if(auto paper=window->findChild<UBPaperInk*>())paper->applyPreferences();
+        QApplication::processEvents();
+        for(qreal zoom : {0.75,1.0,1.6}) {
+            board->zoom(zoom/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
+            QApplication::processEvents();
+            const QPoint first(200,140),last(360,260);
+            const QByteArray svg="<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#147d92'/></svg>";
+            auto inside=scene->addSvg(QUrl(),view->mapToScene(QPoint(280,200)),svg);
+            auto outside=scene->addSvg(QUrl(),view->mapToScene(QPoint(80,200)),svg);
+            for(bool reverse : {false,true}) {
+                window->actionSelector->trigger();scene->deselectAllItems();
+                const QPoint start=reverse?last:first,end=reverse?first:last;
+                QMouseEvent press(QEvent::MouseButtonPress,QPointF(start),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+                QApplication::sendEvent(view->viewport(),&press);
+                QMouseEvent move(QEvent::MouseMove,QPointF(end),Qt::NoButton,Qt::LeftButton,Qt::NoModifier);
+                QApplication::sendEvent(view->viewport(),&move);
+                QRubberBand *band=nullptr;for(auto candidate:view->findChildren<QRubberBand*>())if(candidate->isVisible())band=candidate;
+                const QRect expected=QRect(start,end).normalized();
+                if(!band||band->mapToGlobal(QPoint())!=view->viewport()->mapToGlobal(expected.topLeft())||band->size()!=expected.size()||!inside->isSelected()||outside->isSelected()) {
+                    good=false;failure=QString("Selection rectangle origin or hit test mismatch (Pages=%1, zoom=%2, reverse=%3)").arg(pages).arg(zoom).arg(reverse);
+                }
+                if(pages&&zoom==1.0&&!reverse)window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("selection-origin-window.png"));
+                QMouseEvent release(QEvent::MouseButtonRelease,QPointF(end),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+                QApplication::sendEvent(view->viewport(),&release);
+                if(view->findChild<QRubberBand*>()) {good=false;failure="Selection rectangle remained after pointer release";}
+            }
+            scene->removeItem(inside);delete inside;scene->removeItem(outside);delete outside;
+        }
+    }
+    scene->setURStackEnable(undoEnabled);
+    settings->setValue("Teaching/PaperInkPages",savedPages);settings->save();
+    if(auto paper=window->findChild<UBPaperInk*>())paper->applyPreferences();
+    board->zoom(savedZoom/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
+    UBDrawingController::drawingController()->setStylusTool(static_cast<UBStylusTool::Enum>(savedTool));
+    QApplication::processEvents();
+    if(!good){*error=failure;return false;}
+    window->setProperty("selectionOriginChecked",true);return true;
 }
 
 bool checkWindowAndToolbar(QString *error)
@@ -643,6 +707,7 @@ void finish(bool passed, const QString &detail) {
     report["qt"] = qVersion();
     report["formulaZoomRegressionChecked"] = UBApplication::mainWindow->property("formulaZoomRegressionChecked").toBool();
     report["preferencesRedesignChecked"] = UBApplication::mainWindow->property("preferencesRedesignChecked").toBool();
+    report["selectionOriginChecked"] = UBApplication::mainWindow->property("selectionOriginChecked").toBool();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
     report["shapeToolbarChecked"] = UBApplication::mainWindow->property("shapeToolbarChecked").toBool();
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
@@ -663,7 +728,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             finish(false, "Board failed to initialize"); return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;

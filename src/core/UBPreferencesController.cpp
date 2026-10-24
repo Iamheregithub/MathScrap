@@ -1049,7 +1049,6 @@ void UBPreferencesController::rebuildPreferences()
     auto writing = page(tr("Writing & colours"),tr("Set your pen and highlighter palettes, pressure response and starting widths. Each colour remembers its chosen thickness separately for pen, highlighter, solid line and dashed line."));
     mWritingTabs = new QTabWidget;mWritingTabs->setObjectName("preferencesWritingTabs");
     mWritingTabs->addTab(mPreferencesUI->penTab,tr("Pen"));mWritingTabs->addTab(mPreferencesUI->markerTab,tr("Highlighter"));
-    mPreferencesUI->penTab->show();mPreferencesUI->markerTab->show();
     mMarkerProperties->pressureSensitiveCheckBox->setText(tr("Use pen pressure for the highlighter"));
     mPenProperties->pressureSensitiveCheckBox->setText(tr("Use pen pressure for the pen"));
     qobject_cast<QVBoxLayout*>(writing->layout())->addWidget(mWritingTabs);
@@ -1122,8 +1121,8 @@ void UBPreferencesController::rebuildPreferences()
     aboutLayout->addWidget(new QLabel(tr("Application version: %1").arg(UBApplication::applicationVersion())));
     auto release=new QPushButton(tr("MathScrap releases and downloads"));release->setObjectName("preferencesReleases");aboutLayout->addWidget(release,0,Qt::AlignLeft);
     connect(release,&QPushButton::clicked,this,[]{UBApplication::mainWindow->actionCheckUpdate->trigger();});
-    auto notices=new QTabWidget;notices->addTab(mPreferencesUI->aboutTab,tr("Project"));notices->addTab(mPreferencesUI->thirdPartyLicence,tr("Licences"));notices->addTab(mPreferencesUI->creditsTab,tr("Credits"));
-    mPreferencesUI->softwareUpdateGroupBox->hide();mPreferencesUI->aboutTab->show();mPreferencesUI->thirdPartyLicence->show();mPreferencesUI->creditsTab->show();aboutLayout->addWidget(notices,1);
+    auto notices=new QTabWidget;notices->setObjectName("preferencesAboutTabs");notices->addTab(mPreferencesUI->aboutTab,tr("Project"));notices->addTab(mPreferencesUI->thirdPartyLicence,tr("Licences"));notices->addTab(mPreferencesUI->creditsTab,tr("Credits"));
+    mPreferencesUI->softwareUpdateGroupBox->hide();aboutLayout->addWidget(notices,1);
     addSection(about,"about",tr("About"),tr("version updates releases licence credits copyright"));
     auto empty=note(tr("No matching settings sections."));empty->hide();contentLayout->addWidget(empty);
     auto refreshResetButton=[=]{
