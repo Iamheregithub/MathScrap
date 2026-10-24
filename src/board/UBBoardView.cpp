@@ -1240,7 +1240,10 @@ void UBBoardView::mouseMoveEvent (QMouseEvent *event)
     //    }
 
     //  QTime mouseMoveTime = QTime::currentTime();
-    if(!mIsDragInProgress && ((mapToScene(event->pos()) - mLastPressedMousePos).manhattanLength() < QApplication::startDragDistance())) {
+    // The drag threshold is measured in screen pixels. Scene positions change with
+    // zoom and mLastPressedMousePos is only initialized by selection presses.
+    if (!mIsDragInProgress &&
+        (event->pos() - mMouseDownPos).manhattanLength() < QApplication::startDragDistance()) {
         return;
     }
 

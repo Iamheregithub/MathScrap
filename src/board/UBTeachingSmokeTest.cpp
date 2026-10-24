@@ -231,7 +231,7 @@ bool checkExploratoryInteractions(QString *error)
         QMouseEvent event(type, p, view->viewport()->mapToGlobal(p.toPoint()), button, buttons, Qt::NoModifier);
         QApplication::sendEvent(view->viewport(), &event);
     };
-    auto near = [](QPointF actual, QPointF expected, qreal tolerance = 2.5) {
+    auto pointsClose = [](QPointF actual, QPointF expected, qreal tolerance = 2.5) {
         return QLineF(actual, expected).length() <= tolerance;
     };
     auto shapeAt = [view](UBGraphicsSvgItem *item, QPointF local) {
@@ -264,13 +264,13 @@ bool checkExploratoryInteractions(QString *error)
             send(QEvent::MouseButtonRelease, end, Qt::LeftButton, Qt::NoButton);
             const QPointF moved = item->pos();
             const QPointF expected = initial + view->mapToScene(end.toPoint()) - view->mapToScene(start.toPoint());
-            if (!near(moved, expected) || !near(shapeAt(item, item->boundingRect().center()), end)
+            if (!pointsClose(moved, expected) || !pointsClose(shapeAt(item, item->boundingRect().center()), end)
                 || UBApplication::undoStack->index() <= undoBeforeMove)
                 return fail("Selected object did not follow the drag or record Undo: " + context);
             UBApplication::undoStack->undo();
-            if (!near(item->pos(), initial)) return fail("Object move Undo missed its origin: " + context);
+            if (!pointsClose(item->pos(), initial)) return fail("Object move Undo missed its origin: " + context);
             UBApplication::undoStack->redo();
-            if (!near(item->pos(), moved)) return fail("Object move Redo missed its destination: " + context);
+            if (!pointsClose(item->pos(), moved)) return fail("Object move Redo missed its destination: " + context);
 
             auto shapes = window->findChild<QAction*>("actionTeachingShapes");
             if (!shapes) return fail("Shape tool missing");
@@ -286,8 +286,8 @@ bool checkExploratoryInteractions(QString *error)
             for (auto candidate : scene->items())
                 if (auto path = dynamic_cast<QGraphicsPathItem*>(candidate); path && path->zValue() == 1900000)
                     preview = path;
-            if (!preview || !near(view->mapFromScene(preview->path().boundingRect().topLeft()), topLeft)
-                         || !near(view->mapFromScene(preview->path().boundingRect().bottomRight()), bottomRight))
+            if (!preview || !pointsClose(view->mapFromScene(preview->path().boundingRect().topLeft()), topLeft)
+                         || !pointsClose(view->mapFromScene(preview->path().boundingRect().bottomRight()), bottomRight))
                 return fail("Shape preview is offset from the drag: " + context);
             if (pages && zoom == 1.0)
                 window->grab().save(output.filePath("explore-shape-preview-window.png"));
@@ -296,23 +296,35 @@ bool checkExploratoryInteractions(QString *error)
             UBGraphicsSvgItem *shape = nullptr;
             for (auto candidate : scene->selectedItems())
                 if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate); svg && svg->isTeachingShape()) shape = svg;
-            if (!shape || !near(shapeAt(shape, QPointF(12,12)), topLeft)
-                       || !near(shapeAt(shape, QPointF(112,97)), bottomRight)
+            if (!shape || !pointsClose(shapeAt(shape, QPointF(12,12)), topLeft)
+                       || !pointsClose(shapeAt(shape, QPointF(112,97)), bottomRight)
                        || UBApplication::undoStack->index() <= undoBeforeShape)
                 return fail("Drawn rectangle placement or Undo is wrong: " + context);
             UBApplication::undoStack->undo();
-            if (shape->scene() == scene.get()) return fail("Shape Undo left the object on the page: " + context);
+            if (shape->scene() == scene) return fail("Shape Undo left the object on the page: " + context);
             UBApplication::undoStack->redo();
-            if (shape->scene() != scene.get() || !near(shapeAt(shape, QPointF(12,12)), topLeft))
+            if (shape->scene() != scene || !pointsClose(shapeAt(shape, QPointF(12,12)), topLeft))
                 return fail("Shape Redo moved the object: " + context);
 
             window->actionText->trigger();
             const QPointF textStart(375, 275), textEnd(490, 345);
             send(QEvent::MouseButtonPress, textStart, Qt::LeftButton, Qt::LeftButton);
+            QRubberBand *pendingTextBand = nullptr;
+            for (auto band : view->findChildren<QRubberBand*>())
+                if (band->isVisible()) pendingTextBand = band;
+            if (!pendingTextBand) return fail("Text drag preview did not open: " + context);
+            const QRect initialTextBand = pendingTextBand->geometry();
+            send(QEvent::MouseMove, textStart + QPointF(2, 0), Qt::NoButton, Qt::LeftButton);
+            if (pendingTextBand->geometry() != initialTextBand)
+                return fail("Text drag began below the pixel threshold: " + context);
+            send(QEvent::MouseMove, textStart + QPointF(QApplication::startDragDistance() + 3, 0),
+                 Qt::NoButton, Qt::LeftButton);
+            if (pendingTextBand->geometry().width() <= initialTextBand.width())
+                return fail("Text drag missed the pixel threshold: " + context);
             send(QEvent::MouseMove, textEnd, Qt::NoButton, Qt::LeftButton);
             QRubberBand *textBand = nullptr;
             for (auto band : view->findChildren<QRubberBand*>()) if (band->isVisible()) textBand = band;
-            if (!textBand || !near(textBand->mapToGlobal(QPoint()),
+            if (!textBand || !pointsClose(textBand->mapToGlobal(QPoint()),
                                     view->viewport()->mapToGlobal(textStart.toPoint())))
                 return fail("Text preview starts away from the pointer: " + context);
             if (pages && zoom == 1.0)
@@ -321,7 +333,7 @@ bool checkExploratoryInteractions(QString *error)
             UBGraphicsTextItem *textItem = nullptr;
             for (auto candidate : scene->items())
                 if (auto t = dynamic_cast<UBGraphicsTextItem*>(candidate)) textItem = t;
-            if (!textItem || !near(view->mapFromScene(textItem->scenePos()), textStart))
+            if (!textItem || !pointsClose(view->mapFromScene(textItem->scenePos()), textStart))
                 return fail("Text box starts away from the pointer: " + context);
             textItem->setPlainText("Classroom note");
             scene->clearFocus(); window->actionSelector->trigger();
@@ -343,8 +355,8 @@ bool checkExploratoryInteractions(QString *error)
             auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
             bool savedMoved = false, savedShape = false;
             for (auto candidate : reopened->items()) if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
-                if (svg->uuid() == item->uuid()) savedMoved = near(svg->pos(), moved);
-                if (svg->uuid() == shape->uuid()) savedShape = near(svg->pos(), shape->pos());
+                if (svg->uuid() == item->uuid()) savedMoved = pointsClose(svg->pos(), moved);
+                if (svg->uuid() == shape->uuid()) savedShape = pointsClose(svg->pos(), shape->pos());
             }
             if (!savedMoved || !savedShape) return fail("Saved objects reopened at different positions: " + context);
             if (pages && zoom == 1.0)
