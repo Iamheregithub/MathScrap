@@ -6,15 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.22**
+**MathScrap 1.7.7.24**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.22)
-- Compiled source: [`cc914ad63ea21c2929f33029700b226c9d78c05f`](https://github.com/Iamheregithub/MathScrap/commit/cc914ad63ea21c2929f33029700b226c9d78c05f)
-- [Windows build, native checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40076104874)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40076104868)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40076104880)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.24)
+- Compiled source: [`a700f5ae76d2ccf7747d968ac877f7eef90bc84a`](https://github.com/Iamheregithub/MathScrap/commit/a700f5ae76d2ccf7747d968ac877f7eef90bc84a)
+- [Windows build, native checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357826)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357795)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357830)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
+
+This release redesigns Preferences around the teaching workspace, fixes persistence of deliberately cleared shortcuts, and anchors Select, Text and Capture outlines to the canvas so the Pages sidebar cannot shift them.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
@@ -37,6 +39,8 @@ The installer version is set in [OpenBoardTeaching.iss](https://github.com/Iamhe
 
 | Area | Location |
 | --- | --- |
+| Preferences sections, live settings and shortcut editor | `src/core/UBPreferencesController.*` |
+| Pointer input and selection outlines | `src/board/UBBoardView.*` |
 | Paper & Ink workspace and floating tools | `src/board/UBPaperInk.*` |
 | Formula generation and intermediate steps | `src/domain/UBMathFormula.*` |
 | Editable SVG formula and graph objects | `src/domain/UBGraphicsSvgItem.*` |
@@ -47,6 +51,27 @@ The installer version is set in [OpenBoardTeaching.iss](https://github.com/Iamhe
 | Browser and DOM regressions | `tests/teaching/` |
 
 MathScrap's current interface includes the floating pen tray, combined Line and Zoom controls, a More tools menu, and a visual workspace-customization preview. Older instructions describing separate permanent Solid Line and Dashed Line buttons as the default layout are obsolete.
+
+## Preferences
+
+Open Preferences from the application menu. The sidebar search finds sections by their names and related settings.
+
+| Section | Options |
+| --- | --- |
+| Workspace | Touch-sized controls, floating-toolbar labels, Pages sidebar, startup view, and workspace customization. |
+| Writing & colours | Separate Pen and Highlighter palettes, pressure response and starting widths. |
+| Page & PDF | Grid colours and opacity, and whether PDF exports include the grid and background colour. |
+| Documents | Lesson storage and migration, document-list options, Trash retention, and access to saved versions. |
+| Keyboard | On-screen keyboard options and searchable commands with editable keyboard shortcuts. Conflicting bindings are rejected; Clear removes a binding. |
+| Projector | Connected-screen selection and presentation options. |
+| Web & network | System-browser choice, browser home page and proxy credentials. |
+| About | MathScrap version and release downloads, upstream project information, licences and credits. |
+
+Workspace changes take effect immediately. Done, the window close button and Escape retain edited text fields. Document-folder changes take effect on the next launch using the existing migration procedure.
+
+Reset applies to the selected section; Writing has separate Pen and Highlighter resets. It preserves lesson files, saved versions, the document folder, toolbar order and settings in other sections. Keyboard reset affects on-screen keyboard options; edit shortcut bindings individually. Browser reset preserves proxy credentials. About has no reset.
+
+The release-download action opens MathScrap releases rather than the upstream OpenBoard update feed.
 
 ## JavaScript checks
 
