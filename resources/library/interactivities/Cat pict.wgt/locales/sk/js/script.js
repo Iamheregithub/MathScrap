@@ -787,7 +787,7 @@ function onDropTarget(obj, event) {
             var tmp = textData.getElementsByTagName("path")[0].firstChild.textContent;
             var img_block = $("<div class='img_block' style='text-align: center;'>");
             $("<div class='close_img'>").appendTo(img_block);            
-            $("<input type='hidden' value='" + $(obj).find("input[name='mask']").val() + "'/>").appendTo(img_block);
+            $(document.createElement("input")).attr("type", "hidden").val($(obj).find("input[name='mask']").val()).appendTo(img_block);
             var tmp_img = $("<img style='display: inline;'/>").attr("src", "../../" + tmp).appendTo(img_block);
             img_block.draggable({
                 helper:'clone',

@@ -555,8 +555,8 @@ function addTask(expression, result){
     var editContent = $("<div class='editContainer'>");
     $("<div class='closeItem'>").appendTo(editContent);
     var main = $("<div class='readyTask'>");
-    $("<div class='taskContainer' style='color: yellow;' contenteditable='true'>" + expression + "</div>").appendTo(main);
-    $("<div class='taskContainer' style='color: black;' contenteditable='true'>"+ result + "</div>").appendTo(main);
+    $(document.createElement("div")).addClass("taskContainer").css("color", "yellow").attr("contenteditable", "true").text(expression).appendTo(main);
+    $(document.createElement("div")).addClass("taskContainer").css("color", "black").attr("contenteditable", "true").text(result).appendTo(main);
     if(bottom < ($(window).height() - 54)){
         editContent.css("top", lastItemPos + lastItemHeight + 15 + "px").css("left", lastItemLeft + "px").appendTo("#data");
     } else {

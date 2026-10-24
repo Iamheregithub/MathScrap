@@ -172,7 +172,7 @@ async function start(){
                         //.css("float","left");
                         $("<div class='close_img'>").appendTo($(this));
                         $("<div class='clear_img'>").appendTo($(this));
-                        $("<div class='numb_img'>" + $(this).find("input").val() + "</div>").appendTo($(this));
+                        $(document.createElement("div")).addClass("numb_img").text($(this).find("input").val()).appendTo($(this));
                     });
                     rightOrder(container.find(".imgs_cont"));
                     container.find(".imgs_cont").append(add_img)
