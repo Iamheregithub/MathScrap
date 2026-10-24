@@ -380,10 +380,11 @@ bool checkExploratoryInteractions(QString *error)
             bool savedMoved = false, savedShape = false;
             QStringList reopenedSvgs;
             for (auto candidate : reopened->items()) if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
-                reopenedSvgs << QString("uuid=%1 pos=%2,%3 shape=%4")
-                    .arg(svg->uuid().toString()).arg(svg->pos().x()).arg(svg->pos().y()).arg(svg->isTeachingShape());
-                if (svg->uuid() == item->uuid()) savedMoved = pointsClose(svg->pos(), moved);
-                if (svg->uuid() == shape->uuid()) savedShape = pointsClose(svg->pos(), shape->pos());
+                const QPointF origin = svg->mapToScene(QPointF(0,0));
+                reopenedSvgs << QString("uuid=%1 origin=%2,%3 shape=%4")
+                    .arg(svg->uuid().toString()).arg(origin.x()).arg(origin.y()).arg(svg->isTeachingShape());
+                if (svg->uuid() == item->uuid()) savedMoved = pointsClose(origin, item->mapToScene(QPointF(0,0)));
+                if (svg->uuid() == shape->uuid()) savedShape = pointsClose(origin, shape->mapToScene(QPointF(0,0)));
             }
             if (!savedMoved || !savedShape)
                 return fail(QString("Saved objects reopened at different positions: %1, moved=%2 (%3, %4,%5), shape=%6 (%7, %8,%9), reopened=[%10]")
