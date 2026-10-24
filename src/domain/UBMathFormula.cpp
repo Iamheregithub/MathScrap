@@ -53,6 +53,17 @@ Math divide(const Math &numerator,const Math &denominator) {
     append(result,denominator,(result.width-denominator.width)/2,bar+12);
     result.path.addRect(QRectF(0,bar,result.width,1.5));return result;
 }
+Math relation(const Math &lhs,const Math &rhs){return join({lhs,text(" = "),rhs},6);}
+Math exactRoot(double value){
+    const double root=qSqrt(value);
+    if(root==qFloor(root))return text(nfmt(root));
+    if(value>0&&value<=1000000000&&value==qFloor(value)){
+        int remainder=int(value),factor=1;
+        for(int i=2;i*i<=remainder;++i)while(remainder%(i*i)==0){remainder/=i*i;factor*=i;}
+        if(factor>1)return join({text(QString::number(factor)),radical(text(QString::number(remainder)))});
+    }
+    return radical(text(nfmt(value)));
+}
 Math exactMath(int a,int b,int discriminant) {
     if(!discriminant){int n=-b,d=2*a,g=std::gcd(qAbs(n),qAbs(d));n/=g;d/=g;if(d<0){n=-n;d=-d;}return d==1?text(num(n)):divide(text(num(n)),text(num(d)));}
     int factor=1,m=qAbs(discriminant);
@@ -109,8 +120,7 @@ Work build(const UBMathFormula::State &s){
     else if(k=="distance")w.rows<<eq("d",radical(join({squared("(x₂ − x₁)"),T(" + "),squared("(y₂ − y₁)")})));
     else if(k=="slope")w.rows<<eq("m",divide(T("y₂ − y₁"),T("x₂ − x₁")));
     else if(k=="sine")w.rows<<join({divide(T("a"),T("sin A")),T(" = "),divide(T("b"),T("sin B"))},8);
-    else if(k=="cosine-side")w.rows<<eq("a",radical(join({squared("b"),T(" + "),squared("c"),T(" − 2bc cos A")})));
-    else if(k=="cosine-angle")w.rows<<eq("cos A",divide(join({squared("b"),T(" + "),squared("c"),T(" − "),squared("a")}),T("2bc")));
+    else if(k=="cosine-side"||k=="cosine-angle")w.rows<<relation(squared("a"),join({squared("b"),T(" + "),squared("c"),T(" − 2bc cos A")}));
     else if(k=="quotient"||k=="derivative"){
         const auto definition=divide(T("f(x + h) − f(x)"),T("h"));w.rows<<eq(k=="derivative"?"f′(x)":"Q",k=="derivative"?limit(definition):definition);
         if(s.values.value(0).isEmpty()){w.message="Enter f(x). Polynomials through degree 4 are supported.";return w;}
@@ -122,6 +132,7 @@ Work build(const UBMathFormula::State &s){
         Terms difference=expansion;for(auto it=p.cbegin();it!=p.cend();++it)difference[{it.key(),0}]-=it.value();
         w.rows<<quotient(divide(polynomial(difference),T("h")));
         Terms q;for(auto it=difference.cbegin();it!=difference.cend();++it)if(it.key().second>0)q[{it.key().first,it.key().second-1}]+=it.value();
+        w.rows<<quotient(divide(join({T("h("),polynomial(q),T(")")}),T("h")));
         w.rows<<quotient(polynomial(q));
         if(k=="quotient")w.rows<<text("For h ≠ 0.",22);
         if(k=="derivative"){Terms derivative;for(auto it=p.cbegin();it!=p.cend();++it)if(it.key())derivative[{it.key()-1,0}]=it.value()*it.key();w.rows<<eq("f′(x)",polynomial(derivative));}
@@ -151,8 +162,25 @@ Work build(const UBMathFormula::State &s){
         const bool hyp=s.mode==0;const double rad=hyp?v[0]*v[0]+v[1]*v[1]:v[0]*v[0]-v[1]*v[1];
         if(rad<=0)return fail("The hypotenuse must be longer than the known leg.");
         const QString unknown=QStringList{"c","a","b"}.value(qBound(0,s.mode,2));
-        w.rows<<eq(unknown,radical(join({squared(par(v[0])),T(hyp?" + ":" − "),squared(par(v[1]))})));
-        w.rows<<eq(unknown,radical(T(nfmt(rad))));w.rows<<text(unknown+" ≈ "+dec(qSqrt(rad)));
+        const double first=v[0]*v[0],second=v[1]*v[1];
+        if(hyp){
+            w.rows<<relation(join({squared(nfmt(v[0])),T(" + "),squared(nfmt(v[1]))}),squared("c"));
+            w.rows<<relation(T(nfmt(first)+" + "+nfmt(second)),squared("c"));
+            w.rows<<relation(T(nfmt(rad)),squared("c"));
+            w.rows<<relation(radical(T(nfmt(rad))),T("c"));
+            const auto exact=exactRoot(rad);
+            if(exact.spoken!=radical(T(nfmt(rad))).spoken)w.rows<<relation(exact,T("c"));
+        }else{
+            const bool a=s.mode==1;
+            w.rows<<relation(a?join({squared("a"),T(" + "),squared(nfmt(v[1]))}):join({squared(nfmt(v[1])),T(" + "),squared("b")}),squared(nfmt(v[0])));
+            w.rows<<relation(a?join({squared("a"),T(" + "+nfmt(second))}):join({T(nfmt(second)+" + "),squared("b")}),T(nfmt(first)));
+            w.rows<<relation(squared(unknown),T(nfmt(first)+" − "+nfmt(second)));
+            w.rows<<relation(squared(unknown),T(nfmt(rad)));
+            w.rows<<eq(unknown,radical(T(nfmt(rad))));
+            const auto exact=exactRoot(rad);
+            if(exact.spoken!=radical(T(nfmt(rad))).spoken)w.rows<<eq(unknown,exact);
+        }
+        if(qSqrt(rad)!=qFloor(qSqrt(rad)))w.rows<<text(unknown+" ≈ "+dec(qSqrt(rad)));
     }else if(k=="distance"||k=="slope"){
         const double dx=v[2]-v[0],dy=v[3]-v[1];
         const QString xs=par(v[2])+" − "+par(v[0]),ys=par(v[3])+" − "+par(v[1]);
@@ -163,17 +191,28 @@ Work build(const UBMathFormula::State &s){
             w.rows<<eq("m",divide(T(nfmt(dy)),T(nfmt(dx))));
             if(dy==qRound(dy)&&dx==qRound(dx)){int n=qRound(dy),den=qRound(dx),g=std::gcd(qAbs(n),qAbs(den));n/=g;den/=g;if(den<0){n=-n;den=-den;}w.rows<<eq("m",den==1?T(num(n)):divide(T(num(n)),T(num(den))));}
             w.rows<<text("m ≈ "+dec(dy/dx));
-        }else{const double r=dx*dx+dy*dy;w.rows<<eq("d",radical(join({squared("("+xs+")"),T(" + "),squared("("+ys+")")})));w.rows<<eq("d",radical(T(nfmt(dx*dx)+" + "+nfmt(dy*dy))));w.rows<<eq("d",radical(T(nfmt(r))));w.rows<<text("d ≈ "+dec(qSqrt(r)));}
+        }else{
+            const double r=dx*dx+dy*dy;
+            w.rows<<eq("d",radical(join({squared("("+xs+")"),T(" + "),squared("("+ys+")")})));
+            w.rows<<eq("d",radical(join({squared(par(dx)),T(" + "),squared(par(dy))})));
+            w.rows<<eq("d",radical(T(nfmt(dx*dx)+" + "+nfmt(dy*dy))));w.rows<<eq("d",radical(T(nfmt(r))));
+            const auto exact=exactRoot(r);if(exact.spoken!=radical(T(nfmt(r))).spoken)w.rows<<eq("d",exact);
+            if(qSqrt(r)!=qFloor(qSqrt(r)))w.rows<<text("d ≈ "+dec(qSqrt(r)));
+        }
     }else if(k=="sine"){
         const double a=v[0],A=v[1],third=v[2];if(a<=0||A<=0||A>=180)return fail("Use a positive side and an angle strictly between 0° and 180°.");
         const double sinA=qSin(qDegreesToRadians(A));
         if(sinA==0)return fail("Angle A is too small to calculate reliably.");
         if(s.mode==0){if(third<=0||A+third>=180)return fail("The known angles must be positive and sum to less than 180°.");
-            w.rows<<eq("b",divide(T("a sin B"),T("sin A")));w.rows<<eq("b",divide(T(nfmt(a)+" sin("+nfmt(third)+"°)"),T("sin("+nfmt(A)+"°)")));double b=a*qSin(qDegreesToRadians(third))/sinA;
+            w.rows<<relation(divide(T(nfmt(a)),T("sin("+nfmt(A)+"°)")),divide(T("b"),T("sin("+nfmt(third)+"°)")));
+            w.rows<<relation(T("b sin("+nfmt(A)+"°)"),T(nfmt(a)+" sin("+nfmt(third)+"°)"));
+            w.rows<<eq("b",divide(T(nfmt(a)+" sin("+nfmt(third)+"°)"),T("sin("+nfmt(A)+"°)")));double b=a*qSin(qDegreesToRadians(third))/sinA;
             if(!std::isfinite(b))return fail("The side is too large to represent. Rescale the known side.");
             w.rows<<text("b ≈ "+dec(b));
         }else{if(third<=0)return fail("Side b must be positive.");const double ratio=third*qSin(qDegreesToRadians(A))/a;
-            w.rows<<eq("sin B",divide(T("b sin A"),T("a")));w.rows<<eq("sin B",divide(T(nfmt(third)+" sin("+nfmt(A)+"°)"),T(nfmt(a))));w.rows<<eq("sin B",T(nfmt(ratio)));
+            w.rows<<relation(divide(T(nfmt(a)),T("sin("+nfmt(A)+"°)")),divide(T(nfmt(third)),T("sin B")));
+            w.rows<<relation(T(nfmt(a)+" sin B"),T(nfmt(third)+" sin("+nfmt(A)+"°)"));
+            w.rows<<eq("sin B",divide(T(nfmt(third)+" sin("+nfmt(A)+"°)"),T(nfmt(a))));w.rows<<eq("sin B",T(nfmt(ratio)));
             if(ratio>1+1e-12){w.rows<<text("No triangle: sin B would exceed 1.",24);return w;}
             const double B=qRadiansToDegrees(qAsin(qBound(-1.0,ratio,1.0)));QList<double> angles;
             for(double candidate:{B,180-B})if(candidate>0&&A+candidate<180-1e-9&&(angles.isEmpty()||qAbs(candidate-angles.first())>1e-8))angles<<candidate;
@@ -187,15 +226,22 @@ Work build(const UBMathFormula::State &s){
         // are similar and A is small. This equivalent form avoids cancellation.
         const double side=std::hypot(b-c,2*qSqrt(b)*qSqrt(c)*qSin(qDegreesToRadians(A/2)));
         const double rad=side*side;
-        w.rows<<eq("a",radical(join({squared(par(b)),T(" + "),squared(par(c)),T(" − 2"+par(b)+par(c)+" cos("+nfmt(A)+"°)")})));
-        w.rows<<eq("a",radical(T(nfmt(rad))));w.rows<<text("a ≈ "+dec(side));
+        w.rows<<relation(squared("a"),join({squared(nfmt(b)),T(" + "),squared(nfmt(c)),T(" − 2"+par(b)+par(c)+" cos("+nfmt(A)+"°)")}));
+        w.rows<<relation(squared("a"),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(2*b*c)+" cos("+nfmt(A)+"°)"));
+        w.rows<<relation(squared("a"),T(nfmt(rad)));
+        w.rows<<eq("a",radical(T(nfmt(rad))));
+        const auto exact=exactRoot(rad);if(exact.spoken!=radical(T(nfmt(rad))).spoken)w.rows<<eq("a",exact);
+        if(side!=qFloor(side))w.rows<<text("a ≈ "+dec(side));
     }else if(k=="cosine-angle"){
         const double a=v[0],b=v[1],c=v[2];if(a<=0||b<=0||c<=0||a+b<=c||a+c<=b||b+c<=a)return fail("These side lengths do not form a triangle.");
         const double scale=qMax(a,qMax(b,c)),an=a/scale,bn=b/scale,cn=c/scale;
         const double denominator=2*bn*cn;
         if(denominator==0)return fail("These side lengths differ too much to calculate the angle reliably.");
         const double ratio=(bn*bn+cn*cn-an*an)/denominator;
-        w.rows<<eq("cos A",divide(join({squared(par(b)),T(" + "),squared(par(c)),T(" − "),squared(par(a))}),T("2"+par(b)+par(c))));
+        w.rows<<relation(squared(nfmt(a)),join({squared(nfmt(b)),T(" + "),squared(nfmt(c)),T(" − 2"+par(b)+par(c)+" cos A")}));
+        w.rows<<relation(T(nfmt(a*a)),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(2*b*c)+" cos A"));
+        w.rows<<relation(T(nfmt(2*b*c)+" cos A"),T(nfmt(b*b)+" + "+nfmt(c*c)+" − "+nfmt(a*a)));
+        w.rows<<eq("cos A",divide(T(nfmt(b*b+c*c-a*a)),T(nfmt(2*b*c))));
         w.rows<<eq("cos A",T(nfmt(ratio)));w.rows<<eq("A",join({power("cos",-1),T("("+nfmt(ratio)+")")}));w.rows<<text("A ≈ "+dec(qRadiansToDegrees(qAcos(qBound(-1.0,ratio,1.0))))+"°");
     }
     return w;

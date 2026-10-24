@@ -24,9 +24,9 @@ bool checkMathFormulae(QString *error){
     const QList<Example> examples={
         {"quadratic",{"1","6","7"},0,"-1.586"},
         {"discriminant",{"1","2","1"},0,"one repeated real root"},
-        {"pythagoras",{"3","4"},0,"c ≈ 5"},
-        {"pythagoras",{"5","4"},1,"a ≈ 3"},
-        {"distance",{"1","2","4","6"},0,"d ≈ 5"},
+        {"pythagoras",{"3","4"},0,"5 = c"},
+        {"pythagoras",{"5","4"},1,"a = 3"},
+        {"distance",{"1","2","4","6"},0,"d = 5"},
         {"slope",{"1","2","3","6"},0,"m ≈ 2"},
         {"slope",{"1","2","1","6"},0,"line is vertical"},
         {"slope",{"0","0","0.0000000000001","1"},0,"m ≈ 10000000000000"},
@@ -45,8 +45,13 @@ bool checkMathFormulae(QString *error){
     };
     const QDir output=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
     for(const auto &e:examples){UBMathFormula::State state;state.kind=e.kind;state.values=e.values;state.mode=e.mode;state.step=UBMathFormula::lastStep(state);const auto svg=UBMathFormula::render(state);UBMathFormula::State reopened;QSvgRenderer renderer(svg);const auto result=description(svg);
-        if(!renderer.isValid()||!UBMathFormula::read(svg,&reopened)||reopened.kind!=state.kind||reopened.values!=state.values||!result.contains(e.expected))return fail("Formula regression "+e.kind+": "+result);
+        if(!renderer.isValid()||!UBMathFormula::read(svg,&reopened)||reopened.kind!=state.kind||reopened.values!=state.values||!result.contains(e.expected)&&!result.contains(QString(e.expected).replace(" ≈ "," = ")))return fail("Formula regression "+e.kind+": "+result);
         QImage image(renderer.defaultSize(),QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter painter(&image);renderer.render(&painter);painter.end();image.save(output.filePath("formula-"+e.kind+QString::number(e.mode)+"-window.png"));
+    }
+    UBMathFormula::State detailed;detailed.kind="pythagoras";detailed.values={"1","3"};detailed.step=UBMathFormula::lastStep(detailed);
+    const auto worked=description(UBMathFormula::render(detailed));int last=-1;
+    for(const auto &line:QStringList{"1² + 3² = c²","1 + 9 = c²","10 = c²","sqrt(10) = c"}){
+        const int position=worked.indexOf(line,last+1);if(position<0)return fail("Pythagorean working skips or reorders "+line);last=position;
     }
     UBMathFormula::State unsupported;unsupported.kind="derivative";unsupported.values={"sin(x)"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Unsupported function was accepted");
     unsupported.values={"2*"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Incomplete multiplication was accepted as a constant");
