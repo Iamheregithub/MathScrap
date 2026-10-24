@@ -29,10 +29,23 @@ assert.equal(result.count,4);
 assert.ok(result.svg.startsWith('<svg'));
 assert.ok(result.svg.includes('stroke-dasharray'));
 assert.equal(result.svg,result.restored);
+// HTML-shaped titles stay text through graph, worksheet preview and print paths.
+w.eval(`(()=>{
+ const p=project();p.settings.title='</text><img data-injected="yes" src=x onerror="window.hacked=1"> & "quotes"';
+ p.settings.xname='x < 3 & y > 2';importProject(p);validForExport();
+ printSVG(exportScene(scene(),'key').svg);
+ pageItems=[scene()];showSVG($('pagePreview'),worksheetSVG().svg);printSVG(worksheetSVG().svg,true);
+})()`);
+assert.equal(w.document.querySelectorAll('[data-injected]').length,0);
+assert.equal(w.hacked,undefined);
+assert.ok(w.document.getElementById('pagePreview').textContent.includes('</text><img'));
+assert.ok(w.document.querySelector('#printArea .print-sheet svg'));
 // Exercise the exact metadata format passed between C++ and GraphDesk.
 const metadata=Buffer.from(result.serialized).toString('base64');
-const embedded=result.svg.replace('>','><metadata id="graphdesk-project">'+metadata+'</metadata>');
-const svgdoc=new JSDOM(embedded,{contentType:'image/svg+xml'});
+const svgdoc=new JSDOM(result.svg,{contentType:'image/svg+xml'});
+const metadataNode=svgdoc.window.document.createElementNS('http://www.w3.org/2000/svg','metadata');
+metadataNode.id='graphdesk-project';metadataNode.textContent=metadata;
+svgdoc.window.document.documentElement.prepend(metadataNode);
 const recovered=Buffer.from(svgdoc.window.document.getElementById('graphdesk-project').textContent,'base64').toString();
 assert.deepEqual(JSON.parse(recovered),JSON.parse(result.serialized));
 console.log('PASS: DOM startup, four functions, dashed SVG, project restore, embedded metadata round trip');

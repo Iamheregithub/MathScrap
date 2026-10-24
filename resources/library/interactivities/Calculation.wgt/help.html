@@ -20,16 +20,16 @@
 						var nextlocale = undefined;
 						
 						if(locale.length >= 5) {
-							toload += '_' + locale.substring(0, 5) +'-template.js';
+							toload += '_' + locale.substring(0, 5) +'-template.html';
 							nextlocale = locale.substring(0, 2);
 						}
 							
 						else if(locale.length >= 2){
-							toload += '_' + locale.substring(0, 2) +'-template.js';
+							toload += '_' + locale.substring(0, 2) +'-template.html';
 							nextlocale = '';
 						}
 						else
-							toload += '-template.js';
+							toload += '-template.html';
 						    
 						$.ajax({
 					        url:        toload,

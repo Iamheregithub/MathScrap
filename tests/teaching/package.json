@@ -2,7 +2,7 @@
   "name": "openboard-teaching-tests",
   "private": true,
   "scripts": {
-    "test": "node graphdesk-dom.cjs",
+    "test": "node graphdesk-dom.cjs && node security-dom.cjs && node help-templates.cjs",
     "browser": "node graphdesk-smoke.cjs"
   },
   "devDependencies": {

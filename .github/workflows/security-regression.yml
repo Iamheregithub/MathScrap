@@ -1,0 +1,26 @@
+name: Security regression tests
+on:
+  push:
+    branches: [master, graphdesk-teaching-fork]
+  pull_request:
+    branches: [master, graphdesk-teaching-fork]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dom-and-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: tests/teaching
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests/teaching
+      - run: npm test
+        working-directory: tests/teaching
+      - run: node security-browser.cjs
+        working-directory: tests/teaching
