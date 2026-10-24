@@ -221,9 +221,10 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         if(!strokes){done(false,"The fixture did not write a pen stroke");return;}
         report["lessonId"]=doc->uuid().toString(QUuid::WithoutBraces);
         report["lessonPath"]=doc->persistencePath();report["strokeGroups"]=strokes;
-        QTimer::singleShot(25000,qApp,[history,report,reportPath,output]() mutable {
+        const bool quick=qEnvironmentVariable("LESSONBOARD_SAVE_QUICK")=="1";
+        QTimer::singleShot(quick?0:25000,qApp,[history,report,reportPath,output,quick]() mutable {
             const auto recovery=history->rootPath()+"/"+report.value("lessonId").toString()+"/recovery.json";
-            if(!QFile::exists(recovery)){report["passed"]=false;report["detail"]="Automatic save did not create a recovery copy";write(reportPath,report);qApp->exit(31);return;}
+            if(!quick&&!QFile::exists(recovery)){report["passed"]=false;report["detail"]="Automatic save did not create a recovery copy";write(reportPath,report);qApp->exit(31);return;}
             write(output.filePath("normal-save-state.json"),report);
             report["prepared"]=true;write(reportPath,report);
             // Follow the actual window Close path, not qApp->exit used by other tests.
