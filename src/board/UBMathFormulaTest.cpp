@@ -55,6 +55,16 @@ bool checkMathFormulae(QString *error){
     for(const auto &line:QStringList{"1² + 3² = c²","1 + 9 = c²","10 = c²","sqrt(10) = c"}){
         const int position=worked.indexOf(line,last+1);if(position<0)return fail("Pythagorean working skips or reorders "+line);last=position;
     }
+    detailed.step=1;detailed.tapToReveal=true;
+    const auto revealSvg=UBMathFormula::render(detailed);UBMathFormula::State revealRestored;
+    if(!UBMathFormula::read(revealSvg,&revealRestored)||!revealRestored.tapToReveal||revealRestored.step!=1)return fail("Formula reveal mode or step did not survive SVG round-trip");
+    QDomDocument revealDoc;revealDoc.setContent(revealSvg);const auto box=revealDoc.documentElement().attribute("viewBox").split(QRegularExpression("[ ,]+"),Qt::SkipEmptyParts);
+    if(box.size()!=4)return fail("Formula reveal SVG has no viewBox");
+    const qreal cardWidth=box[2].toDouble(),cardHeight=box[3].toDouble();
+    for(int i=0;i<4;++i)if(UBMathFormula::stepAt(revealSvg,cardWidth-548+i*132+61,cardHeight-36)!=i)return fail("Formula reveal control hit area is misplaced");
+    if(UBMathFormula::stepAt(revealSvg,cardWidth-125,33)!=4||UBMathFormula::stepAt(revealSvg,cardWidth/2,cardHeight-95)!=5)return fail("Tap-to-reveal control or card hit area is misplaced");
+    detailed.tapToReveal=false;
+    if(UBMathFormula::stepAt(UBMathFormula::render(detailed),cardWidth/2,cardHeight-95)!=-1)return fail("Ordinary formula selection advances a reveal step");
     UBMathFormula::State unsupported;unsupported.kind="derivative";unsupported.values={"sin(x)"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Unsupported function was accepted");
     unsupported.values={"2*"};if(UBMathFormula::error(unsupported).isEmpty())return fail("Incomplete multiplication was accepted as a constant");
     UBMathFormula::State overflow;overflow.kind="slope";overflow.values={"0","0","1e-320","1"};if(UBMathFormula::error(overflow).isEmpty())return fail("Unrepresentable slope was accepted");
@@ -95,6 +105,16 @@ bool checkMathFormulae(QString *error){
     type(fields[2],"6");QMetaObject::invokeMethod(fields[2],"editingFinished",Qt::DirectConnection);if(!UBMathFormula::read(item->fileData(),&state)||state.step!=1)return fail("Reused formula did not restart at substitution");
     const auto changed=item->fileData();UBApplication::undoStack->undo();if(!UBMathFormula::read(item->fileData(),&state)||state.values!=QStringList{"1","6","7"}||state.step!=5)return fail("Input undo did not restore the prior solution");UBApplication::undoStack->redo();if(item->fileData()!=changed)return fail("Input redo failed");
     board->persistCurrentScene(false,true);auto loaded=manager->loadDocumentScene(doc,0,false);bool found=false;for(auto candidate:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State restored;if(UBMathFormula::read(svg->fileData(),&restored)&&restored.values==QStringList{"1","6","6"})found=svg->formulaInputWidget()!=nullptr;}if(!found)return fail("Formula inputs or edited state were lost on save/reopen");
+    state.step=0;state.tapToReveal=true;item->setTeachingSvg(UBMathFormula::render(state));
+    const auto tapStep=view->mapFromScene(item->mapToScene(QPointF(100,UBMathFormula::inputRect(state).bottom()+45)));
+    QMouseEvent revealDown(QEvent::MouseButtonPress,QPointF(tapStep),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&revealDown);
+    QMouseEvent revealUp(QEvent::MouseButtonRelease,QPointF(tapStep),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&revealUp);
+    if(!UBMathFormula::read(item->fileData(),&state)||!state.tapToReveal||state.step!=1)return fail("Tapping formula card did not reveal exactly one step");
+    UBApplication::undoStack->undo();if(!UBMathFormula::read(item->fileData(),&state)||state.step!=0||!state.tapToReveal)return fail("Tap reveal did not undo");
+    UBApplication::undoStack->redo();if(!UBMathFormula::read(item->fileData(),&state)||state.step!=1)return fail("Tap reveal did not redo");
+    board->persistCurrentScene(false,true);loaded=manager->loadDocumentScene(doc,0,false);found=false;
+    for(auto candidate:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State restored;if(UBMathFormula::read(svg->fileData(),&restored)&&restored.values==QStringList{"1","6","6"})found=restored.step==1&&restored.tapToReveal;}
+    if(!found)return fail("Formula reveal mode or current step was lost on save/reopen");
     window->grab().save(output.filePath("mathscrap-inputs-window.png"));
     window->findChild<QAction*>("insertFormula-distance")->trigger();
     UBGraphicsSvgItem *pointItem=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State saved;if(UBMathFormula::read(svg->fileData(),&saved)&&saved.kind=="distance")pointItem=svg;}

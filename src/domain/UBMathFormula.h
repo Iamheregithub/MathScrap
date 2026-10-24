@@ -5,7 +5,7 @@
 #include <QStringList>
 #include <QRectF>
 namespace UBMathFormula {
-struct State { QString kind="quadratic"; QStringList values; int step=0; int mode=0; };
+struct State { QString kind="quadratic"; QStringList values; int step=0; int mode=0; bool tapToReveal=false; };
 QStringList kinds();
 QString title(const QString &kind);
 QStringList labels(const State &state);

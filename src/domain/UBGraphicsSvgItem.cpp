@@ -210,7 +210,7 @@ QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant
 
 void UBGraphicsSvgItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    mQuadraticPressedButton = UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
+    mQuadraticPressedButton = event->button()==Qt::LeftButton?UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y()):-1;
     if (mQuadraticPressedButton >= 0) {
         for(auto input:mFormulaInputs)input->clearFocus();
         event->accept();
@@ -248,14 +248,16 @@ void UBGraphicsSvgItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     const int direction = UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
     if (mQuadraticPressedButton >= 0) {
-        const bool clicked = direction == mQuadraticPressedButton;
+        const bool clicked = event->button()==Qt::LeftButton && direction == mQuadraticPressedButton;
         mQuadraticPressedButton = -1;
         UBMathFormula::State state;
         if (clicked && UBMathFormula::read(mFileData, &state)) {
-            const int next=qBound(0,state.step+(direction?1:-1),UBMathFormula::lastStep(state));
-            if (next!=state.step) {
+            const int last=UBMathFormula::lastStep(state);
+            const int next=direction==0?qMax(0,state.step-1):direction==1||direction==5?qMin(last,state.step+1):direction==2?0:last;
+            const bool toggle=direction==4;
+            if (toggle||next!=state.step) {
                 const QByteArray before=mFileData;
-                state.step=next;
+                if(toggle)state.tapToReveal=!state.tapToReveal;else state.step=next;
                 setTeachingSvg(UBMathFormula::render(state));
                 commitTeachingSvg(before);
             }

@@ -271,10 +271,10 @@ bool read(const QByteArray &svg,State *state){
         QDomDocument doc;if(!doc.setContent(svg))return false;const auto list=doc.elementsByTagName("metadata");
         for(int i=0;i<list.size();++i){const auto e=list.at(i).toElement();if(e.attribute("id")!="mathscrap-formula")continue;
             const auto json=QJsonDocument::fromJson(QByteArray::fromBase64(e.text().toLatin1()));if(!json.isObject())return false;const auto o=json.object();state->kind=o["kind"].toString();if(!kinds().contains(state->kind))return false;
-            state->values.clear();for(const auto &v:o["values"].toArray())state->values<<v.toString().left(180);state->step=qBound(0,o["step"].toInt(),12);state->mode=qBound(0,o["mode"].toInt(),2);return true;
+            state->values.clear();for(const auto &v:o["values"].toArray())state->values<<v.toString().left(180);state->step=qBound(0,o["step"].toInt(),12);state->mode=qBound(0,o["mode"].toInt(),2);state->tapToReveal=o["tapToReveal"].toBool(false);return true;
         }return false;
     }
-    UBQuadraticFormula::State old;if(UBQuadraticFormula::read(svg,&old)){state->kind="quadratic";state->values={num(old.a),num(old.b),num(old.c)};state->step=old.step;state->mode=0;return true;}return false;
+    UBQuadraticFormula::State old;if(UBQuadraticFormula::read(svg,&old)){state->kind="quadratic";state->values={num(old.a),num(old.b),num(old.c)};state->step=old.step;state->mode=0;state->tapToReveal=false;return true;}return false;
 }
 int lastStep(const State &state){const auto w=build(state);return w.message.isEmpty()?qMax(0,int(w.rows.size())-1):0;}
 QString error(const State &state){return build(state).message;}
@@ -300,12 +300,20 @@ QByteArray render(const State &s){
     }
     if(!modes(s).isEmpty())draw(text(modes(s).value(s.mode),18,true),28,108);
     qreal y=inputs.bottom()+22;for(const auto &row:rows){draw(row,32,y);y+=row.height+22;}
-    const qreal by=height-54;for(int i=0;i<2;++i){bool enabled=i?(w.message.isEmpty()&&stage<w.rows.size()-1):stage>0;qreal x=width-280+i*134;painter.setPen(Qt::NoPen);painter.setBrush(QColor(enabled?"#dceae4":"#f0eee7"));painter.drawRoundedRect(QRectF(x,by,122,36),7,7);const auto label=text(i?"Next step":"Previous",17,true);painter.fillPath(QTransform::fromTranslate(x+(122-label.width)/2,by+(36-label.height)/2).map(label.path),QColor(enabled?"#253e3c":"#92978f"));}painter.end();buffer.close();
+    const qreal by=height-54;
+    const QStringList controls={"Previous","Next step","Start over","Reveal all"};
+    for(int i=0;i<controls.size();++i){const bool enabled=i==0||i==2?stage>0:w.message.isEmpty()&&stage<w.rows.size()-1;const qreal x=width-548+i*132;painter.setPen(Qt::NoPen);painter.setBrush(QColor(enabled?"#dceae4":"#f0eee7"));painter.drawRoundedRect(QRectF(x,by,122,36),7,7);const auto label=text(controls[i],16,true);painter.fillPath(QTransform::fromTranslate(x+(122-label.width)/2,by+(36-label.height)/2).map(label.path),QColor(enabled?"#253e3c":"#92978f"));}
+    const QString tapLabel=s.tapToReveal?"Tap to reveal: On":"Tap to reveal: Off";
+    painter.setPen(Qt::NoPen);painter.setBrush(QColor(s.tapToReveal?"#dceae4":"#f0eee7"));painter.drawRoundedRect(QRectF(width-222,16,194,34),7,7);const auto tap=text(tapLabel,16,true);painter.fillPath(QTransform::fromTranslate(width-222+(194-tap.width)/2,16+(34-tap.height)/2).map(tap.path),QColor("#253e3c"));painter.end();buffer.close();
     QDomDocument doc;if(!doc.setContent(bytes))return {};auto root=doc.documentElement();root.setAttribute("width",QString::number(width,'g',12));root.setAttribute("height",QString::number(height,'g',12));
-    QJsonArray values;for(const auto &v:s.values)values.append(v);const QJsonObject state{{"kind",s.kind},{"values",values},{"step",stage},{"mode",s.mode}};auto metadata=doc.createElement("metadata");metadata.setAttribute("id","mathscrap-formula");metadata.appendChild(doc.createTextNode(QString::fromLatin1(QJsonDocument(state).toJson(QJsonDocument::Compact).toBase64())));root.insertBefore(metadata,root.firstChild());for(auto node=root.firstChild();!node.isNull();){auto next=node.nextSibling();if(node.toElement().tagName()=="desc")root.removeChild(node);node=next;}auto desc=doc.createElement("desc");desc.appendChild(doc.createTextNode(title(s.kind)+"; "+(pointInputs(s)?QString("A(x₁, y₁); B(x₂, y₂); "):QString())+s.values.join(", ")+"; "+w.message+"; "+[&rows]{QStringList spoken;for(const auto &row:rows)spoken<<row.spoken;return spoken.join("; ");}()+"; "+w.semantic.join("; ")));root.appendChild(desc);return doc.toByteArray();
+    QJsonArray values;for(const auto &v:s.values)values.append(v);const QJsonObject state{{"kind",s.kind},{"values",values},{"step",stage},{"mode",s.mode},{"tapToReveal",s.tapToReveal}};auto metadata=doc.createElement("metadata");metadata.setAttribute("id","mathscrap-formula");metadata.appendChild(doc.createTextNode(QString::fromLatin1(QJsonDocument(state).toJson(QJsonDocument::Compact).toBase64())));root.insertBefore(metadata,root.firstChild());for(auto node=root.firstChild();!node.isNull();){auto next=node.nextSibling();if(node.toElement().tagName()=="desc")root.removeChild(node);node=next;}auto desc=doc.createElement("desc");desc.appendChild(doc.createTextNode(title(s.kind)+"; "+(pointInputs(s)?QString("A(x₁, y₁); B(x₂, y₂); "):QString())+s.values.join(", ")+"; "+w.message+"; "+[&rows]{QStringList spoken;for(const auto &row:rows)spoken<<row.spoken;return spoken.join("; ");}()+"; "+w.semantic.join("; ")));root.appendChild(desc);return doc.toByteArray();
 }
 int stepAt(const QByteArray &svg,qreal x,qreal y){
     State s;if(!read(svg,&s))return -1;if(!svg.contains("mathscrap-formula"))return UBQuadraticFormula::stepAt(svg,x,y);
-    QDomDocument doc;if(!doc.setContent(svg))return -1;const auto v=doc.documentElement().attribute("viewBox").split(QRegularExpression("[ ,]+"),Qt::SkipEmptyParts);if(v.size()!=4)return -1;const qreal width=v[2].toDouble(),height=v[3].toDouble();if(y<height-54||y>height-18)return -1;if(x>=width-280&&x<=width-158)return 0;if(x>=width-146&&x<=width-24)return 1;return -1;
+    QDomDocument doc;if(!doc.setContent(svg))return -1;const auto v=doc.documentElement().attribute("viewBox").split(QRegularExpression("[ ,]+"),Qt::SkipEmptyParts);if(v.size()!=4)return -1;const qreal width=v[2].toDouble(),height=v[3].toDouble();
+    if(y>=16&&y<=50&&x>=width-222&&x<=width-28)return 4;
+    if(y>=height-54&&y<=height-18)for(int i=0;i<4;++i)if(x>=width-548+i*132&&x<=width-426+i*132)return i;
+    if(s.tapToReveal&&x>=0&&x<=width&&y>=inputRect(s).bottom()+22&&y<height-54)return 5;
+    return -1;
 }
 }

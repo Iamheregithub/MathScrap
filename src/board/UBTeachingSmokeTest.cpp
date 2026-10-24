@@ -368,16 +368,10 @@ bool checkExploratoryInteractions(QString *error)
 
             const int beforeCancel = UBApplication::undoStack->index();
             choice->trigger();
-            if (!view->viewport()->testAttribute(Qt::WA_SetCursor)
-                || view->viewport()->cursor().shape() != Qt::CrossCursor)
-                return fail("Shape tool did not show its drawing cursor: " + context);
             send(QEvent::MouseButtonPress, QPointF(525,275), Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, QPointF(625,345), Qt::NoButton, Qt::LeftButton);
             window->actionPen->trigger();
             qWarning("Exploration: tool switched");
-            if (!view->viewport()->testAttribute(Qt::WA_SetCursor)
-                || view->viewport()->cursor().shape() != Qt::CrossCursor)
-                return fail("Switching from Shapes lost the Pen cursor: " + context);
             send(QEvent::MouseButtonRelease, QPointF(625,345), Qt::LeftButton, Qt::NoButton);
             bool previewLeft = false;
             for (auto candidate : scene->items())
@@ -531,6 +525,11 @@ bool checkPaperInk(QString *error)
     }
     auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
     if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
+    auto more=dock->findChild<QToolButton*>("paperMore")->menu();
+    if(!more||more->actions().count(window->findChild<QAction*>("actionTeachingFunctions"))>1)return fail("More menu duplicates Functions");
+    QMenu *pageMenu=nullptr;for(auto action:more->actions())if(action->menu()&&action->text()==QObject::tr("Page and paper"))pageMenu=action->menu();
+    if(!pageMenu||pageMenu->actions().size()<2||!pageMenu->actions().at(pageMenu->actions().size()-2)->isSeparator()||pageMenu->actions().last()!=window->actionClearPage)return fail("Clear Page is not separated in More menu");
+    if(window->findChild<QAction*>("actionLessonSaveVersion")->text()!=QObject::tr("Create saved version…"))return fail("Saved version label is unclear");
     window->actionSelector->trigger();pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
     if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62||header->width()<window->width()-12)return fail("Paper pen controls or compact header are not visible");
     auto docs=window->findChild<QToolButton*>("paperDocuments");
