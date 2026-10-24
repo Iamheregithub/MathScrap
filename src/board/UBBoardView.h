@@ -41,6 +41,7 @@
 class UBBoardController;
 class UBGraphicsScene;
 class UBGraphicsWidgetItem;
+class UBGraphicsSvgItem;
 class UBRubberBand;
 class UBSnapIndicator;
 
@@ -207,6 +208,8 @@ private:
 
     bool mIsDragInProgress;
     bool mFormulaInputMouse = false;
+    QPointer<UBGraphicsSvgItem> mFormulaRevealItem;
+    int mFormulaRevealButton = -1;
     bool mMultipleSelectionIsEnabled;
     bool bIsControl;
     bool bIsDesktop;

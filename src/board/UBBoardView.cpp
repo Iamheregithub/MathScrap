@@ -72,6 +72,7 @@
 #include "domain/UBItem.h"
 #include "domain/UBGraphicsMediaItem.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBMathFormula.h"
 #include "domain/UBGraphicsGroupContainerItem.h"
 #include "domain/UBGraphicsStrokesGroup.h"
 #include "domain/UBGraphicsItemDelegate.h"
@@ -1109,6 +1110,17 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
             mFormulaInputMouse=true;QGraphicsView::mousePressEvent(event);event->accept();return;
         }
     }
+    if(event->button()==Qt::LeftButton&&UBDrawingController::drawingController()->stylusTool()==UBStylusTool::Selector){
+        const QPointF scenePoint=mapToScene(event->pos());
+        for(auto hit:scene()->items(scenePoint))if(auto formula=dynamic_cast<UBGraphicsSvgItem*>(hit)){
+            const QPointF local=formula->mapFromScene(scenePoint);
+            const int button=UBMathFormula::stepAt(formula->fileData(),local.x(),local.y());
+            if(button<0)continue;
+            mFormulaRevealItem=formula;mFormulaRevealButton=button;
+            if(auto inputs=formula->formulaInputWidget())inputs->clearFocus();
+            event->accept();return;
+        }
+    }
 
     if (event->button () == Qt::LeftButton && isInteractive())
     {
@@ -1382,6 +1394,20 @@ void UBBoardView::movingItemDestroyed(QObject*)
 
 void UBBoardView::mouseReleaseEvent (QMouseEvent *event)
 {
+    if(mFormulaRevealButton>=0){
+        auto formula=mFormulaRevealItem;const int pressed=mFormulaRevealButton;
+        mFormulaRevealItem=nullptr;mFormulaRevealButton=-1;
+        if(formula&&event->button()==Qt::LeftButton){
+            const QPointF local=formula->mapFromScene(mapToScene(event->pos()));
+            UBMathFormula::State state;
+            if(pressed==UBMathFormula::stepAt(formula->fileData(),local.x(),local.y())&&UBMathFormula::read(formula->fileData(),&state)){
+                const int last=UBMathFormula::lastStep(state);
+                const int next=pressed==0?qMax(0,state.step-1):pressed==1||pressed==5?qMin(last,state.step+1):pressed==2?0:last;
+                if(pressed==4||next!=state.step){const auto before=formula->fileData();if(pressed==4)state.tapToReveal=!state.tapToReveal;else state.step=next;formula->setTeachingSvg(UBMathFormula::render(state));formula->commitTeachingSvg(before);}
+            }
+        }
+        setMovingItem(nullptr);event->accept();return;
+    }
     if(mFormulaInputMouse){mFormulaInputMouse=false;QGraphicsView::mouseReleaseEvent(event);setMovingItem(nullptr);event->accept();return;}
     UBStylusTool::Enum currentTool = (UBStylusTool::Enum)UBDrawingController::drawingController ()->stylusTool ();
 
