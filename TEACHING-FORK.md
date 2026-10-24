@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.24**
+**MathScrap 1.7.7.25**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.24)
-- Compiled source: [`a700f5ae76d2ccf7747d968ac877f7eef90bc84a`](https://github.com/Iamheregithub/MathScrap/commit/a700f5ae76d2ccf7747d968ac877f7eef90bc84a)
-- [Windows build, native checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357826)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357795)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40082357830)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.25)
+- Compiled source: [`451507114893ea47622d466e1d6772f4b970c09f`](https://github.com/Iamheregithub/MathScrap/commit/451507114893ea47622d466e1d6772f4b970c09f)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176247)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176222)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176220)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release redesigns Preferences around the teaching workspace, fixes persistence of deliberately cleared shortcuts, and anchors Select, Text and Capture outlines to the canvas so the Pages sidebar cannot shift them.
+This release makes drag initiation consistent at every zoom and keeps the bottom tool tray clear of the floating zoom control. Its Windows exploratory check exercises pointer placement, Pages, repeated drags, shape and text previews, tool switching, history, formula insertion after zoom, and saved lesson positions. The Preferences and selection-origin changes from 1.7.7.24 remain included.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
@@ -30,8 +30,9 @@ The workflow:
 2. Builds and stages the native application using [build-windows.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/build-windows.ps1).
 3. Runs native startup, drawing, formula, GraphDesk, document/PDF and workspace checks.
 4. Runs per-colour thickness, covers, saved-version and crash-recovery checks.
-5. Builds an instrumented original OpenBoard 1.7.7 and round-trips generated lesson files.
-6. Creates the Inno Setup installer, computes its checksum, and publishes the release and validation artifacts.
+5. Runs exploratory live-canvas checks across Pages states and zoom levels using [test-exploratory.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/test-exploratory.ps1).
+6. Builds an instrumented original OpenBoard 1.7.7 and round-trips generated lesson files.
+7. Creates the Inno Setup installer, computes its checksum, and publishes the release and validation artifacts.
 
 The installer version is set in [OpenBoardTeaching.iss](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/OpenBoardTeaching.iss). Increase it for a new application release.
 
