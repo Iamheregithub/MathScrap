@@ -260,7 +260,9 @@ QStringList labels(const State &s){
     if(s.kind=="cosine-angle")return {"a","b","c"};
     return {"f(x)"};
 }
-QRectF inputRect(const State &s){const bool function=s.kind=="quotient"||s.kind=="derivative";return QRectF(28,56,function?480:labels(s).size()*144-12,modes(s).isEmpty()?40:84);}
+bool pointInputs(const State &s){return s.kind=="distance"||s.kind=="slope";}
+QRectF fieldRect(const State &s,int index){return pointInputs(s)?QRectF(190+(index%2)*128,(index/2)*52,112,40):QRectF(index*144,0,labels(s).size()==1?480:132,40);}
+QRectF inputRect(const State &s){const bool function=s.kind=="quotient"||s.kind=="derivative";return QRectF(28,56,pointInputs(s)||function?480:labels(s).size()*144-12,pointInputs(s)?92:modes(s).isEmpty()?40:84);}
 bool read(const QByteArray &svg,State *state){
     if(!state)return false;
     if(svg.contains("mathscrap-formula")){
@@ -283,7 +285,17 @@ QByteArray render(const State &s){
     QByteArray bytes;QBuffer buffer(&bytes);buffer.open(QIODevice::WriteOnly);QSvgGenerator generator;generator.setOutputDevice(&buffer);generator.setSize(QSize(qCeil(width),qCeil(height)));generator.setViewBox(QRectF(0,0,width,height));QPainter painter(&generator);painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(QPen(QColor("#ded8cc"),1.2));painter.setBrush(QColor("#fffdf7"));painter.drawRoundedRect(QRectF(1,1,width-2,height-2),12,12);
     auto draw=[&](const Math &m,qreal x,qreal y){painter.fillPath(QTransform::fromTranslate(x,y).map(m.path),QColor("#253e3c"));};draw(text(title(s.kind),20,true),28,20);
-    const auto names=labels(s);const bool function=names.size()==1;for(int i=0;i<names.size();++i){const qreal x=28+i*144,fw=function?480:132;painter.setPen(Qt::NoPen);painter.setBrush(QColor("#f1eee5"));painter.drawRoundedRect(QRectF(x,56,fw,40),7,7);draw(text(names[i]+" = "+s.values.value(i),function?18:22),x+10,62);}
+    const auto names=labels(s);const bool function=names.size()==1;
+    if(pointInputs(s))for(int row=0;row<2;++row){
+        const qreal y=inputs.top()+row*52;
+        draw(text(row?"B(x₂, y₂) = (":"A(x₁, y₁) = (",22),inputs.left(),y+6);
+        draw(text(",",22),inputs.left()+305,y+6);draw(text(")",22),inputs.left()+438,y+6);
+    }
+    for(int i=0;i<names.size();++i){
+        const auto box=fieldRect(s,i).translated(inputs.topLeft());
+        painter.setPen(Qt::NoPen);painter.setBrush(QColor("#f1eee5"));painter.drawRoundedRect(box,7,7);
+        draw(text((pointInputs(s)?QString():names[i]+" = ")+s.values.value(i),function?18:22),box.left()+10,box.top()+6);
+    }
     if(!modes(s).isEmpty())draw(text(modes(s).value(s.mode),18,true),28,108);
     qreal y=inputs.bottom()+22;for(const auto &row:rows){draw(row,32,y);y+=row.height+22;}
     const qreal by=height-54;for(int i=0;i<2;++i){bool enabled=i?(w.message.isEmpty()&&stage<w.rows.size()-1):stage>0;qreal x=width-280+i*134;painter.setPen(Qt::NoPen);painter.setBrush(QColor(enabled?"#dceae4":"#f0eee7"));painter.drawRoundedRect(QRectF(x,by,122,36),7,7);const auto label=text(i?"Next step":"Previous",17,true);painter.fillPath(QTransform::fromTranslate(x+(122-label.width)/2,by+(36-label.height)/2).map(label.path),QColor(enabled?"#253e3c":"#92978f"));}painter.end();buffer.close();

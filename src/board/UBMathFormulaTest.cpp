@@ -90,6 +90,14 @@ bool checkMathFormulae(QString *error){
     const auto changed=item->fileData();UBApplication::undoStack->undo();if(!UBMathFormula::read(item->fileData(),&state)||state.values!=QStringList{"1","6","7"}||state.step!=5)return fail("Input undo did not restore the prior solution");UBApplication::undoStack->redo();if(item->fileData()!=changed)return fail("Input redo failed");
     board->persistCurrentScene(false,true);auto loaded=manager->loadDocumentScene(doc,0,false);bool found=false;for(auto candidate:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State restored;if(UBMathFormula::read(svg->fileData(),&restored)&&restored.values==QStringList{"1","6","6"})found=svg->formulaInputWidget()!=nullptr;}if(!found)return fail("Formula inputs or edited state were lost on save/reopen");
     window->grab().save(output.filePath("mathscrap-inputs-window.png"));
+    window->findChild<QAction*>("insertFormula-distance")->trigger();
+    UBGraphicsSvgItem *pointItem=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State saved;if(UBMathFormula::read(svg->fileData(),&saved)&&saved.kind=="distance")pointItem=svg;}
+    if(!pointItem||!pointItem->formulaInputWidget()->findChild<QLabel*>("pointLabelA")||!pointItem->formulaInputWidget()->findChild<QLabel*>("pointLabelB"))return fail("Coordinate-pair labels are missing");
+    auto pairFields=pointItem->formulaInputWidget()->findChildren<QLineEdit*>();
+    std::sort(pairFields.begin(),pairFields.end(),[](QLineEdit*a,QLineEdit*b){return a->objectName()<b->objectName();});
+    if(pairFields.size()!=4||pairFields[0]->parentWidget()->y()!=pairFields[1]->parentWidget()->y()||pairFields[2]->parentWidget()->y()<=pairFields[0]->parentWidget()->y())return fail("Point coordinates are not grouped into two rows");
+    window->grab().save(output.filePath("mathscrap-points-window.png"));
+
     auto clean=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true);board->setActiveDocumentScene(clean,0);
     return true;
 }

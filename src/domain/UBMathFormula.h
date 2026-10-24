@@ -16,5 +16,7 @@ int lastStep(const State &state);
 QString error(const State &state);
 int stepAt(const QByteArray &svg,qreal x,qreal y);
 QRectF inputRect(const State &state);
+bool pointInputs(const State &state);
+QRectF fieldRect(const State &state,int index);
 }
 #endif
