@@ -1,45 +1,57 @@
-![GitHub Repo stars](https://img.shields.io/github/stars/OpenBoard-org/openboard)
-![GitHub Repo forks](https://img.shields.io/github/forks/OpenBoard-org/openboard)
-# OpenBoard
-[![latest release](https://img.shields.io/github/v/release/OpenBoard-org/openboard.svg)]()
-[![Commits since last release](https://img.shields.io/github/commits-since/OpenBoard-org/openboard/v1.7.7/dev)]()
-[![Github Repo Contributors](https://img.shields.io/github/contributors/OpenBoard-org/openboard.svg)]()
-[![downloads v1.7.7](https://img.shields.io/github/downloads/OpenBoard-org/openboard/v1.7.7/total)]()
-[![Github All Releases](https://img.shields.io/github/downloads/OpenBoard-org/OpenBoard/total.svg)]()
+# MathScrap
 
-OpenBoard is an open-source cross-platform interactive white board application designed primarily for use in schools. It was originally forked from Open-Sankoré, which was itself based on Uniboard.
+A classroom whiteboard for mathematics, built on [OpenBoard](https://github.com/OpenBoard-org/OpenBoard).
 
-### Installing
-1.7.7 installers are available for Windows, macOS and Debian on the [Downloads page](https://github.com/OpenBoard-org/OpenBoard/wiki/Downloads).
+MathScrap combines handwriting, editable graphs, step-by-step formula tools, shapes, and reveal covers in one teaching workspace.
 
-### Supported platforms 
+[**Download MathScrap for Windows x64**](https://github.com/Iamheregithub/MathScrap/releases/latest/download/MathScrap-Windows-x64-Setup.exe) · [Release notes and checksums](https://github.com/Iamheregithub/MathScrap/releases/latest) · [Development guide](TEACHING-FORK.md)
 
-| Version   | officially maintained platforms | branch |
-|------------|--------------------------------------------------------|----|
-| 1.7.7 (latest stable)     | Windows 10+, macOS 12+ (for both `x64_64` and `arm64`), Debian 12  | `master` |
-| 1.8.0 (active development)     | Windows 10+, macOS 12+ (for both `x64_64` and `arm64`), Debian 12 | `dev` |
+## What you can do
 
-### Community-driven packages
-On Linux, Debian is the only officially maintained platform. For other platforms, you can thank the awesome community of OpenBoard that provides community-driven packages on a number of other distributions. Check on [this page](https://github.com/OpenBoard-org/OpenBoard/wiki/Downloads) to see if you find what you're looking for. If you actually want to provide support and to be referenced on this page, please open an issue with the relevant information, and we'll be glad to add your contribution.
+- **Write and draw:** ten editable colour swatches, pen and highlighter, solid or dashed lines, and shapes with separate border and fill controls. Each colour remembers its thickness for each drawing tool.
+- **Teach formulas step by step:** quadratic formula, discriminant, Pythagorean theorem, distance, slope, sine law, cosine law, polynomial derivatives, and difference quotients. Editable inputs show substitution and intermediate steps where applicable. Coordinate tools group inputs as points.
+- **Graph with GraphDesk:** plot multiple functions and inequalities, add points and geometric constructions, prepare student copies and answer keys, and export SVG or PNG. Insert graphs into lessons and load them again for editing.
+- **Reveal work gradually:** place independent covers over lesson content and reveal or hide them as you teach.
+- **Make the workspace yours:** customize toolbar visibility and order, use the floating pen tray and More tools menu, and choose display and touch-size options.
+- **Manage lessons:** organize pages and documents, export selected pages to PDF, and restore recovery snapshots or saved versions as separate lessons.
 
-### Building from source
-If you didn't find any installer for your platform, or if you want to modify OpenBoard, you can find instructions on how to build OpenBoard from source on the [wiki](https://github.com/OpenBoard-org/OpenBoard/wiki/Build-OpenBoard-from-source).
+## Quick controls
 
-### Qt support
-OpenBoard can be compiled with the latest open-source binaries of Qt 6. Support for Qt 5.15 was recently dropped, but you can still build OpenBoard with it, after addressing some minor compiling issues.
+| Control | Behaviour |
+| --- | --- |
+| Line | Click to select the remembered line style; double-click to switch solid/dashed. |
+| Zoom | Click to activate; click again to return to Select. Double-click to switch zoom in/out. |
+| Shapes | Open the shape controls, choose a shape, and drag to draw. |
+| Functions | Insert an editable math formula object. |
+| Customize Toolbars | Open from the application menu or toolbar context menu. |
 
-### Contribute
-You can contribute to OpenBoard by helping on translations, creating new web widgets or improving existing ones, or by developing new features and submit them as pull requests.
+GraphDesk has its own tab. To revise an inserted graph, select it in the lesson, open GraphDesk, load the selected graph, edit it, and update the graph on the lesson.
 
-#### Translations
-OpenBoard is available, thanks to the work of its community, in 35 languages. If you want to contribute to OpenBoard or its dedicated website by adding a new language or updating an existing one, your help will be greatly appreciated.
+## Download and platform status
 
-If you don't know how to do it, you can ask for help here : [Discussions](https://github.com/OpenBoard-org/OpenBoard/discussions). Don't hesitate!
+The current published release is **MathScrap 1.7.7.22**. Windows x64 installers and SHA-256 checksums are available on the [Releases page](https://github.com/Iamheregithub/MathScrap/releases). The installer is currently unsigned.
 
-#### Web Widgets
+MathScrap's automated build and application checks target Windows with Qt 6.8.3 and MSVC 2022. OpenBoard is cross-platform, but MathScrap-specific macOS and Linux packages have not been validated or published here.
 
-Web Widgets are websites that you can place and use directly on the board ! And to turn a website to an OpenBoard web widget is really simple !
+The active MathScrap development branch is [`graphdesk-teaching-fork`](https://github.com/Iamheregithub/MathScrap/tree/graphdesk-teaching-fork). Use that branch when building the latest application; `master` also receives shared documentation and security fixes.
 
-Download and install OpenBoard, then develop your web app in it. You'll even find a web inspector to help you debug your site.
+## Testing and security
 
-You'll find documentation on how to create a Web Widget from scratch or turn your already built website into an OpenBoard Web Widget [here](https://github.com/OpenBoard-org/OpenBoard/wiki/Creating-Web-Widgets).
+Release 1.7.7.22 passed:
+
+- Native Windows drawing, formula, Zoom, GraphDesk, document/PDF and workspace checks.
+- Recovery and saved-version checks, including interrupted-session recovery.
+- File round trips through original OpenBoard 1.7.7.
+- JavaScript DOM and Chromium sandbox regression tests.
+
+[Windows validation run](https://github.com/Iamheregithub/MathScrap/actions/runs/40076104874) · [Security review](docs/security/review-2026-10-24.md) · [Current security and quality status](https://github.com/Iamheregithub/MathScrap/security)
+
+CodeQL scans the default and development branches on pushes and pull requests, with scheduled scans as well. Secret scanning, push protection, Dependabot alerts and security updates, and private vulnerability reporting are enabled. Report vulnerabilities privately using the instructions in [SECURITY.md](SECURITY.md).
+
+Physical tablet pressure, projector behaviour, and the full range of existing classroom documents still need manual testing. Automated checks use generated fixtures.
+
+## OpenBoard compatibility and attribution
+
+MathScrap retains OpenBoard's UBZ lesson format. Graphs, formula cards, shapes and covers use SVG objects; MathScrap supplies their additional editing and teaching controls.
+
+This is an independent fork, formerly called LessonBoard, based on the work of OpenBoard, Open-Sankoré and Uniboard contributors. See [COPYRIGHT](COPYRIGHT) and the [GPLv3 licence](LICENSE). Upstream project information and cross-platform build guidance are available from [OpenBoard](https://github.com/OpenBoard-org/OpenBoard).
