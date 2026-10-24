@@ -17,7 +17,7 @@
 					provider.maxWidth = options.maxWidth;
 					provider.maxHeight = options.maxHeight;               
 					
-					provider.embedCode(target, function(code) { container.html(code); });		
+					provider.embedCode(target, function(code) { container.empty().append(code); });
 				}
 			}
         });
@@ -29,29 +29,43 @@
         maxHeight: 400
     };
 
+    function safeWebURL(value) {
+        // Links and media attributes accept only explicit HTTP(S) URLs.
+        if (typeof value !== 'string') return '';
+        try {
+            var parsed = new URL(value);
+            return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : '';
+        } catch (error) { return ''; }
+    }
+
+    function sandboxedEmbed(html) {
+        var frame = document.createElement('iframe');
+        frame.setAttribute('sandbox', 'allow-scripts allow-forms');
+        frame.setAttribute('title', 'Embedded media');
+        frame.style.cssText = 'width:100%;min-height:300px;border:0';
+        frame.srcdoc = typeof html === 'string' ? html : '';
+        return frame;
+    }
+
     $.fn.oembed.getPhotoCode = function(url, data) {
-        var code = '<div><a href="' + url + '" target="_blank"><img src="' + data.url + '"/></a></div>';
-        if (data.html)
-            code += "<div>" + data.html + "</div>";
-        return code;
+        var box = $(document.createElement('div'));
+        var link = $(document.createElement('a')).attr('href', safeWebURL(url))
+            .attr('target', '_blank').attr('rel', 'noopener noreferrer');
+        link.append($(document.createElement('img')).attr('src', safeWebURL(data.url)));
+        box.append(link);
+        if (data.html) box.append(sandboxedEmbed(data.html));
+        return box;
     };
 
-    $.fn.oembed.getVideoCode = function(url, data) {
-        var code = data.html;
-        return code;
-    };
-
-    $.fn.oembed.getRichCode = function(url, data) {
-        var code = data.html;
-        return code;
-    };
+    $.fn.oembed.getVideoCode = function(url, data) { return sandboxedEmbed(data.html); };
+    $.fn.oembed.getRichCode = function(url, data) { return sandboxedEmbed(data.html); };
 
     $.fn.oembed.getGenericCode = function(url, data) {
-        var title = (data.title != null) ? data.title : url,
-			code = '<a href="' + url + '">' + title + '</a>';			
-        if (data.html)
-            code += "<div>" + data.html + "</div>";
-		return code;
+        var box = $(document.createElement('div'));
+        box.append($(document.createElement('a')).attr('href', safeWebURL(url))
+            .text(data.title != null ? data.title : url));
+        if (data.html) box.append(sandboxedEmbed(data.html));
+        return box;
     };
 
     $.fn.oembed.isAvailable = function(url) {
