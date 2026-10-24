@@ -21,6 +21,7 @@
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
 #include "domain/UBGraphicsTextItem.h"
+#include "gui/UBZoomPalette.h"
 #include "domain/UBMathFormula.h"
 #include "domain/UBQuadraticFormula.h"
 #include "domain/UBGraphicsStrokesGroup.h"
@@ -253,6 +254,12 @@ bool checkExploratoryInteractions(QString *error)
             board->zoom(zoom / board->currentZoom(), view->mapToScene(view->viewport()->rect().center()));
             QApplication::processEvents();
             const QString context = QString("Pages=%1, zoom=%2, page=%3").arg(pages).arg(zoom).arg(page);
+            if (auto palette=board->controlContainer()->findChild<UBZoomPalette*>();
+                palette && palette->isVisible()) {
+                auto dock=view->findChild<QWidget*>("paperDock");
+                if (!dock || dock->geometry().intersects(QRect(palette->mapTo(view,QPoint()),palette->size())))
+                    return fail("Zoom control covers the lesson tool tray: " + context);
+            }
             window->actionSelector->trigger();
             auto item = scene->addSvg(QUrl(), view->mapToScene(QPoint(230, 170)), square);
             if (!item) return fail("Could not add draggable object: " + context);
