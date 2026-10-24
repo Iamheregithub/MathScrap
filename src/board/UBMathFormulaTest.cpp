@@ -120,6 +120,35 @@ bool checkMathFormulae(QString *error){
     board->persistCurrentScene(false,true);loaded=manager->loadDocumentScene(doc,0,false);found=false;
     for(auto candidate:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State restored;if(UBMathFormula::read(svg->fileData(),&restored)&&restored.values==QStringList{"1","6","6"})found=restored.step==1&&restored.tapToReveal;}
     if(!found)return fail("Formula reveal mode or current step was lost on save/reopen");
+    // Exercise the actual card controls through the Windows view, with Pages
+    // both open and closed and after changing zoom. Merely testing SVG hit
+    // coordinates misses the board view's selection-event routing.
+    auto revealState=[item]{UBMathFormula::State s;UBMathFormula::read(item->fileData(),&s);return s;};
+    auto cardSize=[item]{QDomDocument d;d.setContent(item->fileData());const auto v=d.documentElement().attribute("viewBox").split(QRegularExpression("[ ,]+"),Qt::SkipEmptyParts);return QSizeF(v[2].toDouble(),v[3].toDouble());};
+    auto clickCard=[&](const QPointF &local){const auto pos=view->mapFromScene(item->mapToScene(local));QMouseEvent down(QEvent::MouseButtonPress,QPointF(pos),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&down);QMouseEvent up(QEvent::MouseButtonRelease,QPointF(pos),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&up);QApplication::processEvents();};
+    auto control=[&](int index){const auto size=cardSize();clickCard(QPointF(size.width()-548+index*132+61,size.height()-36));};
+    auto body=[&]{clickCard(QPointF(100,UBMathFormula::inputRect(revealState()).bottom()+45));};
+    auto expectStep=[&](int step,const QString &name){return revealState().step==step?true:fail(QString("%1: expected step %2, got %3").arg(name).arg(step).arg(revealState().step));};
+    control(1);if(!expectStep(2,"Next step"))return false;
+    control(0);if(!expectStep(1,"Previous"))return false;
+    control(2);if(!expectStep(0,"Start over"))return false;
+    const qreal startingScale=item->scale();
+    control(3);if(!expectStep(UBMathFormula::lastStep(revealState()),"Reveal all"))return false;
+    control(2);if(!expectStep(0,"Start over after Reveal all"))return false;
+    if(item->scale()+0.001<startingScale)return fail("Restart left the formula card shrunk after Reveal all");
+    body();if(!expectStep(1,"Tap to reveal"))return false;
+    clickCard(QPointF(cardSize().width()-125,33));if(revealState().tapToReveal)return fail("Tap-to-reveal toggle did not turn off");
+    body();if(!expectStep(1,"Tap mode off"))return false;
+    clickCard(QPointF(cardSize().width()-125,33));if(!revealState().tapToReveal)return fail("Tap-to-reveal toggle did not turn back on");
+    QToolButton *pageToggle=nullptr;
+    for(auto candidate:window->findChildren<QToolButton*>())if(candidate->toolTip()==QObject::tr("Show or hide pages")){pageToggle=candidate;break;}
+    if(!pageToggle)return fail("Pages toggle missing for reveal test");
+    const bool pagesBefore=pageToggle->isChecked();pageToggle->click();QApplication::processEvents();
+    board->zoomIn();board->zoomIn();const qreal zoomed=board->currentZoom();
+    body();if(!expectStep(2,"Tap after Pages and zoom change")||!qFuzzyCompare(board->currentZoom(),zoomed))return false;
+    control(0);if(!expectStep(1,"Previous after Pages and zoom change"))return false;
+    board->zoomRestore();pageToggle->click();QApplication::processEvents();if(pageToggle->isChecked()!=pagesBefore)return fail("Pages toggle did not restore after reveal test");
+    window->grab().save(output.filePath("formula-reveal-controls-window.png"));
     window->grab().save(output.filePath("mathscrap-inputs-window.png"));
     window->findChild<QAction*>("insertFormula-distance")->trigger();
     UBGraphicsSvgItem *pointItem=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State saved;if(UBMathFormula::read(svg->fileData(),&saved)&&saved.kind=="distance")pointItem=svg;}

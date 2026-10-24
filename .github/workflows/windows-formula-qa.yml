@@ -1,0 +1,56 @@
+name: Formula reveal Windows QA
+on:
+  push:
+    branches: [qa-formula-reveal]
+permissions:
+  contents: read
+concurrency:
+  group: mathscrap-formula-qa
+  cancel-in-progress: true
+jobs:
+  formula:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: formula-native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ env.VCToolsVersion }}-qt683-
+      - name: Build and stage MathScrap
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - name: Exercise formula reveal and native interactions
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Preserve report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Formula-reveal-QA-report
+          path: |
+            OpenBoard/dist/*report.json
+            OpenBoard/dist/*.log
+            OpenBoard/dist/*window.png
+          if-no-files-found: ignore
+          retention-days: 30
