@@ -126,7 +126,7 @@ bool checkPreferencesRedesign(QString *error)
             }
             good=good&&shortcutChanged;
             const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
-            for(int row=0;row<nav->count();++row){nav->setCurrentRow(row);QApplication::processEvents();dialog->grab().save(output.filePath("preferences-"+nav->item(row)->data(Qt::UserRole).toString()+".png"));}
+            for(int row=0;row<nav->count();++row){nav->setCurrentRow(row);QApplication::processEvents();dialog->grab().save(output.filePath("preferences-"+nav->item(row)->data(Qt::UserRole).toString()+"-window.png"));}
             nav->setCurrentRow(0);
             auto reset=dialog->findChild<QPushButton*>("defaultSettingsButton");
             QTimer::singleShot(0,dialog,[]{if(auto question=qobject_cast<QMessageBox*>(QApplication::activeModalWidget()))question->button(QMessageBox::Yes)->click();});
@@ -138,6 +138,9 @@ bool checkPreferencesRedesign(QString *error)
         dialog->close(); // Window-close must save the same fields as Done.
     });
     timer.start(50);window->actionPreferences->trigger();timer.stop();
+    // Let native window activation return from the modal dialog before the next
+    // test sends pointer events to the board. A real user cannot click this early.
+    QEventLoop activation;QTimer::singleShot(100,&activation,&QEventLoop::quit);activation.exec();
     good=good&&settings->webHomePage->get().toString()=="https://example.org/mathscrap-preferences-test";
     settings->webHomePage->set(home);settings->setValue("Teaching/TouchFriendly",touch);settings->setValue("Teaching/ToolLabels",labels);settings->setValue("Teaching/PaperInkPages",pages);settings->save();
     if(auto paper=window->findChild<UBPaperInk*>())paper->applyPreferences();

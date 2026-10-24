@@ -81,7 +81,11 @@ bool checkMathFormulae(QString *error){
     auto view=board->controlView();const auto tap=view->mapFromScene(item->mapToScene(QPointF(118,76)));
     QMouseEvent down(QEvent::MouseButtonPress,QPointF(tap),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&down);
     QMouseEvent up(QEvent::MouseButtonRelease,QPointF(tap),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&up);
-    if(!fields[0]->hasFocus())return fail("Pen tap did not focus the coefficient box");
+    if(!fields[0]->hasFocus()){
+        window->grab().save(output.filePath("formula-focus-failure-window.png"));
+        auto focus=QApplication::focusWidget();
+        return fail(QString("Pen tap did not focus the coefficient box (active=%1, focus=%2, tap=%3,%4)").arg(window->isActiveWindow()).arg(focus?focus->objectName():"none").arg(tap.x()).arg(tap.y()));
+    }
     window->actionSelector->trigger();
     type(fields[0],"1");type(fields[1],"6");type(fields[2],"7");QMetaObject::invokeMethod(fields[2],"editingFinished",Qt::DirectConnection);
     UBMathFormula::State state;if(!UBMathFormula::read(item->fileData(),&state)||state.values!=QStringList{"1","6","7"}||state.step!=1)return fail("Typing coefficients did not update substitution");
