@@ -521,12 +521,9 @@ void UBGraphicsSvgItem::refreshFormulaInputs()
         row->setAttribute(Qt::WA_TranslucentBackground);row->setStyleSheet("QWidget{background:transparent;color:#253e3c;} QFrame#mathscrapField{background:#f1eee5;border:1px solid transparent;border-radius:7px;} QLineEdit{background:transparent;border:0;border-radius:3px;padding:0;font-family:'Cambria Math';font-size:22px;color:#253e3c;selection-background-color:#c9ded4;} QLineEdit:focus{background:#fffdf7;border:1px solid #77a99a;} QLabel{font-family:'Cambria Math';font-size:22px;} QComboBox{background:#f1eee5;color:#253e3c;border:1px solid #d8d1c3;border-radius:5px;padding:4px;font-size:17px;}");
         const auto names=UBMathFormula::labels(state);const bool function=names.size()==1;
         const bool points=UBMathFormula::pointInputs(state);
-        if(points)for(int i=0;i<2;++i){
-            auto pointLabel=new QLabel(i?"B(x₂, y₂) = (":"A(x₁, y₁) = (",row);pointLabel->setObjectName(i?"pointLabelB":"pointLabelA");pointLabel->setGeometry(0,i*52,188,40);
-            auto comma=new QLabel(",",row);comma->setGeometry(305,i*52,16,40);
-            auto close=new QLabel(")",row);close->setGeometry(438,i*52,20,40);
-        }
-        for(int i=0;i<names.size();++i){auto frame=new QFrame(row);frame->setObjectName("mathscrapField");frame->setGeometry(UBMathFormula::fieldRect(state,i).toRect());auto layout=new QHBoxLayout(frame);layout->setContentsMargins(10,0,8,0);layout->setSpacing(4);if(!points){auto label=new QLabel(names[i]+" =",frame);if(function)label->setStyleSheet("font-size:18px;");layout->addWidget(label);}auto input=new QLineEdit(frame);input->setObjectName(QString("formulaValue%1").arg(i));input->setAccessibleName(names[i]);input->setMinimumWidth(0);input->setMaxLength(function?180:14);input->setPlaceholderText(function?"e.g. x^2 + 6x + 7":"");if(function)input->setStyleSheet("font-size:18px;");layout->addWidget(input,1);mFormulaInputs<<input;
+        // Point labels and punctuation are already painted in the SVG. Only
+        // coordinate fields are native widgets, avoiding duplicate text layers.
+        for(int i=0;i<names.size();++i){auto frame=new QFrame(row);frame->setObjectName("mathscrapField");frame->setGeometry(UBMathFormula::fieldRect(state,i).toRect());auto layout=new QHBoxLayout(frame);layout->setContentsMargins(10,0,8,0);layout->setSpacing(4);if(!points){auto label=new QLabel(names[i]+" =",frame);if(function)label->setStyleSheet("font-size:18px;");layout->addWidget(label);}auto input=new QLineEdit(frame);input->setObjectName(QString("formulaValue%1").arg(i));input->setAccessibleName(points?QString(i<2?"Point A: %1":"Point B: %1").arg(names[i]):names[i]);input->setMinimumWidth(0);input->setMaxLength(function?180:14);input->setPlaceholderText(function?"e.g. x^2 + 6x + 7":"");if(function)input->setStyleSheet("font-size:18px;");layout->addWidget(input,1);mFormulaInputs<<input;
             if(i>0)QWidget::setTabOrder(mFormulaInputs[i-1],input);
             connect(input,&QLineEdit::textEdited,this,[this,key](const QString &){
                 if(mFormulaSyncing||key!=mFormulaLayoutKey)return;

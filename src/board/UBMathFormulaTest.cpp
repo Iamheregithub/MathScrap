@@ -92,11 +92,11 @@ bool checkMathFormulae(QString *error){
     window->grab().save(output.filePath("mathscrap-inputs-window.png"));
     window->findChild<QAction*>("insertFormula-distance")->trigger();
     UBGraphicsSvgItem *pointItem=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State saved;if(UBMathFormula::read(svg->fileData(),&saved)&&saved.kind=="distance")pointItem=svg;}
-    if(!pointItem||!pointItem->formulaInputWidget()->findChild<QLabel*>("pointLabelA")||!pointItem->formulaInputWidget()->findChild<QLabel*>("pointLabelB"))return fail("Coordinate-pair labels are missing");
+    if(!pointItem||!description(pointItem->fileData()).contains("A(x₁, y₁); B(x₂, y₂)"))return fail("Coordinate-pair labels are missing");
     auto pairFields=pointItem->formulaInputWidget()->findChildren<QLineEdit*>();
     std::sort(pairFields.begin(),pairFields.end(),[](QLineEdit*a,QLineEdit*b){return a->objectName()<b->objectName();});
     if(pairFields.size()!=4||pairFields[0]->parentWidget()->y()!=pairFields[1]->parentWidget()->y()||pairFields[2]->parentWidget()->y()<=pairFields[0]->parentWidget()->y())return fail("Point coordinates are not grouped into two rows");
-    window->grab().save(output.filePath("mathscrap-points-window.png"));
+    scene->clearSelection();QApplication::processEvents();window->grab().save(output.filePath("mathscrap-points-window.png"));
 
     auto clean=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true);board->setActiveDocumentScene(clean,0);
     return true;

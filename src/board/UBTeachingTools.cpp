@@ -346,8 +346,8 @@ void UBTeachingTools::customize()
     auto preview=new QListWidget;preview->setObjectName("workspaceToolbarPreview");
     preview->setViewMode(QListView::IconMode);preview->setFlow(QListView::LeftToRight);preview->setWrapping(false);
     preview->setMovement(QListView::Snap);preview->setDragDropMode(QAbstractItemView::InternalMove);preview->setDefaultDropAction(Qt::MoveAction);
-    preview->setSelectionMode(QAbstractItemView::ExtendedSelection);preview->setIconSize(QSize(28,28));preview->setGridSize(QSize(86,82));preview->setFixedHeight(112);preview->setSpacing(2);
-    previewRow->addWidget(preview,1);auto more=new QToolButton;more->setText(tr("More"));more->setIcon(UBPaperInk::toolIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setEnabled(false);more->setFixedSize(66,82);previewRow->addWidget(more);toolLayout->addLayout(previewRow);
+    preview->setSelectionMode(QAbstractItemView::ExtendedSelection);preview->setIconSize(QSize(28,28));preview->setGridSize(QSize(96,82));preview->setFixedHeight(112);preview->setSpacing(2);
+    previewRow->addWidget(preview,1);auto more=new QToolButton;more->setText(tr("More"));more->setIcon(UBPaperInk::toolIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setAutoRaise(true);more->setStyleSheet("QToolButton{color:#263c3b;background:#fffdf7;border:1px solid #ddd7cb;border-radius:10px;}");more->setFixedSize(66,82);previewRow->addWidget(more);toolLayout->addLayout(previewRow);
     auto controls=new QHBoxLayout;auto left=new QPushButton(tr("Move left"));left->setObjectName("workspaceMoveLeft");auto right=new QPushButton(tr("Move right"));auto remove=new QPushButton(tr("Move to More"));remove->setObjectName("workspaceRemove");
     controls->addWidget(left);controls->addWidget(right);controls->addStretch();controls->addWidget(remove);toolLayout->addLayout(controls);
     auto availableTitle=new QLabel(tr("Tools in More"));availableTitle->setStyleSheet("font-size:16px;font-weight:600;");toolLayout->addWidget(availableTitle);
@@ -355,7 +355,7 @@ void UBTeachingTools::customize()
     auto available=new QListWidget;available->setObjectName("workspaceAvailableTools");available->setSelectionMode(QAbstractItemView::ExtendedSelection);available->setIconSize(QSize(26,26));available->setSpacing(4);toolLayout->addWidget(available,1);
     auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
     auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out."));note->setWordWrap(true);toolLayout->addWidget(note);
-    auto appearance=new QWidget;auto appearanceLayout=new QVBoxLayout(appearance);appearanceLayout->setSpacing(18);tabs->addTab(appearance,tr("Layout & appearance"));
+    auto appearance=new QWidget;auto appearanceLayout=new QVBoxLayout(appearance);appearanceLayout->setSpacing(18);tabs->addTab(appearance,tr("Layout && appearance"));
     auto touch=new QCheckBox(tr("Touch-friendly controls — larger buttons and shade handles"));touch->setObjectName("lessonTouchFriendly");touch->setChecked(settings->value("Teaching/TouchFriendly",false).toBool());appearanceLayout->addWidget(touch);
     auto labels=new QCheckBox(tr("Show labels on the bottom toolbar"));labels->setObjectName("workspaceToolLabels");labels->setChecked(settings->value("Teaching/ToolLabels",true).toBool());appearanceLayout->addWidget(labels);
     auto pages=new QCheckBox(tr("Show the Pages sidebar"));pages->setObjectName("workspacePages");pages->setChecked(settings->value("Teaching/PaperInkPages",true).toBool());appearanceLayout->addWidget(pages);
@@ -378,7 +378,7 @@ void UBTeachingTools::customize()
     auto transfer=[available,title](QListWidget *from,QListWidget *to){for(int row=0;row<from->count();)if(from->item(row)->isSelected()&&!from->item(row)->isHidden()){auto item=from->takeItem(row);item->setHidden(false);item->setSelected(false);if(to==available)item->setText(title(item->data(Qt::UserRole).toString()));to->addItem(item);}else ++row;};
     connect(add,&QPushButton::clicked,&dialog,[=]{transfer(available,preview);});connect(remove,&QPushButton::clicked,&dialog,[=]{transfer(preview,available);});
     connect(search,&QLineEdit::textChanged,&dialog,[available](const QString &query){for(int i=0;i<available->count();++i)available->item(i)->setHidden(!available->item(i)->text().contains(query,Qt::CaseInsensitive));});
-    auto refreshPreview=[=]{const bool large=touch->isChecked(),text=labels->isChecked();preview->setIconSize(large?QSize(34,34):QSize(28,28));preview->setGridSize(QSize(text?(large?96:86):(large?70:54),82));for(int i=0;i<preview->count();++i)preview->item(i)->setText(text?title(preview->item(i)->data(Qt::UserRole).toString()):QString());};
+    auto refreshPreview=[=]{const bool large=touch->isChecked(),text=labels->isChecked();preview->setIconSize(large?QSize(34,34):QSize(28,28));preview->setGridSize(QSize(text?(large?110:96):(large?70:54),82));for(int i=0;i<preview->count();++i)preview->item(i)->setText(text?title(preview->item(i)->data(Qt::UserRole).toString()):QString());};
     connect(touch,&QCheckBox::toggled,&dialog,[=]{refreshPreview();});connect(labels,&QCheckBox::toggled,&dialog,[=]{refreshPreview();});
     connect(preview->model(),&QAbstractItemModel::rowsInserted,&dialog,[=]{refreshPreview();});refreshPreview();
     auto apply=[&]{
