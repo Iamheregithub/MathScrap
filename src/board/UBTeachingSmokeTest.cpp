@@ -378,11 +378,18 @@ bool checkExploratoryInteractions(QString *error)
             auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
             qWarning("Exploration: scene reloaded");
             bool savedMoved = false, savedShape = false;
+            QStringList reopenedSvgs;
             for (auto candidate : reopened->items()) if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
+                reopenedSvgs << QString("uuid=%1 pos=%2,%3 shape=%4")
+                    .arg(svg->uuid().toString()).arg(svg->pos().x()).arg(svg->pos().y()).arg(svg->isTeachingShape());
                 if (svg->uuid() == item->uuid()) savedMoved = pointsClose(svg->pos(), moved);
                 if (svg->uuid() == shape->uuid()) savedShape = pointsClose(svg->pos(), shape->pos());
             }
-            if (!savedMoved || !savedShape) return fail("Saved objects reopened at different positions: " + context);
+            if (!savedMoved || !savedShape)
+                return fail(QString("Saved objects reopened at different positions: %1, moved=%2 (%3, %4,%5), shape=%6 (%7, %8,%9), reopened=[%10]")
+                    .arg(context).arg(savedMoved).arg(item->uuid().toString()).arg(moved.x()).arg(moved.y())
+                    .arg(savedShape).arg(shape->uuid().toString()).arg(shape->pos().x()).arg(shape->pos().y())
+                    .arg(reopenedSvgs.join("; ")));
             if (pages && zoom == 1.0)
                 window->grab().save(output.filePath("explore-saved-objects-window.png"));
             if (pages && zoom == 1.7) {
