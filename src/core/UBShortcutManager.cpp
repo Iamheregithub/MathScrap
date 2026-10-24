@@ -82,10 +82,8 @@ void UBShortcutManager::addActions(const QString& group, const QList<QAction*> a
 
             if (settings.size() == 3)
             {
-                if (!settings[0].isEmpty())
-                {
-                    action->setShortcut(settings[0]);
-                }
+                // An empty saved binding intentionally clears the shortcut.
+                action->setShortcut(QKeySequence(settings[0]));
 
                 if (int button = settings[1].toInt())
                 {

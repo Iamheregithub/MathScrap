@@ -97,6 +97,7 @@ UBPreferencesController::UBPreferencesController(QWidget *parent)
     connect(UBApplication::displayManager, &UBDisplayManager::availableScreenCountChanged, this, &UBPreferencesController::adjustScreensPreferences);
     wire();
     rebuildPreferences();
+    connect(mPreferencesWindow, &QDialog::finished, this, &UBPreferencesController::savePendingFields);
 }
 
 

@@ -94,6 +94,10 @@ bool checkPreferencesRedesign(QString *error)
     const auto touch=settings->value("Teaching/TouchFriendly",false),labels=settings->value("Teaching/ToolLabels",true),pages=settings->value("Teaching/PaperInkPages",true);
     const auto palette=settings->boardPenLightBackgroundSelectedColors->get(),order=settings->value("Teaching/BottomOrder"),home=settings->webHomePage->get();
     const auto penWidth=settings->boardPenFineWidth->get();const auto folder=UBSettings::userDocumentDirectory(),pending=settings->pendingDocumentDirectory();
+    auto cleared=new QAction("Preferences clear-binding probe",window);cleared->setObjectName("actionPreferencesClearProbe");cleared->setShortcut(QKeySequence("Ctrl+Shift+F11"));cleared->setProperty("builtIn",true);
+    settings->setValue("Shortcut/actionPreferencesClearProbe",QStringList{QString(),QString(),QString()});
+    UBShortcutManager::shortcutManager()->addActions("Preferences regression",{cleared});
+    if(!cleared->shortcut().isEmpty()){*error="An intentionally empty shortcut was replaced by its default";return false;}
     bool checked=false,good=true,shortcutChanged=false;QTimer timer;
     QObject::connect(&timer,&QTimer::timeout,[&]{
         auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());
