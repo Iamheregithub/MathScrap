@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBMathFormulaTest.h"
+#include "UBPaperInk.h"
+#include "core/UBSettings.h"
 #include <QtWidgets>
 #include <algorithm>
 #include <QSvgRenderer>
@@ -98,6 +100,43 @@ bool checkMathFormulae(QString *error){
     if(pairFields.size()!=4||pairFields[0]->parentWidget()->y()!=pairFields[1]->parentWidget()->y()||pairFields[2]->parentWidget()->y()<=pairFields[0]->parentWidget()->y())return fail("Point coordinates are not grouped into two rows");
     scene->clearSelection();QApplication::processEvents();window->grab().save(output.filePath("mathscrap-points-window.png"));
 
+    // Repeatedly leave Zoom and select both function cards. Check the view and
+    // the object's scene geometry independently to distinguish the two symptoms.
+    auto paper=window->findChild<UBPaperInk*>();auto settings=UBSettings::settings();
+    const auto previousZoomVisibility=settings->value("Teaching/Bottom/actionZoomIn",false);
+    const auto previousDirection=settings->value("Teaching/ZoomOutTool",false);
+    settings->setValue("Teaching/Bottom/actionZoomIn",true);paper->rebuild();QApplication::processEvents();
+    auto zoomButton=window->findChild<QToolButton*>("paper-actionZoomIn");
+    if(!zoomButton)return fail("Zoom button missing from formula regression");
+    for(const auto &kind:QStringList{"derivative","quotient"}){
+        auto regressionDoc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Formula zoom regression "+kind,true);
+        board->setActiveDocumentScene(regressionDoc,0);board->zoomRestore();
+        window->findChild<QAction*>("insertFormula-"+kind)->trigger();auto regressionScene=board->activeScene();
+        UBGraphicsSvgItem *formula=nullptr;for(auto candidate:regressionScene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State saved;if(UBMathFormula::read(svg->fileData(),&saved)&&saved.kind==kind)formula=svg;}
+        if(!formula)return fail("Function card missing for "+kind);
+        auto field=formula->formulaInputWidget()->findChild<QLineEdit*>("formulaValue0");
+        type(field,"x^2+6x+7");QMetaObject::invokeMethod(field,"editingFinished",Qt::DirectConnection);field->clearFocus();
+        const auto bounds=formula->sceneBoundingRect();const qreal initialZoom=board->currentZoom();
+        for(int cycle=0;cycle<6;++cycle){
+            settings->setValue("Teaching/ZoomOutTool",cycle%2==0);window->actionSelector->trigger();zoomButton->click();
+            zoomButton->click();
+            if(zoomButton->isChecked()||UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Zoom stayed active after deselection for "+kind);
+            regressionScene->clearSelection();const auto pos=view->mapFromScene(formula->mapToScene(QPointF(70,30)));
+            QMouseEvent press(QEvent::MouseButtonPress,QPointF(pos),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&press);
+            QMouseEvent release(QEvent::MouseButtonRelease,QPointF(pos),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&release);QApplication::processEvents();
+            const auto size=formula->sceneBoundingRect().size();
+            if(!qFuzzyCompare(board->currentZoom(),initialZoom)||qAbs(size.width()-bounds.width())>0.001||qAbs(size.height()-bounds.height())>0.001)return fail("Selecting "+kind+" changed page zoom or formula size");
+        }
+        // Focus changes and an undo command's initial redo can reapply the same
+        // SVG. It must remain unchanged even when the user has zoomed in.
+        board->zoomIn();board->zoomIn();const auto zoomedBounds=formula->sceneBoundingRect();const qreal zoomedPage=board->currentZoom();
+        const auto unchanged=formula->fileData();for(int i=0;i<6;++i)formula->setTeachingSvg(unchanged);
+        if(formula->sceneBoundingRect()!=zoomedBounds||!qFuzzyCompare(board->currentZoom(),zoomedPage))return fail("Reapplying unchanged "+kind+" resized the object or zoomed the page");
+        board->zoomRestore();
+    }
+    window->setProperty("formulaZoomRegressionChecked",true);
+    window->grab().save(output.filePath("mathscrap-zoom-regression-window.png"));
+    settings->setValue("Teaching/Bottom/actionZoomIn",previousZoomVisibility);settings->setValue("Teaching/ZoomOutTool",previousDirection);paper->rebuild();window->actionPen->trigger();
     auto clean=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Native drawing checks",true);board->setActiveDocumentScene(clean,0);
     return true;
 }

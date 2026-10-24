@@ -476,6 +476,10 @@ void UBGraphicsSvgItem::refreshTeachingHandles()
 
 void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
 {
+    // QUndoStack calls redo() when a freshly committed edit is pushed. Reusing
+    // the same content must not fit the object again at the current page zoom.
+    if(data==mFileData)return;
+    const QSizeF previousSize=boundingRect().size();
     // Detach on first edit: duplicated pages may initially share SVG assets.
     if (!mTeachingDetached) { setUuid(QUuid::createUuid()); mTeachingDetached = true; }
     prepareGeometryChange();
@@ -490,7 +494,7 @@ void UBGraphicsSvgItem::setTeachingSvg(const QByteArray &data)
     } else renderer()->load(data);
     refreshTeachingHandles();
     refreshFormulaInputs();
-    if(data.contains("mathscrap-formula"))fitFormulaInView();
+    if(data.contains("mathscrap-formula")&&boundingRect().size()!=previousSize)fitFormulaInView();
     update();
     if (scene()) scene()->setModified(true);
 }

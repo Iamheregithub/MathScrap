@@ -218,7 +218,8 @@ bool checkPaperInk(QString *error)
     QMouseEvent zoomRelease(QEvent::MouseButtonRelease,QPointF(zoomButton->rect().center()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
     QApplication::sendEvent(zoomButton,&zoomDouble);QApplication::sendEvent(zoomButton,&zoomRelease);
     if(!settings->value("Teaching/ZoomOutTool").toBool()||!window->actionZoomOut->isChecked()||zoomButton->text()!=QObject::tr("Zoom −"))return fail("Zoom double-click did not select zoom out");
-    zoomButton->click();if(!window->actionZoomOut->isChecked())return fail("Zoom single-click forgot the chosen direction");
+    zoomButton->click();if(zoomButton->isChecked()||UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Deselecting Zoom left its native tool active");
+    zoomButton->click();if(!window->actionZoomOut->isChecked()||!zoomButton->isChecked())return fail("Reselecting Zoom forgot the chosen direction");
     QApplication::sendEvent(zoomButton,&zoomDouble);QApplication::sendEvent(zoomButton,&zoomRelease);
     if(settings->value("Teaching/ZoomOutTool").toBool()||!window->actionZoomIn->isChecked())return fail("Zoom double-click did not return to zoom in");
     settings->setValue("Teaching/Bottom/actionZoomIn",previousZoom);paper->rebuild();window->actionPen->trigger();
@@ -579,6 +580,7 @@ void finish(bool passed, const QString &detail) {
     report["passed"] = passed;
     report["detail"] = storageError.isEmpty() ? detail : storageError;
     report["qt"] = qVersion();
+    report["formulaZoomRegressionChecked"] = UBApplication::mainWindow->property("formulaZoomRegressionChecked").toBool();
     report["pdfSelectionChecked"] = qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1";
     report["shapeToolbarChecked"] = UBApplication::mainWindow->property("shapeToolbarChecked").toBool();
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();

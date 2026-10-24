@@ -105,15 +105,20 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
         const bool out=zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool();
         proxy->setText(zoom?(out?tr("Zoom −"):tr("Zoom +")):dash?(dashed?tr("Dashed"):tr("Line")):label);
         proxy->setIcon(inkIcon(out?QString("actionZoomOut"):dashed?QString("actionTeachingDash"):source->objectName()));
-        proxy->setToolTip(zoom?tr("Zoom: double-click to switch zoom in / out"):source->toolTip());
+        proxy->setToolTip(zoom?tr("Zoom: click again to return to Select; double-click to switch in / out"):source->toolTip());
         proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());
         proxy->setChecked(source->isChecked()||(dash&&dash->isChecked())||(zoom&&zoom->isChecked()));
     };
     connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);if(zoom)connect(zoom,&QAction::changed,b,update);
-    connect(proxy,&QAction::triggered,this,[this,source,b,dash,zoom]{
+    connect(proxy,&QAction::triggered,this,[this,source,b,dash,zoom,update]{
         const bool same=mTrayOpen&&mTrayAction==source->objectName()&&UBDrawingController::drawingController()->stylusTool()==trayTool();
-        if(zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool())zoom->trigger();
+        const int active=UBDrawingController::drawingController()->stylusTool();
+        if(zoom&&(active==UBStylusTool::ZoomIn||active==UBStylusTool::ZoomOut))mWindow->actionSelector->trigger();
+        else if(zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool())zoom->trigger();
         else if(dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool())dash->trigger();else source->trigger();
+        // A presentation action can toggle without the exclusive native action
+        // emitting changed(). Always reconcile the visible selection state.
+        update();
         if(b->property("paperTray").toBool()){if(same)closeTray();else openTray(b);}
     });update();
     b->setDefaultAction(proxy);if(source->menu()){b->setMenu(source->menu());b->setPopupMode(QToolButton::InstantPopup);}b->setIconSize(QSize(26,26));return b;
