@@ -23,7 +23,7 @@
    <enum>Qt::DefaultContextMenu</enum>
   </property>
   <property name="windowTitle">
-   <string>Mathscrap Documents</string>
+   <string>MathScrap Documents</string>
   </property>
   <property name="styleSheet">
    <string notr="true"/>

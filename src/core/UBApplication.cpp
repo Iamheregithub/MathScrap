@@ -108,7 +108,7 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
 #ifdef UB_TEACHING_FORK
     // Keep the existing profile identity so renaming does not strand lessons or settings.
     setApplicationName("OpenBoardTeaching");
-    setApplicationDisplayName("Mathscrap");
+    setApplicationDisplayName("MathScrap");
 #else
     setApplicationName("OpenBoard");
 #endif
@@ -153,7 +153,11 @@ UBApplication::UBApplication(const QString &id, int &argc, char **argv) : Single
     updateProtoActionsState();
 
 #ifndef Q_OS_OSX
+#ifdef UB_TEACHING_FORK
+    setWindowIcon(QIcon(":/images/branding/MathScrap.svg"));
+#else
     setWindowIcon(QIcon(":/images/OpenBoard.png"));
+#endif
 #endif
 
     setStyle("fusion");

@@ -60,8 +60,8 @@ bool checkMathFormulae(QString *error){
     UBMathFormula::State impossible;impossible.kind="cosine-angle";impossible.values={"1","2","4"};if(UBMathFormula::error(impossible).isEmpty())return fail("Impossible triangle was accepted");
     auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;auto manager=UBPersistenceManager::persistenceManager();
     auto functions=window->findChild<QAction*>("actionTeachingFunctions");auto insert=window->findChild<QAction*>("insertFormula-quadratic");
-    if(!functions||!functions->menu()||!insert||window->windowTitle()!="Mathscrap")return fail("Mathscrap Functions action or branding unavailable");
-    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Mathscrap formula input regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();
+    if(!functions||!functions->menu()||!insert||window->windowTitle()!="MathScrap")return fail("MathScrap Functions action or branding unavailable");
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"MathScrap formula input regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();
     insert->trigger();if(QApplication::activeModalWidget())return fail("Formula insertion opened a dialog");
     UBGraphicsSvgItem *item=nullptr;for(auto candidate:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(candidate)){UBMathFormula::State s;if(UBMathFormula::read(svg->fileData(),&s)&&s.kind=="quadratic"){item=svg;break;}}
     if(!item||!item->formulaInputWidget())return fail("On-page formula inputs missing");

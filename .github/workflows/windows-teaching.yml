@@ -89,7 +89,7 @@ jobs:
         with:
           path: OpenBoardOriginal/build
           key: ${{ steps.original-cache.outputs.cache-primary-key }}
-      - name: Round trip original OpenBoard and Mathscrap files
+      - name: Round trip original OpenBoard and MathScrap files
         shell: pwsh
         run: |
           python -m pip install Pillow
@@ -110,7 +110,7 @@ jobs:
       - name: Upload installer and checksums
         uses: actions/upload-artifact@v4
         with:
-          name: Mathscrap-Windows-x64
+          name: MathScrap-Windows-x64
           path: |
             OpenBoard/dist/*Setup.exe
             OpenBoard/dist/SHA256SUMS.txt
@@ -126,9 +126,9 @@ jobs:
           $tag = "mathscrap-v$version"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag OpenBoard/dist/Mathscrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --clobber
+            gh release upload $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --clobber
           } else {
-            gh release create $tag OpenBoard/dist/Mathscrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "Mathscrap $version" --notes "Windows x64 installer. Native drawing, teaching tools, recovery and original OpenBoard file compatibility checks passed. Source code is available at the tagged commit under the repository licence."
+            gh release create $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "MathScrap $version" --notes "Windows x64 installer. Native drawing, teaching tools, recovery and original OpenBoard file compatibility checks passed. Source code is available at the tagged commit under the repository licence."
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload validation report

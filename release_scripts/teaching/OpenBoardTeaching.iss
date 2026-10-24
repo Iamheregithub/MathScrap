@@ -1,23 +1,23 @@
 #define AppRoot "..\..\dist\app"
-#define AppVersion "1.7.7.18"
+#define AppVersion "1.7.7.19"
 [Setup]
 AppId={{2269D566-C066-4763-8D2D-48EE7AE1C83C}
-AppName=Mathscrap
+AppName=MathScrap
 AppVersion={#AppVersion}
-AppPublisher=Mathscrap fork
+AppPublisher=MathScrap fork
 DefaultDirName={localappdata}\Programs\OpenBoardTeaching
-DefaultGroupName=Mathscrap
+DefaultGroupName=MathScrap
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\..\dist
-OutputBaseFilename=Mathscrap-Windows-x64-Setup
-SetupIconFile=..\..\resources\win\OpenBoard.ico
+OutputBaseFilename=MathScrap-Windows-x64-Setup
+SetupIconFile=..\..\resources\win\MathScrap.ico
 LicenseFile=..\..\LICENSE
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-UninstallDisplayIcon={app}\Mathscrap.exe
+UninstallDisplayIcon={app}\MathScrap.exe
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
@@ -26,10 +26,10 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "..\..\dist\vc_redist.x64.exe"; Flags: dontcopy
 Source: "{#AppRoot}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 [Icons]
-Name: "{group}\Mathscrap"; Filename: "{app}\Mathscrap.exe"
-Name: "{autodesktop}\Mathscrap"; Filename: "{app}\Mathscrap.exe"; Tasks: desktopicon
+Name: "{group}\MathScrap"; Filename: "{app}\MathScrap.exe"
+Name: "{autodesktop}\MathScrap"; Filename: "{app}\MathScrap.exe"; Tasks: desktopicon
 [Run]
-Filename: "{app}\Mathscrap.exe"; Description: "Open Mathscrap"; Flags: nowait postinstall skipifsilent unchecked
+Filename: "{app}\MathScrap.exe"; Description: "Open MathScrap"; Flags: nowait postinstall skipifsilent unchecked
 
 [Code]
 function NextVersionPart(var Value: String): Integer;
@@ -91,3 +91,6 @@ Type: files; Name: "{autodesktop}\OpenBoard Teaching.lnk"
 Type: files; Name: "{app}\LessonBoard.exe"
 Type: files; Name: "{group}\LessonBoard.lnk"
 Type: files; Name: "{autodesktop}\LessonBoard.lnk"
+
+Type: files; Name: "{group}\Mathscrap.lnk"
+Type: files; Name: "{autodesktop}\Mathscrap.lnk"

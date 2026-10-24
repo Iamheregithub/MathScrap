@@ -2,8 +2,8 @@
 
 /* Application Icon */
 
-IDI_ICON1               ICON    DISCARDABLE     "OpenBoard.ico"
-IDI_ICON2               ICON    DISCARDABLE     "OpenBoardDoc.ico"
+IDI_ICON1               ICON    DISCARDABLE     "MathScrap.ico"
+IDI_ICON2               ICON    DISCARDABLE     "MathScrap.ico"
 
 /* Version Info */
 
@@ -35,15 +35,15 @@ BEGIN
 
             VALUE "CompanyName",      "Open Education Foudation\000"
 
-            VALUE "FileDescription",  "OpenBoard\000"
+            VALUE "FileDescription",  "MathScrap\000"
 
             VALUE "FileVersion",      UBVERSION
 
             VALUE "LegalCopyright",   "(c) Open Education Foundation 2013. All rights reserved\000"
 
-            VALUE "OriginalFilename", "OpenBoard.exe\000"
+            VALUE "OriginalFilename", "MathScrap.exe\000"
 
-            VALUE "ProductName",      "OpenBoard\000"
+            VALUE "ProductName",      "MathScrap\000"
 
             VALUE "ProductVersion",   UBVERSION
 

@@ -11,11 +11,11 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Mathscrap</string>
+   <string>MathScrap</string>
   </property>
   <property name="windowIcon">
    <iconset resource="../OpenBoard.qrc">
-    <normaloff>:/images/OpenBoard.png</normaloff>:/images/OpenBoard.png</iconset>
+    <normaloff>:/images/branding/MathScrap.svg</normaloff>:/images/branding/MathScrap.svg</iconset>
   </property>
   <property name="iconSize">
    <size>
@@ -408,7 +408,7 @@
     <string>Quit</string>
    </property>
    <property name="toolTip">
-    <string>Quit Mathscrap</string>
+    <string>Quit MathScrap</string>
    </property>
    <property name="shortcutContext">
     <enum>Qt::WindowShortcut</enum>
@@ -724,10 +724,10 @@
      <normaloff>:/images/toolbar/menu.png</normaloff>:/images/toolbar/menu.png</iconset>
    </property>
    <property name="text">
-    <string>Mathscrap</string>
+    <string>MathScrap</string>
    </property>
    <property name="toolTip">
-    <string>Mathscrap</string>
+    <string>MathScrap</string>
    </property>
    <property name="font">
     <font>
@@ -1849,10 +1849,10 @@
      <normaloff>:/images/toolbar/hide.png</normaloff>:/images/toolbar/hide.png</iconset>
    </property>
    <property name="text">
-    <string>Hide Mathscrap</string>
+    <string>Hide MathScrap</string>
    </property>
    <property name="toolTip">
-    <string>Hide Mathscrap Application</string>
+    <string>Hide MathScrap Application</string>
    </property>
    <property name="shortcut">
     <string>Ctrl+H</string>

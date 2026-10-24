@@ -53,7 +53,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>OpenBoard @SHORT_VERSION@</string>
 	<key>CFBundleIconFile</key>
-	<string>OpenBoard.icns</string>
+	<string>MathScrap.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.oe-f.OpenBoard</string>
 	<key>CFBundlePackageType</key>
