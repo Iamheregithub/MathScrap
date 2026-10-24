@@ -108,7 +108,7 @@ bool checkWindowAndToolbar(QString *error)
         QTimer::singleShot(0, window, [&] {
             auto dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
             auto tabs = dialog ? dialog->findChild<QTabWidget*>() : nullptr;
-            auto list = tabs ? qobject_cast<QListWidget*>(tabs->widget(0)) : nullptr;
+            auto list = dialog ? dialog->findChild<QListWidget*>("workspaceToolbarPreview") : nullptr;
             if (list && list->count() > 1) {
                 auto item = list->takeItem(restore ? list->count() - 1 : 0);
                 list->insertItem(restore ? 0 : list->count(), item);
@@ -211,6 +211,21 @@ bool checkPaperInk(QString *error)
     if(board->activeSceneIndex()!=0||board->activeScene()==lastScene)return fail("Paper page thumbnail did not load the selected page");
     pen->click();QApplication::processEvents();
     const auto path=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("paper-ink-window.png");window->grab().save(path);
+    auto settings=UBSettings::settings();const auto previousZoom=settings->value("Teaching/Bottom/actionZoomIn",false);settings->setValue("Teaching/Bottom/actionZoomIn",true);paper->rebuild();QApplication::processEvents();
+    auto zoomButton=dock->findChild<QToolButton*>("paper-actionZoomIn");if(!zoomButton||dock->findChild<QToolButton*>("paper-actionZoomOut"))return fail("Zoom is not a single configurable button");
+    settings->setValue("Teaching/ZoomOutTool",false);window->actionZoomIn->trigger();
+    QMouseEvent zoomDouble(QEvent::MouseButtonDblClick,QPointF(zoomButton->rect().center()),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
+    QMouseEvent zoomRelease(QEvent::MouseButtonRelease,QPointF(zoomButton->rect().center()),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+    QApplication::sendEvent(zoomButton,&zoomDouble);QApplication::sendEvent(zoomButton,&zoomRelease);
+    if(!settings->value("Teaching/ZoomOutTool").toBool()||!window->actionZoomOut->isChecked()||zoomButton->text()!=QObject::tr("Zoom −"))return fail("Zoom double-click did not select zoom out");
+    zoomButton->click();if(!window->actionZoomOut->isChecked())return fail("Zoom single-click forgot the chosen direction");
+    QApplication::sendEvent(zoomButton,&zoomDouble);QApplication::sendEvent(zoomButton,&zoomRelease);
+    if(settings->value("Teaching/ZoomOutTool").toBool()||!window->actionZoomIn->isChecked())return fail("Zoom double-click did not return to zoom in");
+    settings->setValue("Teaching/Bottom/actionZoomIn",previousZoom);paper->rebuild();window->actionPen->trigger();
+    const auto savedOrder=settings->value("Teaching/BottomOrder");bool cancelled=false;
+    QTimer::singleShot(0,window,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());auto preview=dialog?dialog->findChild<QListWidget*>("workspaceToolbarPreview"):nullptr;
+        if(preview&&preview->count()){preview->item(0)->setSelected(true);dialog->findChild<QPushButton*>("workspaceRemove")->click();cancelled=true;dialog->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("workspace-customize-window.png"));}if(dialog)dialog->reject();});
+    window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!cancelled||settings->value("Teaching/BottomOrder")!=savedOrder)return fail("Cancel changed the saved workspace arrangement");
     window->setProperty("paperInkChecked",true);return true;
 }
 

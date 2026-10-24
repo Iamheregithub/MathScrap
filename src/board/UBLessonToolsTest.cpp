@@ -166,11 +166,11 @@ bool penToolbarWorkflow(QString *error)
     customize->setProperty("teachingOpenPenTab",true);
     QTimer::singleShot(0,window,[&]{
         auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());auto tabs=dialog?dialog->findChild<QTabWidget*>():nullptr;
-        auto list=tabs?qobject_cast<QListWidget*>(tabs->currentWidget()):nullptr;
-        if(!list||tabs->currentIndex()!=1||list->count()<4){if(dialog)dialog->reject();return;}
+        auto list=dialog?dialog->findChild<QListWidget*>("workspaceToolbarPreview"):nullptr;
+        if(!list||tabs->currentIndex()!=0||list->count()<4){if(dialog)dialog->reject();return;}
         list->clearSelection();list->item(1)->setSelected(true);list->item(2)->setSelected(true);
         const auto first=list->item(1)->data(Qt::UserRole),second=list->item(2)->data(Qt::UserRole);
-        for(auto button:dialog->findChildren<QPushButton*>())if(button->text()=="Move up"){button->click();break;}
+        for(auto button:dialog->findChildren<QPushButton*>())if(button->text()=="Move left"){button->click();break;}
         checked=list->item(0)->data(Qt::UserRole)==first&&list->item(1)->data(Qt::UserRole)==second;
         dialog->accept();
     });

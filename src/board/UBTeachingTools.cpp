@@ -198,7 +198,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     const auto remaining=mDefaultBottom;mDefaultBottom=paperOrder;for(const auto &id:remaining)if(!mDefaultBottom.contains(id))mDefaultBottom<<id;
     mDefaultBottom.removeAll("actionTeachingDash");
     mDefaultBottom.removeAll("actionZoomOut");
-    auto customizeAction = mCustomize = new QAction(tr("Customize toolbars…"), this);
+    auto customizeAction = mCustomize = new QAction(tr("Customize workspace…"), this);
     customizeAction->setToolTip(tr("Choose visible tools and drag to change their order"));
     customizeAction->setObjectName("actionTeachingCustomize");
     for (auto menu : window->findChildren<QMenu*>())
@@ -334,102 +334,65 @@ void UBTeachingTools::applyLayout()
 void UBTeachingTools::customize()
 {
     const bool wasMaximized=mWindow->isMaximized();
-    QDialog dialog(mWindow);
-    dialog.setWindowTitle(tr("Customize toolbars"));
-    dialog.resize(620, 560);
-    auto layout = new QVBoxLayout(&dialog);
-    auto instructions = new QLabel(tr("Check tools to show them. Drag rows to rearrange; select several rows to move them together. Hidden tools retain their shortcuts."));
-    instructions->setWordWrap(true);layout->addWidget(instructions);
-    auto tabs = new QTabWidget;
-    layout->addWidget(tabs);
-    auto makeList = [&](const QString &label, const QString &prefix, const QMap<QString, QAction*> &actions,
-                        const QStringList &defaults) {
-        auto list = new QListWidget;
-        list->setDragDropMode(QAbstractItemView::InternalMove);
-        list->setSelectionMode(QAbstractItemView::ExtendedSelection);
-        list->setDefaultDropAction(Qt::MoveAction);
-        list->setDropIndicatorShown(true);
-        list->setSpacing(3);
-        auto order = UBSettings::settings()->value("Teaching/" + prefix + "Order", defaults).toStringList();
-        order.removeDuplicates();
-        for (auto id : defaults) if (!order.contains(id)) order << id;
-        for (auto id : order) {
-            if(prefix=="Bottom"&&id=="actionTeachingDash")continue;
-            auto source = actions.value(id); if (!source) continue;
-            QString text = source->text();
-            if (text.isEmpty()) {
-                auto widgetAction = qobject_cast<QWidgetAction*>(source);
-                if (widgetAction && widgetAction->defaultWidget())
-                    text = widgetAction->defaultWidget()->property("teachingLabel").toString();
-            }
-            if (text.isEmpty()) text = id;
-            auto item = new QListWidgetItem(source->icon(), text, list);
-            item->setData(Qt::UserRole, id);
-            item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-            item->setCheckState(UBSettings::settings()->value("Teaching/" + prefix + "/" + id,
-                prefix != "Bottom" || QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(id)).toBool() ? Qt::Checked : Qt::Unchecked);
-        }
-        tabs->addTab(list, label);
-        return list;
+    auto settings=UBSettings::settings();
+    QDialog dialog(mWindow);dialog.setObjectName("customizeWorkspace");dialog.setWindowTitle(tr("Customize workspace"));
+    dialog.resize(820,660);dialog.setMinimumSize(620,560);
+    auto layout=new QVBoxLayout(&dialog);layout->setContentsMargins(22,20,22,18);layout->setSpacing(12);
+    auto heading=new QLabel(tr("Make room for the way you teach"));heading->setStyleSheet("font-size:21px;font-weight:600;");layout->addWidget(heading);
+    auto tabs=new QTabWidget(&dialog);tabs->setObjectName("workspaceTabs");layout->addWidget(tabs,1);
+    auto tools=new QWidget;auto toolLayout=new QVBoxLayout(tools);toolLayout->setSpacing(12);tabs->addTab(tools,tr("Tools"));
+    auto hint=new QLabel(tr("Drag tools left or right. Select several to move them together. Tools in More remain available with their shortcuts."));hint->setWordWrap(true);toolLayout->addWidget(hint);
+    auto previewRow=new QHBoxLayout;
+    auto preview=new QListWidget;preview->setObjectName("workspaceToolbarPreview");
+    preview->setViewMode(QListView::IconMode);preview->setFlow(QListView::LeftToRight);preview->setWrapping(false);
+    preview->setMovement(QListView::Snap);preview->setDragDropMode(QAbstractItemView::InternalMove);preview->setDefaultDropAction(Qt::MoveAction);
+    preview->setSelectionMode(QAbstractItemView::ExtendedSelection);preview->setIconSize(QSize(28,28));preview->setGridSize(QSize(86,82));preview->setFixedHeight(112);preview->setSpacing(2);
+    previewRow->addWidget(preview,1);auto more=new QToolButton;more->setText(tr("More"));more->setIcon(UBPaperInk::toolIcon("more"));more->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);more->setEnabled(false);more->setFixedSize(66,82);previewRow->addWidget(more);toolLayout->addLayout(previewRow);
+    auto controls=new QHBoxLayout;auto left=new QPushButton(tr("Move left"));left->setObjectName("workspaceMoveLeft");auto right=new QPushButton(tr("Move right"));auto remove=new QPushButton(tr("Move to More"));remove->setObjectName("workspaceRemove");
+    controls->addWidget(left);controls->addWidget(right);controls->addStretch();controls->addWidget(remove);toolLayout->addLayout(controls);
+    auto availableTitle=new QLabel(tr("Tools in More"));availableTitle->setStyleSheet("font-size:16px;font-weight:600;");toolLayout->addWidget(availableTitle);
+    auto search=new QLineEdit;search->setPlaceholderText(tr("Find a tool…"));search->setClearButtonEnabled(true);toolLayout->addWidget(search);
+    auto available=new QListWidget;available->setObjectName("workspaceAvailableTools");available->setSelectionMode(QAbstractItemView::ExtendedSelection);available->setIconSize(QSize(26,26));available->setSpacing(4);toolLayout->addWidget(available,1);
+    auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
+    auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out."));note->setWordWrap(true);toolLayout->addWidget(note);
+    auto appearance=new QWidget;auto appearanceLayout=new QVBoxLayout(appearance);appearanceLayout->setSpacing(18);tabs->addTab(appearance,tr("Layout & appearance"));
+    auto touch=new QCheckBox(tr("Touch-friendly controls — larger buttons and shade handles"));touch->setObjectName("lessonTouchFriendly");touch->setChecked(settings->value("Teaching/TouchFriendly",false).toBool());appearanceLayout->addWidget(touch);
+    auto labels=new QCheckBox(tr("Show labels on the bottom toolbar"));labels->setObjectName("workspaceToolLabels");labels->setChecked(settings->value("Teaching/ToolLabels",true).toBool());appearanceLayout->addWidget(labels);
+    auto pages=new QCheckBox(tr("Show the Pages sidebar"));pages->setObjectName("workspacePages");pages->setChecked(settings->value("Teaching/PaperInkPages",true).toBool());appearanceLayout->addWidget(pages);
+    auto explanation=new QLabel(tr("The top navigation keeps Documents, Lesson, GraphDesk, undo and page controls within reach. The More button always stays at the end of the bottom toolbar."));explanation->setWordWrap(true);appearanceLayout->addWidget(explanation);appearanceLayout->addStretch();
+    dialog.setStyleSheet("QDialog{background:#f7f3e9;color:#263c3b;} QTabWidget::pane{border:1px solid #ddd7cb;border-radius:8px;background:#fffdf7;} QTabBar::tab{padding:10px 18px;background:#eee9de;color:#263c3b;} QTabBar::tab:selected{background:#dceae4;} QListWidget{background:#fffdf7;border:1px solid #d8d2c5;border-radius:10px;padding:5px;outline:0;} QListWidget::item{padding:5px;border-radius:6px;color:#263c3b;} QListWidget::item:selected{background:#dceae4;color:#263c3b;} QLineEdit{padding:8px;background:#fffdf7;color:#263c3b;border:1px solid #d8d2c5;border-radius:6px;} QCheckBox{color:#263c3b;spacing:10px;}");
+    const auto defaults=UBPaperInk::defaultTools();
+    auto title=[&](const QString &id){auto label=UBPaperInk::toolLabel(id);return label.isEmpty()?(mBottom.value(id)?mBottom.value(id)->text():id):label;};
+    auto append=[&](QListWidget *list,const QString &id){if(!mBottom.contains(id)||id=="actionTeachingDash"||id=="actionZoomOut")return;auto item=new QListWidgetItem(UBPaperInk::toolIcon(id),title(id));item->setData(Qt::UserRole,id);item->setToolTip(mBottom.value(id)->toolTip());list->addItem(item);};
+    auto populate=[&](bool restore){
+        preview->clear();available->clear();search->clear();
+        auto order=restore?defaults:settings->value("Teaching/BottomOrder",mDefaultBottom).toStringList();
+        order.removeDuplicates();for(const auto &id:mDefaultBottom)if(!order.contains(id))order<<id;
+        for(const auto &id:order){const bool shown=restore?defaults.contains(id):settings->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();append(shown?preview:available,id);}
+    };populate(false);
+    auto move=[preview](bool backwards){
+        if(backwards){for(int row=1;row<preview->count();++row)if(preview->item(row)->isSelected()&&!preview->item(row-1)->isSelected()){auto item=preview->takeItem(row);preview->insertItem(row-1,item);item->setSelected(true);}}
+        else for(int row=preview->count()-2;row>=0;--row)if(preview->item(row)->isSelected()&&!preview->item(row+1)->isSelected()){auto item=preview->takeItem(row);preview->insertItem(row+1,item);item->setSelected(true);}
     };
-    auto top = makeList(tr("Top toolbar"), "Top", mTop, mDefaultTop);
-    auto bottom = makeList(tr("Pen toolbar"), "Bottom", mBottom, mDefaultBottom);
-    if(mCustomize->property("teachingOpenPenTab").toBool())tabs->setCurrentWidget(bottom);
+    connect(left,&QPushButton::clicked,&dialog,[move]{move(true);});connect(right,&QPushButton::clicked,&dialog,[move]{move(false);});
+    auto transfer=[available,title](QListWidget *from,QListWidget *to){for(int row=0;row<from->count();)if(from->item(row)->isSelected()&&!from->item(row)->isHidden()){auto item=from->takeItem(row);item->setHidden(false);item->setSelected(false);if(to==available)item->setText(title(item->data(Qt::UserRole).toString()));to->addItem(item);}else ++row;};
+    connect(add,&QPushButton::clicked,&dialog,[=]{transfer(available,preview);});connect(remove,&QPushButton::clicked,&dialog,[=]{transfer(preview,available);});
+    connect(search,&QLineEdit::textChanged,&dialog,[available](const QString &query){for(int i=0;i<available->count();++i)available->item(i)->setHidden(!available->item(i)->text().contains(query,Qt::CaseInsensitive));});
+    auto refreshPreview=[=]{const bool large=touch->isChecked(),text=labels->isChecked();preview->setIconSize(large?QSize(34,34):QSize(28,28));preview->setGridSize(QSize(text?(large?96:86):(large?70:54),82));for(int i=0;i<preview->count();++i)preview->item(i)->setText(text?title(preview->item(i)->data(Qt::UserRole).toString()):QString());};
+    connect(touch,&QCheckBox::toggled,&dialog,[=]{refreshPreview();});connect(labels,&QCheckBox::toggled,&dialog,[=]{refreshPreview();});
+    connect(preview->model(),&QAbstractItemModel::rowsInserted,&dialog,[=]{refreshPreview();});refreshPreview();
+    auto apply=[&]{
+        QStringList order;for(auto list:{preview,available})for(int row=0;row<list->count();++row){const auto id=list->item(row)->data(Qt::UserRole).toString();order<<id;settings->setValue("Teaching/Bottom/"+id,list==preview);}
+        settings->setValue("Teaching/BottomOrder",order);settings->setValue("Teaching/TouchFriendly",touch->isChecked());settings->setValue("Teaching/ToolLabels",labels->isChecked());settings->setValue("Teaching/PaperInkPages",pages->isChecked());settings->save();
+        applyLayout();if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();if(auto paper=mWindow->findChild<UBPaperInk*>())paper->applyPreferences();
+        if(wasMaximized&&!mWindow->isMaximized())mWindow->showMaximized();
+    };
+    auto buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Apply|QDialogButtonBox::Cancel|QDialogButtonBox::RestoreDefaults);buttons->button(QDialogButtonBox::Ok)->setText(tr("Done"));layout->addWidget(buttons);
+    connect(buttons->button(QDialogButtonBox::Apply),&QPushButton::clicked,&dialog,apply);
+    connect(buttons->button(QDialogButtonBox::RestoreDefaults),&QPushButton::clicked,&dialog,[&]{populate(true);touch->setChecked(false);labels->setChecked(true);pages->setChecked(true);refreshPreview();});
+    connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     mCustomize->setProperty("teachingOpenPenTab",false);
-    auto moves=new QHBoxLayout;
-    auto up=new QPushButton(tr("Move up"));auto down=new QPushButton(tr("Move down"));
-    moves->addWidget(up);moves->addWidget(down);moves->addStretch();layout->addLayout(moves);
-    auto moveRows=[tabs](bool upwards){
-        auto list=qobject_cast<QListWidget*>(tabs->currentWidget());if(!list)return;
-        if(upwards){
-            for(int row=1;row<list->count();++row)if(list->item(row)->isSelected()&&!list->item(row-1)->isSelected()){
-                auto item=list->takeItem(row);list->insertItem(row-1,item);item->setSelected(true);
-            }
-        }else{
-            for(int row=list->count()-2;row>=0;--row)if(list->item(row)->isSelected()&&!list->item(row+1)->isSelected()){
-                auto item=list->takeItem(row);list->insertItem(row+1,item);item->setSelected(true);
-            }
-        }
-    };
-    connect(up,&QPushButton::clicked,&dialog,[moveRows]{moveRows(true);});
-    connect(down,&QPushButton::clicked,&dialog,[moveRows]{moveRows(false);});
-    auto touch=new QCheckBox(tr("Touch-friendly controls (larger buttons and shade handles)"));
-    touch->setObjectName("lessonTouchFriendly");touch->setChecked(UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool());layout->addWidget(touch);
-    auto buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::RestoreDefaults);
-    buttons->button(QDialogButtonBox::Ok)->setText(tr("Done"));
-    layout->addWidget(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked, &dialog, [&] {
-        touch->setChecked(false);
-        for (auto pair : {qMakePair(top, mDefaultTop), qMakePair(bottom, mDefaultBottom)}) {
-            auto list = pair.first;
-            for (int target = 0; target < pair.second.size(); ++target)
-                for (int row = target; row < list->count(); ++row)
-                    if (list->item(row)->data(Qt::UserRole).toString() == pair.second[target]) {
-                        auto item = list->takeItem(row); list->insertItem(target, item);
-                        item->setCheckState(pair.first != bottom || QStringList{"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText"}.contains(pair.second[target]) ? Qt::Checked : Qt::Unchecked);
-                        break;
-                    }
-        }
-    });
-    if (dialog.exec() != QDialog::Accepted) return;
-    for (auto pair : {qMakePair(top, QString("Top")), qMakePair(bottom, QString("Bottom"))}) {
-        QStringList order;
-        for (int row = 0; row < pair.first->count(); ++row) {
-            auto item = pair.first->item(row);
-            auto id = item->data(Qt::UserRole).toString();
-            order << id;
-            UBSettings::settings()->setValue("Teaching/" + pair.second + "/" + id, item->checkState() == Qt::Checked);
-        }
-        UBSettings::settings()->setValue("Teaching/" + pair.second + "Order", order);
-    }
-    UBSettings::settings()->setValue("Teaching/TouchFriendly",touch->isChecked());
-    UBSettings::settings()->save();
-    applyLayout();
-    if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
-    if(auto paper=mWindow->findChild<UBPaperInk*>())paper->sync();
-    if(wasMaximized&&!mWindow->isMaximized())mWindow->showMaximized();
+    if(dialog.exec()==QDialog::Accepted)apply();
 }
 
 void UBTeachingTools::openGraphDesk()

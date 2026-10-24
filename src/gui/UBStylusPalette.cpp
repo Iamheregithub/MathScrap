@@ -173,7 +173,7 @@ void UBStylusPalette::contextMenuEvent(QContextMenuEvent *event)
     // The action is owned by UBTeachingTools, itself a main-window child.
     if(!customize){event->ignore();return;}
     QMenu menu(this);
-    auto action=menu.addAction(tr("Customize toolbar…"));
+    auto action=menu.addAction(tr("Customize workspace…"));
     connect(action,&QAction::triggered,this,[customize]{
         customize->setProperty("teachingOpenPenTab",true);
         customize->trigger();

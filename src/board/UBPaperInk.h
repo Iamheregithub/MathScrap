@@ -4,6 +4,8 @@
 #include <QPointer>
 #include <QList>
 #include <QString>
+#include <QStringList>
+#include <QIcon>
 class UBMainWindow;
 class QWidget;
 class QToolBar;
@@ -19,6 +21,10 @@ class UBPaperInk : public QObject {
 public:
     explicit UBPaperInk(UBMainWindow *window);
     void rebuild();
+    void applyPreferences();
+    static QStringList defaultTools();
+    static QString toolLabel(const QString &id);
+    static QIcon toolIcon(const QString &id);
     void sync();
 protected:
     bool eventFilter(QObject *object,QEvent *event) override;

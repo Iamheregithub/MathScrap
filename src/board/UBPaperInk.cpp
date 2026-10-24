@@ -84,6 +84,16 @@ public:
 };
 QString panelStyle(){return "QFrame#paperDock,QFrame#paperPenPanel {background:#fffdf7;border:1px solid #ddd7cb;border-radius:16px;} QToolButton {background:transparent;border:1px solid transparent;border-radius:9px;color:#273b3b;padding:5px;} QToolButton:hover {background:#eee9dd;} QToolButton:checked {background:#dceae4;border-color:#77a99a;} QToolButton:pressed {background:#c9ded4;} QLabel {color:#56625b;background:transparent;}";}
 }
+QStringList UBPaperInk::defaultTools(){return {"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions","actionZoomIn"};}
+QString UBPaperInk::toolLabel(const QString &id){
+    const QMap<QString,QString> names={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")},{"actionZoomIn",tr("Zoom")}};
+    return names.value(id);
+}
+QIcon UBPaperInk::toolIcon(const QString &id){return inkIcon(id);}
+void UBPaperInk::applyPreferences(){
+    mPagesOpen=UBSettings::settings()->value("Teaching/PaperInkPages",true).toBool();
+    mPageToggle->setChecked(mPagesOpen);rebuild();sync();
+}
 QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *parent)
 {
     auto b=new QToolButton(parent);b->setObjectName("paper-"+source->objectName());b->setAutoRaise(true);
@@ -164,7 +174,8 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     mPages->setStyleSheet("QFrame#paperPages{background:#f6f2e8;border:0;border-right:1px solid #ded8cc;} QListWidget{background:transparent;border:0;color:#53625b;outline:0;} QListWidget::item{background:#fffdf8;border:1px solid #ded8cc;border-radius:7px;padding:5px;} QListWidget::item:selected{border:2px solid #c69c47;background:#fbf5e4;color:#6e5429;} QToolButton{background:#fffdf8;border:1px solid #ded8cc;border-radius:8px;padding:8px;}");
     auto add=button(mWindow->actionNewPage,tr("Add page"),mPages);add->setIcon(inkIcon("plus"));add->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);pl->addWidget(add);
     connect(mPageList,&QListWidget::itemClicked,this,[this](QListWidgetItem *item){goToPage(item->data(Qt::UserRole).toInt());});
-    mDock=new QFrame(view);mDock->setObjectName("paperDock");mDock->setStyleSheet(panelStyle());auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
+    mDock=new QFrame(view);mDock->setObjectName("paperDock");mDock->setStyleSheet(panelStyle());mDock->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(mDock,&QWidget::customContextMenuRequested,this,[this]{mWindow->findChild<QAction*>("actionTeachingCustomize")->trigger();});auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
     mPenPanel=new QFrame(view);mPenPanel->setObjectName("paperPenPanel");mPenPanel->setStyleSheet(panelStyle());auto penLayout=new QVBoxLayout(mPenPanel);penLayout->setContentsMargins(14,12,14,12);penLayout->setSpacing(9);
     auto colours=new QGridLayout;colours->setSpacing(7);penLayout->addLayout(colours);
     for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBDrawingController::drawingController()->setColorIndex(i);});}
@@ -225,7 +236,7 @@ void UBPaperInk::rebuild()
     closeTray();
     delete mMore;mMore=nullptr;mOverflowActions.clear();
     auto layout=qobject_cast<QHBoxLayout*>(mDock->layout());while(auto item=layout->takeAt(0)){delete item->widget();delete item;}
-    const QStringList defaults={"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions"};
+    const QStringList defaults=defaultTools();
     QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();order.removeDuplicates();for(const auto &id:defaults)if(!order.contains(id))order<<id;
     const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingDash",tr("Dashed")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")}};
     mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
@@ -234,7 +245,7 @@ void UBPaperInk::rebuild()
     for(const auto &id:order){if(id=="actionTeachingDash"||id=="actionZoomOut")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){mMore->addAction(source);continue;}
-        auto b=button(source,labels.value(id,source->text()),mDock);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setFixedSize(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64),touch?76:62);b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
+        auto b=button(source,labels.value(id,source->text()),mDock);const bool showLabels=UBSettings::settings()->value("Teaching/ToolLabels",true).toBool();b->setToolButtonStyle(showLabels?Qt::ToolButtonTextUnderIcon:Qt::ToolButtonIconOnly);b->setFixedSize(showLabels?(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64)):(touch?64:48),showLabels?(touch?76:62):(touch?64:48));b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
         const bool tray=id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
