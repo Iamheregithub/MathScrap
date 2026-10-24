@@ -1,0 +1,42 @@
+name: MathScrap CodeQL
+on:
+  push:
+    branches: [master, graphdesk-teaching-fork]
+  pull_request:
+    branches: [master, graphdesk-teaching-fork]
+  schedule:
+    - cron: '27 6 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  analyze:
+    name: Scan ${{ matrix.language }} ${{ matrix.branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [c-cpp, javascript-typescript, python, actions]
+        branch: ${{ fromJSON(github.event_name == 'schedule' && '["master","graphdesk-teaching-fork"]' || '[""]') }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.branch || github.ref }}
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
