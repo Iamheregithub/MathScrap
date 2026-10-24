@@ -225,6 +225,7 @@ bool checkExploratoryInteractions(QString *error)
     auto manager = UBPersistenceManager::persistenceManager();
     auto doc = manager->createNewDocument(UBPersistenceManager::myDocumentsName,
                                            "Exploratory pointer and tool checks", true);
+    qWarning("Exploration: document created");
     const auto previousPages = settings->value("Teaching/PaperInkPages", true);
     const QDir output(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir());
     auto send = [view](QEvent::Type type, QPointF p, Qt::MouseButton button, Qt::MouseButtons buttons) {
@@ -244,8 +245,10 @@ bool checkExploratoryInteractions(QString *error)
         if (auto paper = window->findChild<UBPaperInk*>()) paper->applyPreferences();
         QApplication::processEvents();
         for (qreal zoom : {0.7, 1.0, 1.7}) {
+            qWarning().noquote() << "Exploration: page" << page << "Pages" << pages << "zoom" << zoom;
             if (page > 0) manager->createDocumentSceneAt(doc, page, false);
             board->setActiveDocumentScene(doc, page);
+            qWarning("Exploration: active scene set");
             auto scene = board->activeScene();
             board->zoom(zoom / board->currentZoom(), view->mapToScene(view->viewport()->rect().center()));
             QApplication::processEvents();
@@ -258,6 +261,7 @@ bool checkExploratoryInteractions(QString *error)
             const QPointF end = start + QPointF(60, 35);
             const QPointF initial = item->pos();
             const int undoBeforeMove = UBApplication::undoStack->index();
+            qWarning("Exploration: dragging object");
             send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, start + QPointF(30, 17), Qt::NoButton, Qt::LeftButton);
             send(QEvent::MouseMove, end, Qt::NoButton, Qt::LeftButton);
@@ -270,6 +274,7 @@ bool checkExploratoryInteractions(QString *error)
             UBApplication::undoStack->undo();
             if (!pointsClose(item->pos(), initial)) return fail("Object move Undo missed its origin: " + context);
             UBApplication::undoStack->redo();
+            qWarning("Exploration: object move and history checked");
             if (!pointsClose(item->pos(), moved)) return fail("Object move Redo missed its destination: " + context);
 
             auto shapes = window->findChild<QAction*>("actionTeachingShapes");
@@ -279,6 +284,7 @@ bool checkExploratoryInteractions(QString *error)
             auto choice = bar ? bar->findChild<QAction*>("lessonShape0") : nullptr;
             if (!choice) return fail("Rectangle choice missing");
             choice->trigger();
+            qWarning("Exploration: drawing rectangle");
             const QPointF topLeft(375, 120), bottomRight(475, 205);
             send(QEvent::MouseButtonPress, topLeft, Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, bottomRight, Qt::NoButton, Qt::LeftButton);
@@ -303,10 +309,12 @@ bool checkExploratoryInteractions(QString *error)
             UBApplication::undoStack->undo();
             if (shape->scene() == scene) return fail("Shape Undo left the object on the page: " + context);
             UBApplication::undoStack->redo();
+            qWarning("Exploration: rectangle and history checked");
             if (shape->scene() != scene || !pointsClose(shapeAt(shape, QPointF(12,12)), topLeft))
                 return fail("Shape Redo moved the object: " + context);
 
             window->actionText->trigger();
+            qWarning("Exploration: drawing text");
             const QPointF textStart(375, 275), textEnd(490, 345);
             send(QEvent::MouseButtonPress, textStart, Qt::LeftButton, Qt::LeftButton);
             QRubberBand *pendingTextBand = nullptr;
@@ -337,12 +345,14 @@ bool checkExploratoryInteractions(QString *error)
                 return fail("Text box starts away from the pointer: " + context);
             textItem->setPlainText("Classroom note");
             scene->clearFocus(); window->actionSelector->trigger();
+            qWarning("Exploration: text checked");
 
             const int beforeCancel = UBApplication::undoStack->index();
             choice->trigger();
             send(QEvent::MouseButtonPress, QPointF(525,275), Qt::LeftButton, Qt::LeftButton);
             send(QEvent::MouseMove, QPointF(625,345), Qt::NoButton, Qt::LeftButton);
             window->actionPen->trigger();
+            qWarning("Exploration: tool switched");
             send(QEvent::MouseButtonRelease, QPointF(625,345), Qt::LeftButton, Qt::NoButton);
             bool previewLeft = false;
             for (auto candidate : scene->items())
@@ -352,7 +362,9 @@ bool checkExploratoryInteractions(QString *error)
                 return fail("Switching tools left a shape preview or changed Undo: " + context);
 
             manager->persistDocumentScene(doc, scene, page, true, true);
+            qWarning("Exploration: scene saved");
             auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
+            qWarning("Exploration: scene reloaded");
             bool savedMoved = false, savedShape = false;
             for (auto candidate : reopened->items()) if (auto svg = dynamic_cast<UBGraphicsSvgItem*>(candidate)) {
                 if (svg->uuid() == item->uuid()) savedMoved = pointsClose(svg->pos(), moved);

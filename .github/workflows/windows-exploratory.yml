@@ -54,7 +54,7 @@ jobs:
           $env:TEACHING_EXPLORE_ONLY = '1'
           $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
           $process = Start-Process (Join-Path $dist 'app/MathScrap.exe') -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory (Join-Path $dist 'app') -PassThru -RedirectStandardError (Join-Path $dist 'exploration-stderr.log') -RedirectStandardOutput (Join-Path $dist 'exploration-stdout.log')
-          if (!$process.WaitForExit(180000)) { Stop-Process -Id $process.Id -Force; throw 'Exploration timed out' }
+          if (!$process.WaitForExit(65000)) { Stop-Process -Id $process.Id -Force; throw 'Exploration timed out' }
           Copy-Item (Join-Path $dist 'app/teaching-crash.log') $dist -ErrorAction SilentlyContinue
           if (!(Test-Path $env:TEACHING_SMOKE_REPORT)) { throw 'No exploration report' }
           $report = Get-Content $env:TEACHING_SMOKE_REPORT -Raw | ConvertFrom-Json
