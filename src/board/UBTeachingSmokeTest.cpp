@@ -29,6 +29,8 @@
 #include "document/UBDocument.h"
 #include "document/UBDocumentController.h"
 #include "gui/UBDocumentThumbnailWidget.h"
+#include "gui/UBThumbnailScene.h"
+#include "gui/UBThumbnail.h"
 #include "core/UBDocumentManager.h"
 #include "core/UBPersistenceManager.h"
 #include "core/UBApplicationController.h"
@@ -37,6 +39,7 @@
 #include "adaptors/UBExportPDF.h"
 #include "adaptors/UBExportFullPDF.h"
 #include "adaptors/UBImportPDF.h"
+#include "adaptors/UBThumbnailAdaptor.h"
 #include "pdf/PDFRenderer.h"
 #include <QPdfWriter>
 #include <QSvgRenderer>
@@ -783,6 +786,49 @@ bool checkLessonControlsAndShapes(QString *error)
     return true;
 }
 
+bool checkDocumentThumbnails(QString *error)
+{
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Thumbnail loading regression",false);
+    if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
+    for(int i=0;i<3;++i){
+        auto page=manager->createDocumentSceneAt(doc,i,false);
+        const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"60\"><rect width=\"80\" height=\"60\" fill=\"%1\"/></svg>").arg(QStringList{"red","green","blue"}[i]).toUtf8();
+        page->addSvg(QUrl(),QPointF(20,20),svg);
+        manager->persistDocumentScene(doc,page,i,false,true);
+        QFile::remove(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
+    }
+    UBApplication::applicationController->showDocument();
+    // Force the loader's in-flight window: all paths can be dequeued while
+    // none of their results is ready, even for a small three-page lesson.
+    qputenv("TEACHING_THUMBNAIL_TEST_DELAY_MS","120");
+    UBApplication::documentController->selectDocument(doc);
+    auto widget=UBApplication::mainWindow->findChild<UBDocumentThumbnailWidget*>("thumbnailWidget");
+    if(!widget||!widget->document()||widget->document()->proxy()!=doc){qunsetenv("TEACHING_THUMBNAIL_TEST_DELAY_MS");*error="Documents did not select the three-page lesson";return false;}
+    auto thumbnails=widget->document()->thumbnailScene();
+    QElapsedTimer timer;timer.start();
+    int visible=0;
+    while(timer.elapsed()<3500){
+        QApplication::processEvents();visible=0;
+        for(auto candidate:thumbnails->items())if(auto thumb=dynamic_cast<UBThumbnail*>(candidate);thumb&&!thumb->pixmap().isNull())++visible;
+        if(visible==3)break;
+        QThread::msleep(15);
+    }
+    qunsetenv("TEACHING_THUMBNAIL_TEST_DELAY_MS");
+    const auto output=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
+    UBApplication::mainWindow->grab().save(output.filePath("documents-thumbnails-window.png"));
+    if(visible!=3||thumbnails->thumbnailCount()!=3){*error=QString("Documents loaded %1 of 3 thumbnails after %2 ms").arg(visible).arg(timer.elapsed());return false;}
+    for(int i=0;i<3;++i)if(!QFileInfo::exists(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile())){*error=QString("Page %1 thumbnail was not generated").arg(i+1);return false;}
+    // Re-enter Documents and select the lesson again; cached pages must remain.
+    UBApplication::applicationController->showBoard();
+    UBApplication::applicationController->showDocument();
+    UBApplication::documentController->selectDocument(doc);
+    QApplication::processEvents();
+    if(widget->document()->thumbnailScene()->items().size()<3){*error="Thumbnails disappeared when reopening the lesson in Documents";return false;}
+    UBApplication::mainWindow->setProperty("documentsThumbnailsChecked",true);
+    return true;
+}
+
 bool checkPdfSelection(QString *error)
 {
     const QDir output = QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
@@ -950,6 +996,7 @@ void finish(bool passed, const QString &detail) {
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
+    report["documentsThumbnailsChecked"] = UBApplication::mainWindow->property("documentsThumbnailsChecked").toBool();
     file.write(QJsonDocument(report).toJson());
     file.close();
     qApp->exit(passed ? 0 : 18);
@@ -1087,6 +1134,9 @@ void scheduleTeachingSmokeTest(QObject *context)
                 const auto report = QJsonDocument::fromJson(result.toString().toUtf8()).object();
                 QTimer::singleShot(0, qApp, [report, result] {
                 QString exportError;
+                if (report.value("ok").toBool() && !checkDocumentThumbnails(&exportError)) {
+                    finish(false, exportError); return;
+                }
                 if (report.value("ok").toBool() && qEnvironmentVariable("TEACHING_TEST_SKIP_PDF") != "1" && !checkPdfSelection(&exportError)) {
                     finish(false, exportError); return;
                 }

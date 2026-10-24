@@ -105,6 +105,11 @@ void UBBackgroundLoader::run()
                 mPaths.pop_front();
             }
 
+#ifdef UB_TEACHING_FORK
+            const int testDelay=qEnvironmentVariableIntValue("TEACHING_THUMBNAIL_TEST_DELAY_MS");
+            if(testDelay>0)QThread::msleep(qMin(testDelay,1000));
+#endif
+
             QFile file{path.second};
             QByteArray result;
 
