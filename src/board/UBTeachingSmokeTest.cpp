@@ -246,7 +246,7 @@ bool checkExploratoryInteractions(QString *error)
         QApplication::processEvents();
         for (qreal zoom : {0.7, 1.0, 1.7}) {
             qWarning().noquote() << "Exploration: page" << page << "Pages" << pages << "zoom" << zoom;
-            if (page > 0) manager->createDocumentSceneAt(doc, page, false);
+            if (page > 0) manager->createDocumentSceneAt(doc, page, true);
             board->setActiveDocumentScene(doc, page);
             qWarning("Exploration: active scene set");
             auto scene = board->activeScene();
