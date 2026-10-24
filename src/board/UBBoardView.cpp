@@ -1100,6 +1100,8 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
     QPointF eventPosition = event->localPos();
 #endif
     mMouseDownPos = eventPosition.toPoint();
+    // Track only items newly selected during this drag, never a previous one.
+    mJustSelectedItems.clear();
 
     setMovingItem(scene()->itemAt(this->mapToScene(eventPosition.toPoint()), QTransform()));
     for(auto hit=getMovingItem();hit;hit=hit->parentItem()) {
