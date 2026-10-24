@@ -248,7 +248,7 @@ void UBGraphicsSvgItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     const int direction = UBMathFormula::stepAt(mFileData, event->pos().x(), event->pos().y());
     if (mQuadraticPressedButton >= 0) {
-        const bool clicked = event->button()==Qt::LeftButton && direction == mQuadraticPressedButton;
+        const bool clicked = direction == mQuadraticPressedButton;
         mQuadraticPressedButton = -1;
         UBMathFormula::State state;
         if (clicked && UBMathFormula::read(mFileData, &state)) {

@@ -109,7 +109,12 @@ bool checkMathFormulae(QString *error){
     const auto tapStep=view->mapFromScene(item->mapToScene(QPointF(100,UBMathFormula::inputRect(state).bottom()+45)));
     QMouseEvent revealDown(QEvent::MouseButtonPress,QPointF(tapStep),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&revealDown);
     QMouseEvent revealUp(QEvent::MouseButtonRelease,QPointF(tapStep),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&revealUp);
-    if(!UBMathFormula::read(item->fileData(),&state)||!state.tapToReveal||state.step!=1)return fail("Tapping formula card did not reveal exactly one step");
+    if(!UBMathFormula::read(item->fileData(),&state)||!state.tapToReveal||state.step!=1){
+        window->grab().save(output.filePath("formula-tap-failure-window.png"));
+        return fail(QString("Tapping formula card did not reveal exactly one step (step=%1, hit=%2, point=%3,%4, active=%5)")
+                    .arg(state.step).arg(UBMathFormula::stepAt(item->fileData(),100,UBMathFormula::inputRect(state).bottom()+45))
+                    .arg(tapStep.x()).arg(tapStep.y()).arg(window->isActiveWindow()));
+    }
     UBApplication::undoStack->undo();if(!UBMathFormula::read(item->fileData(),&state)||state.step!=0||!state.tapToReveal)return fail("Tap reveal did not undo");
     UBApplication::undoStack->redo();if(!UBMathFormula::read(item->fileData(),&state)||state.step!=1)return fail("Tap reveal did not redo");
     board->persistCurrentScene(false,true);loaded=manager->loadDocumentScene(doc,0,false);found=false;
