@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.25**
+**MathScrap 1.7.7.26**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.25)
-- Compiled source: [`451507114893ea47622d466e1d6772f4b970c09f`](https://github.com/Iamheregithub/MathScrap/commit/451507114893ea47622d466e1d6772f4b970c09f)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176247)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176222)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40110176220)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.26)
+- Compiled source: [`41baa34c047d02e5c69ac939a7004bd8b5d89eaa`](https://github.com/Iamheregithub/MathScrap/commit/41baa34c047d02e5c69ac939a7004bd8b5d89eaa)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674186)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674179)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674161)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release makes drag initiation consistent at every zoom and keeps the bottom tool tray clear of the floating zoom control. Its Windows exploratory check exercises pointer placement, Pages, repeated drags, shape and text previews, tool switching, history, formula insertion after zoom, and saved lesson positions. The Preferences and selection-origin changes from 1.7.7.24 remain included.
+This release adds classroom pacing to formula cards: Previous, Next step, Start over, Reveal all, and an optional Tap to reveal mode for the solution area. Each card saves its reveal position and tap setting; Undo/Redo also restores step changes. The bottom toolbar's More menu no longer repeats Functions, separates Clear Page, and calls manual history snapshots Create saved version. The geometry, recovery, Preferences and selection-origin fixes from earlier releases remain included.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
