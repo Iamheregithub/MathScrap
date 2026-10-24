@@ -55,6 +55,7 @@ protected:
 private:
     std::deque<std::pair<int, QString>> mPaths{};
     std::deque<std::pair<int, QByteArray>> mResults{};
+    int mInFlight{0};
     QMutex mMutex{};
     QSemaphore mPathCounter{};
     bool mRunning{false};
