@@ -119,7 +119,7 @@ bool checkMathFormulae(QString *error){
         const auto bounds=formula->sceneBoundingRect();const qreal initialZoom=board->currentZoom();
         for(int cycle=0;cycle<6;++cycle){
             settings->setValue("Teaching/ZoomOutTool",cycle%2==0);window->actionSelector->trigger();zoomButton->click();
-            zoomButton->click();
+            if(cycle%2==0)zoomButton->click();else window->actionSelector->trigger();
             if(zoomButton->isChecked()||UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Zoom stayed active after deselection for "+kind);
             regressionScene->clearSelection();const auto pos=view->mapFromScene(formula->mapToScene(QPointF(70,30)));
             QMouseEvent press(QEvent::MouseButtonPress,QPointF(pos),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(view->viewport(),&press);
