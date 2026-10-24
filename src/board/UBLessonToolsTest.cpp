@@ -19,6 +19,7 @@
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsTextItem.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBGraphicsStrokesGroup.h"
 #include "domain/UBGraphicsItemDelegate.h"
 #include "adaptors/UBSvgSubsetAdaptor.h"
 #ifdef Q_OS_WIN
@@ -208,6 +209,41 @@ bool penToolbarWorkflow(QString *error)
 void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE");const QString reportPath=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT");const QDir output=QFileInfo(reportPath).dir();QJsonObject report;report["mode"]=mode;
     auto done=[&](bool passed,const QString &detail){report["passed"]=passed;report["detail"]=detail;write(reportPath,report);qApp->exit(passed?0:31);};
     auto tools=UBApplication::mainWindow->findChild<UBLessonTools*>("lessonTools");if(!tools){done(false,"Lesson tools unavailable");return;}auto history=tools->history();auto board=UBApplication::boardController;auto manager=UBPersistenceManager::persistenceManager();QString error;
+    if(mode=="save-write"){
+        if(history->uncleanSessionDetected()){done(false,"Save fixture started with an unclean session");return;}
+        auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Normal exit save fixture",true);
+        board->setActiveDocumentScene(doc,0);
+        auto scene=board->activeScene();scene->setBackground(false,plain);scene->setNominalSize(800,600);
+        scene->addText("Written lesson survives a normal exit",QPointF(-200,-160));
+        auto dc=UBDrawingController::drawingController();dc->setStylusTool(UBStylusTool::Pen);dc->setColorIndex(0);
+        scene->inputDevicePress(QPointF(-100,0));scene->inputDeviceMove(QPointF(100,0));scene->inputDeviceRelease();
+        int strokes=0;for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)++strokes;
+        if(!strokes){done(false,"The fixture did not write a pen stroke");return;}
+        report["lessonId"]=doc->uuid().toString(QUuid::WithoutBraces);
+        report["lessonPath"]=doc->persistencePath();report["strokeGroups"]=strokes;
+        const bool quick=qEnvironmentVariable("LESSONBOARD_SAVE_QUICK")=="1";
+        QTimer::singleShot(quick?0:25000,qApp,[history,report,reportPath,output,quick]() mutable {
+            const auto recovery=history->rootPath()+"/"+report.value("lessonId").toString()+"/recovery.json";
+            if(!quick&&!QFile::exists(recovery)){report["passed"]=false;report["detail"]="Automatic save did not create a recovery copy";write(reportPath,report);qApp->exit(31);return;}
+            write(output.filePath("normal-save-state.json"),report);
+            report["prepared"]=true;write(reportPath,report);
+            // Follow the actual window Close path, not qApp->exit used by other tests.
+            UBApplication::mainWindow->close();
+        });return;
+    }
+    if(mode=="save-reopen"){
+        if(history->uncleanSessionDetected()){done(false,"A normal window close was mistaken for a crash");return;}
+        const auto state=read(output.filePath("normal-save-state.json"));
+        auto doc=std::make_shared<UBDocumentProxy>(state.value("lessonPath").toString());
+        auto scene=manager->loadDocumentScene(doc,0,false);
+        int strokes=0;if(scene)for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)++strokes;
+        if(!scene||!sceneText(scene).contains("Written lesson survives a normal exit")
+           ||strokes<state.value("strokeGroups").toInt()){
+            done(false,"Writing or pen strokes were lost after normal exit and restart");return;
+        }
+        report["lessonId"]=state.value("lessonId");report["strokeGroups"]=strokes;
+        done(true,"Normal window close saved text and pen strokes; restart found a clean session and no recovery prompt condition");return;
+    }
     if(mode=="exercise"){
         if(!colourMemory(true,&error)){done(false,error);return;}
         report["colourWidthMemoryChecked"]=true;

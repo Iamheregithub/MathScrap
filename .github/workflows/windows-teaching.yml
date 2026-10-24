@@ -67,6 +67,9 @@ jobs:
       - name: Favourites, reveal covers, versions and crash recovery checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-lesson-tools.ps1
+      - name: Normal lesson save and restart checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-save-lifecycle.ps1
       - name: Exploratory pointer, tool tray and lesson geometry checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-exploratory.ps1

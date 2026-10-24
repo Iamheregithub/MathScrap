@@ -42,11 +42,14 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
     const auto previous=readObject(mRoot+"/session.json");mUnclean=!previous.isEmpty()&&!previous.value("clean").toBool();
     for(const auto &id:previous.value("documents").toArray())mTouched.insert(id.toString());
     saveSession(false);
-    if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
+    if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write"){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
         if(!QApplication::activeModalWidget()&&QApplication::mouseButtons()==Qt::NoButton&&UBApplication::boardController->activeScene()&&!UBApplication::boardController->activeScene()->isInputDevicePressed()){QString error;if(!checkpoint(false,&error)&&!error.isEmpty()&&error!=mError){mError=error;UBApplication::showMessage(tr("Recovery save failed: %1").arg(error));}}
     });timer->start();}
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this]{
-        QString error;const bool saved=mTesting||checkpoint(true,&error);saveSession(saved);
+        // The save-lifecycle fixture exercises the same final checkpoint as a
+        // normal lesson session, while the older tool fixtures remain isolated.
+        const bool exerciseNormalExit=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write";
+        QString error;const bool saved=(mTesting&&!exerciseNormalExit)||checkpoint(true,&error);saveSession(saved);
     });
 }
 bool UBLessonHistory::saveSession(bool clean){QJsonArray ids;for(const auto &id:mTouched)ids.append(id);QJsonObject o;o["clean"]=clean;o["documents"]=ids;o["time"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);if(!writeObject(mRoot+"/session.json",o)){mError=tr("Cannot save the recovery session marker.");return false;}return true;}
