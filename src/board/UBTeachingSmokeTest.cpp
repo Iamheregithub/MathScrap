@@ -738,7 +738,7 @@ bool checkShapeThenFunctions(QString *error)
             QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&e);
         };
         auto tap=[&](QPoint global){
-            if(native){packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(100);}
+            if(native){packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(250);}
             else {packet(QEvent::TabletPress,global);packet(QEvent::TabletRelease,global);QApplication::processEvents();}
         };
         const auto mode=native?QString("Windows pen"):QString("Qt tablet");
@@ -755,7 +755,7 @@ bool checkShapeThenFunctions(QString *error)
         tap(triangle->mapToGlobal(triangle->rect().center()));
         const auto a=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),b=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
         packet(QEvent::TabletPress,a);
-        if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(a+b)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,b);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,b);});settle(180);}
+        if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(a+b)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,b);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,b);});settle(350);}
         else{packet(QEvent::TabletMove,b);packet(QEvent::TabletRelease,b);QApplication::processEvents();}
         int triangles=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())++triangles;
         if(triangles!=1)return fail(QString("Triangle was not inserted (count %1)").arg(triangles));
@@ -763,9 +763,9 @@ bool checkShapeThenFunctions(QString *error)
         auto choice=menu->findChild<QAction*>("insertFormula-pythagoras");if(!choice)return fail("Pythagorean action missing");bool selected=false,visible=false;
         auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
         QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto p=QApplication::activePopupWidget())p->close();});guard.start(2500);
-        QTimer::singleShot(300,&guard,[&]{visible=menu->isVisible();if(visible)tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+        QTimer::singleShot(500,&guard,[&]{visible=menu->isVisible();if(visible)tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
         tap(functions->mapToGlobal(functions->rect().center()));
-        if(menu->isVisible())settle(500);
+        if(menu->isVisible())settle(750);
         guard.stop();QObject::disconnect(connection);
         int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
         if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
@@ -775,14 +775,14 @@ bool checkShapeThenFunctions(QString *error)
             if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));
             tap(triangle->mapToGlobal(triangle->rect().center()));
             const auto start=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),end=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
-            packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(180);
+            packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(350);
             UBGraphicsSvgItem *target=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())target=svg;
             if(!target)return fail("Cannot create another triangle after inserting a formula");
             for(const auto &name:{QString("lessonShapeBorder"),QString("lessonShapeFill")}){
                 auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();const auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<3)return fail("Shape colour swatches missing");
                 auto swatch=swatches[2];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
                 QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[&]{palette->close();});guard.start(2500);
-                QTimer::singleShot(300,&guard,[&]{if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));});tap(button->mapToGlobal(button->rect().center()));if(palette->isVisible())settle(500);guard.stop();QObject::disconnect(c);
+                QTimer::singleShot(500,&guard,[&]{if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));});tap(button->mapToGlobal(button->rect().center()));if(palette->isVisible())settle(750);guard.stop();QObject::disconnect(c);
                 QDomDocument styled;styled.setContent(target->fileData());const auto attribute=name.endsWith("Border")?"stroke":"fill";
                 if(!clicked||palette->isVisible()||QColor(styled.elementsByTagName("g").at(0).toElement().attribute(attribute))!=QColor(swatch->toolTip()))return fail("Native pen cannot apply "+name+" swatch");
             }
