@@ -424,7 +424,9 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
                 mTabletMenu=nullptr;mTabletMenuAction=nullptr;
                 if(chosen&&chosen->isEnabled()&&!chosen->isSeparator()&&!chosen->menu()&&event->button()==Qt::LeftButton){
                     while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
-                    if(chosen)chosen->trigger();
+                    // Let Qt finish the native pen release before an action can
+                    // enter another event loop (for example a colour dialog).
+                    QTimer::singleShot(0,this,[chosen]{if(chosen)chosen->trigger();});
                 }
             }
         }else if(hit){
@@ -469,6 +471,23 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         if(!mTabletDoubleClick&&target&&event->button()==Qt::LeftButton&&target->rect().contains(target->mapFromGlobal(global.toPoint()))){mLastTabletTap=target;mTabletTapTimer.start();}
         else{mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
         mTabletUiGesture=false;mTabletTarget=nullptr;
+    }
+    if((type==QEvent::TabletPress||type==QEvent::TabletRelease)&&event->button()==Qt::LeftButton){
+        if(auto button=qobject_cast<QToolButton*>(target.data());button&&button->menu()&&button->popupMode()==QToolButton::InstantPopup){
+            // Finish the entire tip gesture before opening a native popup. Qt
+            // 6.8 can forward the opener's release into the popup and return
+            // without updating its tablet-button state; the next tap then
+            // arrives as movement rather than a press.
+            event->accept();
+            if(type==QEvent::TabletPress){mTabletMenu=nullptr;mTabletMenuAction=nullptr;}
+            else if(button->rect().contains(button->mapFromGlobal(global.toPoint()))){
+                QPointer<QToolButton> anchor=button;QPointer<QMenu> menu=button->menu();
+                QTimer::singleShot(0,this,[this,anchor,menu]{
+                    if(!mClosing&&anchor&&anchor->isVisible()&&menu)menu->popup(anchor->mapToGlobal(QPoint(0,anchor->height())));
+                });
+            }
+            return true;
+        }
     }
     // Accept the tablet packet so Qt does not also synthesize a second click.
     // The normal widget mouse handlers retain click, drag and popup semantics.
