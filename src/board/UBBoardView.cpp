@@ -326,9 +326,11 @@ void UBBoardView::tabletEvent (QTabletEvent * event)
     UBDrawingController *dc = UBDrawingController::drawingController ();
 
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-    QPointF tabletPos = event->position();
+    const QPointF globalPos = event->globalPosition();
+    const QPointF tabletPos = QPointF(viewport()->mapFromGlobal(globalPos.toPoint())) + globalPos - QPointF(globalPos.toPoint());
 #else
-    QPointF tabletPos = event->posF();
+    const QPointF globalPos = event->globalPosF();
+    const QPointF tabletPos = QPointF(viewport()->mapFromGlobal(globalPos.toPoint())) + globalPos - QPointF(globalPos.toPoint());
 #endif
     UBStylusTool::Enum currentTool = (UBStylusTool::Enum)dc->stylusTool ();
 
