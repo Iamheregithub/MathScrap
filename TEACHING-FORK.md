@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.28**
+**MathScrap 1.7.7.29**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.28)
-- Compiled source: [`2e74ca82bbabe6c5f2303c45ad04089145830861`](https://github.com/Iamheregithub/MathScrap/commit/2e74ca82bbabe6c5f2303c45ad04089145830861)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40153534000)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40153533925)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40153533932)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.29)
+- Compiled source: [`34142771b11be345eb6baa58f4eeb1063821ef3c`](https://github.com/Iamheregithub/MathScrap/commit/34142771b11be345eb6baa58f4eeb1063821ef3c)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40158764864)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40158764965)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40158765003)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release removes the legacy Laser Pointer from the lesson toolbar customization and stops optional tools from appearing in More once placed on the bottom toolbar. The preceding release's three-page Documents thumbnail generation, visible preview and reopen fixes remain included, along with the earlier classroom tools and recovery fixes.
+This release sets the floating pen tray and colour/thickness panel to 70% opacity, removes More from the tray, and moves page, view, document/version and workspace commands into a categorized Settings & more cog menu in the top toolbar. Optional tools remain available in Customize Workspace; configured tools that do not fit are reachable through Toolbar overflow in the cog menu. Lesson and GraphDesk use matching outline icons, and the document title is removed from the toolbar. The preceding Documents thumbnail, classroom tool and recovery fixes remain included.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
@@ -51,7 +51,7 @@ The installer version is set in [OpenBoardTeaching.iss](https://github.com/Iamhe
 | Native application and formula regressions | `src/board/UBTeachingSmokeTest.cpp`, `src/board/UBMathFormulaTest.cpp` |
 | Browser and DOM regressions | `tests/teaching/` |
 
-MathScrap's current interface includes the floating pen tray, combined Line and Zoom controls, a More tools menu, and a visual workspace-customization preview. Older instructions describing separate permanent Solid Line and Dashed Line buttons as the default layout are obsolete.
+MathScrap's current interface includes the floating pen tray, combined Line and Zoom controls, a categorized Settings & more cog menu, and a visual workspace-customization preview. Older instructions describing separate permanent Solid Line and Dashed Line buttons as the default layout are obsolete.
 
 ## Preferences
 
