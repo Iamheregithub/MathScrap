@@ -823,6 +823,13 @@ bool checkDocumentThumbnails(QString *error)
     const auto firstImage=thumbnails->thumbnailAt(0)->pixmap().toImage();
     const auto firstPixel=firstImage.pixelColor(firstImage.width()/2,firstImage.height()/2);
     if(firstPixel.red()>100||firstPixel.green()>100||firstPixel.blue()>100){*error=QString("Dark page thumbnail rendered blank (%1,%2,%3)").arg(firstPixel.red()).arg(firstPixel.green()).arg(firstPixel.blue());return false;}
+    widget->viewport()->update();QApplication::processEvents();
+    const auto thumb=thumbnails->thumbnailAt(0);
+    const auto screenPoint=widget->mapFromScene(thumb->mapToScene(thumb->boundingRect().center()));
+    const auto screenImage=widget->viewport()->grab().toImage();
+    if(!screenImage.rect().contains(screenPoint)){*error="Thumbnail preview is outside the Documents viewport";return false;}
+    const auto screenPixel=screenImage.pixelColor(screenPoint);
+    if(screenPixel.red()>150||screenPixel.green()>150||screenPixel.blue()>150){*error=QString("Generated dark thumbnail is hidden in Documents (%1,%2,%3)").arg(screenPixel.red()).arg(screenPixel.green()).arg(screenPixel.blue());return false;}
     // Re-enter Documents and select the lesson again; cached pages must remain.
     UBApplication::applicationController->showBoard();
     UBApplication::applicationController->showDocument();
