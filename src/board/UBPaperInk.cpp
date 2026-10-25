@@ -417,14 +417,19 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     const auto type=event->type();
     if(type==QEvent::TabletPress&&!mTabletContact){
         mTabletContact=true;mTabletDoubleClick=false;
-        auto overlay=[this](QWidget *widget)->QWidget*{
+        const QList<QWidget*> roots={mPenPanel,mDock,mHeader,mPages,mWindow->findChild<QToolBar*>("lessonShapeToolbar"),mWindow->findChild<QToolBar*>("lessonCoverToolbar")};
+        auto overlay=[&roots](QWidget *widget)->QWidget*{
             if(!widget)return nullptr;
-            const QList<QWidget*> roots={mDock,mPenPanel,mHeader,mPages,mWindow->findChild<QToolBar*>("lessonShapeToolbar"),mWindow->findChild<QToolBar*>("lessonCoverToolbar")};
             for(auto root:roots)if(root&&root->isVisible()&&(widget==root||root->isAncestorOf(widget)))return root;
             return nullptr;
         };
         QWidget *target=receiver;auto root=overlay(target);
         if(!root){target=QApplication::widgetAt(global.toPoint());root=overlay(target);}
+        // Tablet drivers can address the canvas even over a child overlay.
+        // Hit-test those controls directly instead of relying on native widgetAt.
+        if(!root)for(auto candidate:roots)if(candidate&&candidate->isVisible()&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
+            root=candidate;target=candidate->childAt(candidate->mapFromGlobal(global.toPoint()));if(!target)target=candidate;break;
+        }
         if(root){
             root->setAttribute(Qt::WA_NoMousePropagation);
             mTabletTarget=target;mTabletUiGesture=true;mCloseTimer->stop();mHoverTimer->stop();

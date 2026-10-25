@@ -663,7 +663,7 @@ bool checkPenTrayTablet(QString *error)
         tablet(receiver,QEvent::TabletRelease,global,Qt::LeftButton,Qt::NoButton);QApplication::processEvents();};
     const int undo=UBApplication::undoStack->index(),items=scene->items().size();
     dc->setColorIndex(0);tap(panel->findChild<QToolButton*>("paperColour8"),true);
-    if(dc->currentToolColorIndex()!=8||UBApplication::undoStack->index()!=undo||scene->items().size()!=items)return fail("Stylus tap on a colour reached the canvas instead of changing colour");
+    if(dc->currentToolColorIndex()!=8||UBApplication::undoStack->index()!=undo||scene->items().size()!=items)return fail(QString("Stylus colour tap failed: colour=%1, undo=%2/%3, items=%4/%5, panelVisible=%6").arg(dc->currentToolColorIndex()).arg(UBApplication::undoStack->index()).arg(undo).arg(scene->items().size()).arg(items).arg(panel->isVisible()));
     tap(panel->findChild<QToolButton*>("paperColour3"),false);
     tap(panel->findChild<QToolButton*>("paperWidth2"),true);
     if(dc->currentToolColorIndex()!=3||dc->currentToolWidthIndex()!=2)return fail("Stylus cannot change colour or thickness on the pen panel");
