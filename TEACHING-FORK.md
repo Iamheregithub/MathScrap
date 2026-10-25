@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.31**
+**MathScrap 1.7.7.32**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.31)
-- Compiled source: [`b1efa49f19b588d02e1660efd8a4e9d80fbfd4be`](https://github.com/Iamheregithub/MathScrap/commit/b1efa49f19b588d02e1660efd8a4e9d80fbfd4be)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341536)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341492)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341474)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.32)
+- Compiled source: [`2d2c33cac2725ab0bfd31d8785c70e3dfc8616bc`](https://github.com/Iamheregithub/MathScrap/commit/2d2c33cac2725ab0bfd31d8785c70e3dfc8616bc)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438237)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438222)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438140)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release maps pressure-sensitive tablet input from its global position into the drawing viewport, avoiding an offset when event-local coordinates use a different widget origin. A Windows regression verifies ink at the expected cursor location despite a simulated vertical local-coordinate mismatch. The preceding stylus control-routing fix and 80% pen panel opacity remain included. Physical Huion display/driver validation remains a manual check.
+This release fixes stylus interaction with popup menus, including item selection and safe outside-tap dismissal, and opens the Functions chooser directly without a redundant wrapper menu. Shapes now uses the agreed compact three-row card: seven direct shape buttons; Border, Fill and width presets; then Solid/Dashed and fill opacity. The panel uses 80% opacity and retains shape styling, Undo/Redo and save/reopen behavior. The preceding tablet-coordinate alignment and floating-control fixes remain included. Physical Huion hardware validation remains a manual check.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
