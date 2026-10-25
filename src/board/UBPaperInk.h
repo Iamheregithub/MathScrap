@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 #include <QIcon>
+#include <QElapsedTimer>
 class UBMainWindow;
 class QWidget;
 class QToolBar;
@@ -16,6 +17,7 @@ class QListWidget;
 class QAction;
 class QMenu;
 class QTimer;
+class QTabletEvent;
 class UBPaperInk : public QObject {
     Q_OBJECT
 public:
@@ -40,6 +42,7 @@ private:
     void adoptContextBars();
     void scheduleLayout();
     void buildSettingsMenu(QToolButton *button);
+    bool routeTabletEvent(QWidget *receiver,QTabletEvent *event);
     QToolButton *button(QAction *source,const QString &label,QWidget *parent);
     UBMainWindow *mWindow;
     QToolBar *mHeader=nullptr;
@@ -53,6 +56,9 @@ private:
     bool mScheduled=false,mRefreshing=false,mPagesOpen=true,mClosing=false,mLibraryOpen=false;
     QString mDocumentId,mTrayAction;
     QPointer<QToolButton> mTrayAnchor,mHoverAnchor;
+    QPointer<QWidget> mTabletTarget,mLastTabletTap;
+    QElapsedTimer mTabletTapTimer;
     QTimer *mHoverTimer=nullptr,*mCloseTimer=nullptr;
     bool mTrayOpen=false;
+    bool mTabletContact=false,mTabletUiGesture=false,mTabletDoubleClick=false;
 };
