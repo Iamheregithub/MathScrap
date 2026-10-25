@@ -186,7 +186,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     }
     const QList<QAction*> tools = {window->actionPen, window->actionEraser, window->actionMarker,
         window->actionSelector, window->actionPlay, window->actionHand, window->actionZoomIn,
-        window->actionZoomOut, window->actionPointer, window->actionLine, dash, window->actionText,
+        window->actionZoomOut, window->actionLine, dash, window->actionText,
         window->actionCapture, window->actionVirtualKeyboard, window->actionSnap, shapes, functions, window->findChild<QAction*>("actionLessonCover")};
     for (auto action : tools) {
         mBottom[action->objectName()] = action;
