@@ -766,16 +766,25 @@ bool checkTabletMenus(QString *error)
     if(!selected||menu->isVisible()){*error="Functions stylus tap stopped working after popup hover and dismissal";return false;}
     // A menu action may enter a modal loop before trigger() returns. Its
     // dialog must receive tablet packets rather than the old toolbar gesture.
+    class TabletProbeDialog : public QDialog {
+    public:
+        using QDialog::QDialog;
+        int packets=0;
+        bool event(QEvent *e) override {
+            if(e->type()==QEvent::TabletMove||e->type()==QEvent::TabletPress||e->type()==QEvent::TabletRelease){++packets;e->ignore();return true;}
+            return QDialog::event(e);
+        }
+    };
     auto modalAction=menu->addAction("Tablet modal regression");bool modalReached=false,modalBlocked=false;
     auto modalConnection=QObject::connect(modalAction,&QAction::triggered,window,[&]{
-        QDialog dialog(window);dialog.resize(180,80);dialog.move(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
+        TabletProbeDialog dialog(window);dialog.setTabletTracking(true);dialog.resize(180,80);dialog.move(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
         QTimer::singleShot(0,&dialog,[&]{
             const auto local=dialog.rect().center(),global=dialog.mapToGlobal(local);
             for(auto type:{QEvent::TabletMove,QEvent::TabletPress,QEvent::TabletRelease}){
                 QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),local,global,type==QEvent::TabletPress?.8:0,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletPress?Qt::LeftButton:Qt::NoButton);
-                QApplication::sendEvent(&dialog,&e);modalBlocked|=e.isAccepted();
+                QApplication::sendEvent(&dialog,&e);
             }
-            modalReached=true;dialog.accept();
+            modalBlocked=dialog.packets!=3;modalReached=true;dialog.accept();
         });dialog.exec();
     });
     guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(menu->isVisible())tap(menu->mapToGlobal(menu->actionGeometry(modalAction).center()));});
