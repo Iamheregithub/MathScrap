@@ -793,10 +793,12 @@ bool checkDocumentThumbnails(QString *error)
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
     for(int i=0;i<3;++i){
         auto page=manager->createDocumentSceneAt(doc,i,false);
-        page->setBackground(i==0,plain);
-        const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"60\"><rect width=\"80\" height=\"60\" fill=\"%1\"/></svg>").arg(QStringList{"red","green","blue"}[i]).toUtf8();
-        page->addSvg(QUrl(),QPointF(20,20),svg);
+        page->setNominalSize(800,600);page->setBackground(false,plain);
+        const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><rect width=\"800\" height=\"600\" fill=\"%1\"/></svg>").arg(QStringList{"black","green","blue"}[i]).toUtf8();
+        auto mark=new UBGraphicsSvgItem(svg);mark->setPos(-400,-300);page->addItem(mark);
         manager->persistDocumentScene(doc,page,i,false,true);
+        const QImage fixture(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
+        if(fixture.isNull()||(i==0&&fixture.pixelColor(fixture.width()/2,fixture.height()/2).red()>100)){*error=QString("Thumbnail fixture page %1 did not render").arg(i+1);return false;}
         QFile::remove(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
     }
     UBApplication::applicationController->showDocument();
