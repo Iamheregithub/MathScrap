@@ -193,7 +193,7 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     mHoverTimer=new QTimer(this);mHoverTimer->setSingleShot(true);mHoverTimer->setInterval(280);
     connect(mHoverTimer,&QTimer::timeout,this,[this]{if(mHoverAnchor&&mHoverAnchor->underMouse())openTray(mHoverAnchor);});
     mCloseTimer=new QTimer(this);mCloseTimer->setSingleShot(true);mCloseTimer->setInterval(350);
-    connect(mCloseTimer,&QTimer::timeout,this,[this]{if(!mPenPanel->underMouse()&&(!mTrayAnchor||!mTrayAnchor->underMouse()))closeTray();});
+    connect(mCloseTimer,&QTimer::timeout,this,[this]{if(!mTabletUiGesture&&!mPenPanel->underMouse()&&(!mTrayAnchor||!mTrayAnchor->underMouse()))closeTray();});
     for(auto bar:mWindow->findChildren<UBDockPalette*>())bar->setBackgroundBrush(QColor("#f1ecdf"));
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool){sync();});
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this,lesson,graph](int index){lesson->setChecked(index==0);graph->setChecked(index!=0);sync();});
@@ -207,7 +207,7 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this,timer]{mClosing=true;timer->stop();qApp->removeEventFilter(this);});
     connect(view,&QObject::destroyed,this,[this]{mClosing=true;});
     // A widget supports one effect; a later drop shadow would replace opacity.
-    for(auto panel:{mDock,mPenPanel}){auto opacity=new QGraphicsOpacityEffect(panel);opacity->setOpacity(0.7);panel->setGraphicsEffect(opacity);}
+    for(auto panel:{mDock,mPenPanel}){auto opacity=new QGraphicsOpacityEffect(panel);opacity->setOpacity(0.8);panel->setGraphicsEffect(opacity);panel->setAttribute(Qt::WA_NoMousePropagation);}
     qApp->installEventFilter(this);adoptContextBars();if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();rebuild();refreshPages();sync();
 }
 void UBPaperInk::adoptContextBars()
@@ -407,11 +407,67 @@ void UBPaperInk::selectTrayTool()
         if(anchor)openTray(anchor);
     }
 }
+bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    const QPointF global=event->globalPosition();
+#else
+    const QPointF global=event->globalPosF();
+#endif
+    const auto type=event->type();
+    if(type==QEvent::TabletPress&&!mTabletContact){
+        mTabletContact=true;mTabletDoubleClick=false;
+        const QList<QWidget*> roots={mPenPanel,mDock,mHeader,mPages,mWindow->findChild<QToolBar*>("lessonShapeToolbar"),mWindow->findChild<QToolBar*>("lessonCoverToolbar")};
+        auto overlay=[&roots](QWidget *widget)->QWidget*{
+            if(!widget)return nullptr;
+            for(auto root:roots)if(root&&root->isVisible()&&(widget==root||root->isAncestorOf(widget)))return root;
+            return nullptr;
+        };
+        QWidget *target=receiver;auto root=overlay(target);
+        if(!root){target=QApplication::widgetAt(global.toPoint());root=overlay(target);}
+        // Tablet drivers can address the canvas even over a child overlay.
+        // Hit-test those controls directly instead of relying on native widgetAt.
+        if(!root)for(auto candidate:roots)if(candidate&&candidate->isVisible()&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
+            root=candidate;target=candidate->childAt(candidate->mapFromGlobal(global.toPoint()));if(!target)target=candidate;break;
+        }
+        if(root){
+            root->setAttribute(Qt::WA_NoMousePropagation);
+            mTabletTarget=target;mTabletUiGesture=true;mCloseTimer->stop();mHoverTimer->stop();
+        }else{mTabletUiGesture=false;mTabletTarget=nullptr;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
+    }
+    // A stroke that started on the page stays a stroke when crossing controls.
+    if(!mTabletUiGesture){if(type==QEvent::TabletRelease)mTabletContact=false;return false;}
+    QPointer<QWidget> target=mTabletTarget;
+    if(auto popup=QApplication::activePopupWidget();popup&&popup->rect().contains(popup->mapFromGlobal(global.toPoint())))
+        target=popup->childAt(popup->mapFromGlobal(global.toPoint()))?popup->childAt(popup->mapFromGlobal(global.toPoint())):popup;
+    auto mouseType=type==QEvent::TabletPress?QEvent::MouseButtonPress:type==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
+    const bool combined=target&&(target->property("paperSource").toString()=="actionLine"||target->objectName()=="paper-actionZoomIn");
+    if(type==QEvent::TabletPress&&event->button()==Qt::LeftButton&&combined&&target==mLastTabletTap&&mTabletTapTimer.isValid()&&mTabletTapTimer.elapsed()<QApplication::doubleClickInterval()){
+        mouseType=QEvent::MouseButtonDblClick;mTabletDoubleClick=true;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();
+    }
+    if(type==QEvent::TabletRelease){
+        if(!mTabletDoubleClick&&target&&event->button()==Qt::LeftButton&&target->rect().contains(target->mapFromGlobal(global.toPoint()))){mLastTabletTap=target;mTabletTapTimer.start();}
+        else{mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
+        mTabletContact=false;mTabletUiGesture=false;mTabletTarget=nullptr;
+    }
+    // Accept the tablet packet so Qt does not also synthesize a second click.
+    // The normal widget mouse handlers retain click, drag and popup semantics.
+    event->accept();
+    if(target){QMouseEvent mouse(mouseType,target->mapFromGlobal(global.toPoint()),global,event->button(),event->buttons(),event->modifiers());QApplication::sendEvent(target,&mouse);}
+    return true;
+}
+
 bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
 {
     if(mClosing)return false;
     auto view=UBApplication::boardController->controlView();
     auto widget=qobject_cast<QWidget*>(object);
+    if(widget&&(event->type()==QEvent::TabletPress||event->type()==QEvent::TabletMove||event->type()==QEvent::TabletRelease))
+        if(routeTabletEvent(widget,static_cast<QTabletEvent*>(event)))return true;
+    if(event->type()==QEvent::TabletLeaveProximity){
+        if(auto button=qobject_cast<QAbstractButton*>(mTabletTarget.data()))button->setDown(false);
+        mTabletContact=false;mTabletUiGesture=false;mTabletTarget=nullptr;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();
+    }
     auto tool=qobject_cast<QToolButton*>(object);
     if(tool&&tool->property("paperTray").toBool()){
         if(event->type()==QEvent::Enter){mCloseTimer->stop();mHoverAnchor=tool;mHoverTimer->start();}

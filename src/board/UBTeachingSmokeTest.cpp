@@ -546,14 +546,14 @@ bool checkPaperInk(QString *error)
     if(library->isChecked()==libraryShown)return fail("Moved Library command does not toggle");
     library->trigger();paper->sync();
     auto dockOpacity=qobject_cast<QGraphicsOpacityEffect*>(dock->graphicsEffect());
-    if(!dockOpacity||qAbs(dockOpacity->opacity()-.7)>.001)return fail("Pen toolbar opacity is not 70 percent");
+    if(!dockOpacity||qAbs(dockOpacity->opacity()-.8)>.001)return fail("Pen toolbar opacity is not 80 percent");
     if(window->findChild<QAction*>("actionLessonSaveVersion")->text()!=QObject::tr("Create saved version…"))return fail("Saved version label is unclear");
     window->actionSelector->trigger();pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
     if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62||header->width()<window->width()-12)return fail("Paper pen controls or compact header are not visible");
     auto docs=window->findChild<QToolButton*>("paperDocuments");
     if(!docs||!docs->isVisible()||docs->text()!=QObject::tr("Documents"))return fail("Documents is not visible in the header");
     auto panelOpacity=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect());
-    if(!panelOpacity||qAbs(panelOpacity->opacity()-.7)>.001)return fail("Pen options opacity is not 70 percent");
+    if(!panelOpacity||qAbs(panelOpacity->opacity()-.8)>.001)return fail("Pen options opacity is not 80 percent");
     if(dock->findChild<QToolButton*>("paper-actionTeachingDash"))return fail("Dashed Line still has a separate dock button");
     const int penCentre=pen->mapTo(board->controlView(),QPoint(pen->width()/2,0)).x();
     const int rail=window->findChild<QFrame*>("paperPages")->width();
@@ -637,6 +637,56 @@ bool checkPaperInk(QString *error)
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("settings-toolbar-window.png"));
     settingsMenu->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("settings-menu-window.png"));settingsMenu->hide();
     window->setProperty("paperInkChecked",true);return true;
+}
+
+bool checkPenTrayTablet(QString *error)
+{
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
+    auto dc=UBDrawingController::drawingController();auto settings=UBSettings::settings();
+    const auto highRes=settings->boardUseHighResTabletEvent->get(),pressure=settings->boardPenPressureSensitive->get();
+    settings->boardUseHighResTabletEvent->set(true);settings->boardPenPressureSensitive->set(true);
+    auto restore=[&]{settings->boardUseHighResTabletEvent->set(highRes);settings->boardPenPressureSensitive->set(pressure);};
+    auto fail=[&](const QString &message){restore();*error=message;return false;};
+    auto doc=UBPersistenceManager::persistenceManager()->createNewDocument(UBPersistenceManager::myDocumentsName,"Stylus toolbar regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();
+    auto view=board->controlView();auto viewport=view->viewport();
+    auto paper=window->findChild<UBPaperInk*>();auto dock=window->findChild<QFrame*>("paperDock");
+    auto panel=window->findChild<QFrame*>("paperPenPanel");auto pen=dock->findChild<QToolButton*>("paper-actionPen");
+    window->actionSelector->trigger();pen->click();paper->sync();QApplication::processEvents();
+    auto tablet=[&](QObject *receiver,QEvent::Type type,const QPoint &global,Qt::MouseButton button,Qt::MouseButtons buttons){
+        auto widget=qobject_cast<QWidget*>(receiver);
+        QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),widget->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,button,buttons);
+        QApplication::sendEvent(receiver,&event);
+    };
+    auto tap=[&](QWidget *target,bool deliveredToCanvas){const auto global=target->mapToGlobal(target->rect().center());QObject *receiver=deliveredToCanvas?viewport:target;
+        tablet(receiver,QEvent::TabletPress,global,Qt::LeftButton,Qt::LeftButton);
+        tablet(receiver,QEvent::TabletRelease,global,Qt::LeftButton,Qt::NoButton);QApplication::processEvents();};
+    const int undo=UBApplication::undoStack->index(),items=scene->items().size();
+    dc->setColorIndex(0);tap(panel->findChild<QToolButton*>("paperColour8"),true);
+    if(dc->currentToolColorIndex()!=8||UBApplication::undoStack->index()!=undo||scene->items().size()!=items)return fail(QString("Stylus colour tap failed: colour=%1, undo=%2/%3, items=%4/%5, panelVisible=%6").arg(dc->currentToolColorIndex()).arg(UBApplication::undoStack->index()).arg(undo).arg(scene->items().size()).arg(items).arg(panel->isVisible()));
+    tap(panel->findChild<QToolButton*>("paperColour3"),false);
+    tap(panel->findChild<QToolButton*>("paperWidth2"),true);
+    if(dc->currentToolColorIndex()!=3||dc->currentToolWidthIndex()!=2)return fail("Stylus cannot change colour or thickness on the pen panel");
+    const QPoint colourPress=panel->findChild<QToolButton*>("paperColour5")->mapToGlobal(panel->findChild<QToolButton*>("paperColour5")->rect().center());
+    const QPoint outside=viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/3));
+    tablet(viewport,QEvent::TabletPress,colourPress,Qt::LeftButton,Qt::LeftButton);tablet(viewport,QEvent::TabletMove,outside,Qt::NoButton,Qt::LeftButton);tablet(viewport,QEvent::TabletRelease,outside,Qt::LeftButton,Qt::NoButton);
+    if(dc->currentToolColorIndex()!=3||UBApplication::undoStack->index()!=undo)return fail("Dragging the stylus off a colour applied it or leaked ink");
+    tap(dock->findChild<QToolButton*>("paper-actionMarker"),true);
+    if(dc->stylusTool()!=UBStylusTool::Marker)return fail("Stylus cannot select Highlighter from the pen tray");
+    tap(dock->findChild<QToolButton*>("paper-actionEraser"),false);
+    if(dc->stylusTool()!=UBStylusTool::Eraser)return fail("Stylus cannot select Eraser from the pen tray");
+    tap(pen,true);
+    if(dc->stylusTool()!=UBStylusTool::Pen||UBApplication::undoStack->index()!=undo||scene->items().size()!=items)return fail("Stylus tool selection created lesson ink");
+    auto line=dock->findChild<QToolButton*>("paper-actionLine");const bool dashed=settings->value("Teaching/DashedLines",false).toBool();
+    tap(line,true);tap(line,true);
+    if(settings->value("Teaching/DashedLines").toBool()==dashed)return fail("Stylus double-tap no longer changes the combined Line style");
+    dc->setLineTool(dashed);tap(pen,true);
+    const QPoint margin=dock->mapToGlobal(QPoint(3,3));tablet(viewport,QEvent::TabletPress,margin,Qt::LeftButton,Qt::LeftButton);tablet(viewport,QEvent::TabletRelease,margin,Qt::LeftButton,Qt::NoButton);
+    if(UBApplication::undoStack->index()!=undo||scene->items().size()!=items)return fail("Stylus tapping the toolbar background creates ink");
+    const QPoint start=viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/3)),end=start+QPoint(90,30);
+    tablet(viewport,QEvent::TabletPress,start,Qt::LeftButton,Qt::LeftButton);tablet(viewport,QEvent::TabletMove,end,Qt::NoButton,Qt::LeftButton);tablet(viewport,QEvent::TabletRelease,end,Qt::LeftButton,Qt::NoButton);
+    if(UBApplication::undoStack->index()<=undo)return fail("Routing tablet controls stopped pressure-sensitive canvas drawing");
+    restore();window->setProperty("penTrayTabletChecked",true);return true;
 }
 
 bool checkCircleErase(QString *error)
@@ -1057,6 +1107,7 @@ void finish(bool passed, const QString &detail) {
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
+    report["penTrayTabletChecked"] = UBApplication::mainWindow->property("penTrayTabletChecked").toBool();
     report["settingsToolbarChecked"] = UBApplication::mainWindow->property("paperInkChecked").toBool();
     report["documentsThumbnailsChecked"] = UBApplication::mainWindow->property("documentsThumbnailsChecked").toBool();
     file.write(QJsonDocument(report).toJson());
@@ -1080,7 +1131,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;
