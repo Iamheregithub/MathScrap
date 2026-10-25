@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.26**
+**MathScrap 1.7.7.27**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.26)
-- Compiled source: [`41baa34c047d02e5c69ac939a7004bd8b5d89eaa`](https://github.com/Iamheregithub/MathScrap/commit/41baa34c047d02e5c69ac939a7004bd8b5d89eaa)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674186)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674179)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40137674161)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.27)
+- Compiled source: [`c8f25e464400b7f6eb604b806551a5717a990703`](https://github.com/Iamheregithub/MathScrap/commit/c8f25e464400b7f6eb604b806551a5717a990703)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500085)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500124)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500753)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release adds classroom pacing to formula cards: Previous, Next step, Start over, Reveal all, and an optional Tap to reveal mode for the solution area. Each card saves its reveal position and tap setting; Undo/Redo also restores step changes. The bottom toolbar's More menu no longer repeats Functions, separates Clear Page, and calls manual history snapshots Create saved version. The geometry, recovery, Preferences and selection-origin fixes from earlier releases remain included.
+This release fixes Documents previews in lessons with multiple pages: the background loader now waits for in-progress thumbnail reads, and the thumbnail card no longer covers an already generated page image. A Windows regression checks generation, visible painting and reopen. Classroom pacing controls, the streamlined More menu, geometry, recovery, Preferences and selection-origin fixes remain included.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
