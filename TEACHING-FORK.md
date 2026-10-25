@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.30**
+**MathScrap 1.7.7.31**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.30)
-- Compiled source: [`fb4c2d5fc02d0b9e33bf3afb5bbb9e92af3294af`](https://github.com/Iamheregithub/MathScrap/commit/fb4c2d5fc02d0b9e33bf3afb5bbb9e92af3294af)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827497)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827173)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827248)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.31)
+- Compiled source: [`b1efa49f19b588d02e1660efd8a4e9d80fbfd4be`](https://github.com/Iamheregithub/MathScrap/commit/b1efa49f19b588d02e1660efd8a4e9d80fbfd4be)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341536)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341492)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40175341474)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release fixes stylus taps falling through the floating controls onto the lesson canvas. Tablet gestures that start on controls now use the widgets' normal click and drag handling, with direct overlay hit-testing, instead of being treated as drawing input. Simulated Windows tablet tests cover colour/thickness changes, Highlighter/Eraser selection, drag-off cancellation, toolbar background taps, Line double-tap and pressure-sensitive drawing afterward. The pen tray and colour/thickness panel now use 80% opacity. The categorized cog menu, matching navigation icons, toolbar title removal, Documents thumbnails and earlier fixes remain included. Physical Huion driver/hardware validation remains a manual check.
+This release maps pressure-sensitive tablet input from its global position into the drawing viewport, avoiding an offset when event-local coordinates use a different widget origin. A Windows regression verifies ink at the expected cursor location despite a simulated vertical local-coordinate mismatch. The preceding stylus control-routing fix and 80% pen panel opacity remain included. Physical Huion display/driver validation remains a manual check.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
