@@ -793,6 +793,7 @@ bool checkDocumentThumbnails(QString *error)
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
     for(int i=0;i<3;++i){
         auto page=manager->createDocumentSceneAt(doc,i,false);
+        page->setBackground(i==0,plain);
         const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"60\"><rect width=\"80\" height=\"60\" fill=\"%1\"/></svg>").arg(QStringList{"red","green","blue"}[i]).toUtf8();
         page->addSvg(QUrl(),QPointF(20,20),svg);
         manager->persistDocumentScene(doc,page,i,false,true);
@@ -819,6 +820,9 @@ bool checkDocumentThumbnails(QString *error)
     UBApplication::mainWindow->grab().save(output.filePath("documents-thumbnails-window.png"));
     if(visible!=3||thumbnails->thumbnailCount()!=3){*error=QString("Documents loaded %1 of 3 thumbnails after %2 ms").arg(visible).arg(timer.elapsed());return false;}
     for(int i=0;i<3;++i)if(!QFileInfo::exists(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile())){*error=QString("Page %1 thumbnail was not generated").arg(i+1);return false;}
+    const auto firstImage=thumbnails->thumbnailAt(0)->pixmap().toImage();
+    const auto firstPixel=firstImage.pixelColor(firstImage.width()/2,firstImage.height()/2);
+    if(firstPixel.red()>100||firstPixel.green()>100||firstPixel.blue()>100){*error=QString("Dark page thumbnail rendered blank (%1,%2,%3)").arg(firstPixel.red()).arg(firstPixel.green()).arg(firstPixel.blue());return false;}
     // Re-enter Documents and select the lesson again; cached pages must remain.
     UBApplication::applicationController->showBoard();
     UBApplication::applicationController->showDocument();
