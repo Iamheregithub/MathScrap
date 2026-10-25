@@ -47,7 +47,9 @@ UBBackgroundLoader::~UBBackgroundLoader()
 bool UBBackgroundLoader::isIdle()
 {
     QMutexLocker lock{&mMutex};
-    return mPaths.empty() && mResults.empty();
+    // A worker may have removed the last path but not yet produced its result.
+    // Treating that brief interval as idle drops the last thumbnails.
+    return mPaths.empty() && mResults.empty() && mInFlight == 0;
 }
 
 bool UBBackgroundLoader::isResultAvailable()
@@ -103,7 +105,13 @@ void UBBackgroundLoader::run()
                 QMutexLocker lock{&mMutex};
                 path = mPaths.front();
                 mPaths.pop_front();
+                ++mInFlight;
             }
+
+#ifdef UB_TEACHING_FORK
+            const int testDelay=qEnvironmentVariableIntValue("TEACHING_THUMBNAIL_TEST_DELAY_MS");
+            if(testDelay>0)QThread::msleep(qMin(testDelay,1000));
+#endif
 
             QFile file{path.second};
             QByteArray result;
@@ -117,6 +125,7 @@ void UBBackgroundLoader::run()
             {
                 QMutexLocker lock{&mMutex};
                 mResults.push_back({path.first, result});
+                --mInFlight;
             }
 
             emit resultAvailable(path.first, result);

@@ -299,7 +299,9 @@ void UBThumbnail::paint(QPainter* painter, const QStyleOptionGraphicsItem* optio
         painter->setRenderHint(QPainter::Antialiasing);
         const QRectF card=boundingRect().adjusted(3,3,-3,-3);
         painter->setPen(QPen(isSelected()?QColor("#c69c47"):QColor("#ded8cc"),isSelected()?2:1));
-        painter->setBrush(QColor("#fffdf8"));
+        // The pixmap child stacks behind this item. An opaque card fill here
+        // covers the already generated page preview in Documents.
+        painter->setBrush(Qt::NoBrush);
         painter->drawRoundedRect(card,8,8);
     }
     // paint a selection frame but only around the pixmap
