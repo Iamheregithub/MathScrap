@@ -792,10 +792,12 @@ bool checkDocumentThumbnails(QString *error)
     auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Thumbnail loading regression",false);
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
     for(int i=0;i<3;++i){
-        auto page=manager->createDocumentSceneAt(doc,i,false);
+        manager->createDocumentSceneAt(doc,i,false);
+        UBApplication::boardController->setActiveDocumentScene(doc,i);
+        auto page=UBApplication::boardController->activeScene();
         page->setNominalSize(800,600);page->setBackground(false,plain);
         const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><rect width=\"800\" height=\"600\" fill=\"%1\"/></svg>").arg(QStringList{"black","green","blue"}[i]).toUtf8();
-        auto mark=new UBGraphicsSvgItem(svg);mark->setPos(-400,-300);page->addItem(mark);
+        page->addSvg(QUrl(),QPointF(0,0),svg);
         manager->persistDocumentScene(doc,page,i,false,true);
         const QImage fixture(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
         if(fixture.isNull()||(i==0&&fixture.pixelColor(fixture.width()/2,fixture.height()/2).red()>100)){*error=QString("Thumbnail fixture page %1 did not render").arg(i+1);return false;}
