@@ -686,6 +686,17 @@ bool checkPenTrayTablet(QString *error)
     const QPoint start=viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/3)),end=start+QPoint(90,30);
     tablet(viewport,QEvent::TabletPress,start,Qt::LeftButton,Qt::LeftButton);tablet(viewport,QEvent::TabletMove,end,Qt::NoButton,Qt::LeftButton);tablet(viewport,QEvent::TabletRelease,end,Qt::LeftButton,Qt::NoButton);
     if(UBApplication::undoStack->index()<=undo)return fail("Routing tablet controls stopped pressure-sensitive canvas drawing");
+    UBApplication::undoStack->undo();dc->setColorIndex(0);
+    // Propagated tablet packets may have parent-relative local coordinates.
+    // Their global position must still land at the same viewport point.
+    auto shiftedTablet=[&](QEvent::Type type,const QPoint &global,Qt::MouseButton button,Qt::MouseButtons buttons){
+        QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global)+QPoint(0,48),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,button,buttons);
+        QApplication::sendEvent(viewport,&event);
+    };
+    shiftedTablet(QEvent::TabletPress,start,Qt::LeftButton,Qt::LeftButton);shiftedTablet(QEvent::TabletMove,end,Qt::NoButton,Qt::LeftButton);shiftedTablet(QEvent::TabletRelease,end,Qt::LeftButton,Qt::NoButton);
+    QApplication::processEvents();const auto image=viewport->grab().toImage();const auto expected=viewport->mapFromGlobal((start+end)/2);bool inkAtCursor=false;
+    for(int dy=-3;dy<=3;++dy)for(int dx=-3;dx<=3;++dx){const QPoint pixel=(expected+QPoint(dx,dy))*image.devicePixelRatio();if(image.rect().contains(pixel)&&image.pixelColor(pixel).lightness()<180)inkAtCursor=true;}
+    if(!inkAtCursor)return fail("Tablet ink is displaced from the global cursor position by parent-relative coordinates");
     restore();window->setProperty("penTrayTabletChecked",true);return true;
 }
 
