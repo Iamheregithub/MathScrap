@@ -707,7 +707,11 @@ bool checkShapeThenFunctions(QString *error)
     class InputProbe : public QObject {
     public:
         int tablets=0,mouse=0;
-        bool eventFilter(QObject *,QEvent *e) override {if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}return false;}
+        bool eventFilter(QObject *o,QEvent *e) override {
+            if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}
+            if(e->type()==QEvent::TabletPress||e->type()==QEvent::TabletRelease||e->type()==QEvent::TabletMove){auto t=static_cast<QTabletEvent*>(e);qWarning()<<"PEN SEQUENCE"<<o->metaObject()->className()<<o->objectName()<<e->type()<<e->spontaneous()<<t->globalPosition()<<t->button()<<t->buttons()<<t->pressure()<<"popup"<<QApplication::activePopupWidget();}
+            return false;
+        }
     } probe;
     qApp->installEventFilter(&probe);
     struct RemoveProbe {QObject *probe;~RemoveProbe(){qApp->removeEventFilter(probe);}} removeProbe{&probe};
@@ -770,8 +774,27 @@ bool checkShapeThenFunctions(QString *error)
         int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
         if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
         if(native&&probe.tablets==0)return fail("Injected input did not reach Qt as pen events");
+        if(native){
+            // Check the same native pen popup path on the shape's colour controls.
+            if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));
+            tap(triangle->mapToGlobal(triangle->rect().center()));
+            const auto start=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),end=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
+            packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(180);
+            UBGraphicsSvgItem *target=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())target=svg;
+            if(!target)return fail("Cannot create another triangle after inserting a formula");
+            for(const auto &name:{QString("lessonShapeBorder"),QString("lessonShapeFill")}){
+                auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();const auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<3)return fail("Shape colour swatches missing");
+                auto swatch=swatches[2];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
+                QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[&]{palette->close();});guard.start(2500);
+                QTimer::singleShot(300,&guard,[&]{if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));});tap(button->mapToGlobal(button->rect().center()));if(palette->isVisible())settle(500);guard.stop();QObject::disconnect(c);
+                QDomDocument styled;styled.setContent(target->fileData());const auto attribute=name.endsWith("Border")?"stroke":"fill";
+                if(!clicked||palette->isVisible()||QColor(styled.elementsByTagName("g").at(0).toElement().attribute(attribute))!=QColor(swatch->toolTip()))return fail("Native pen cannot apply "+name+" swatch");
+            }
+            window->setProperty("nativePenInjectionChecked",true);
+        }
+
     }
-    window->setProperty("nativePenInjectionChecked",true);window->setProperty("shapeThenFunctionsChecked",true);return true;
+    window->setProperty("shapeThenFunctionsChecked",true);return true;
 }
 
 bool checkTabletMenus(QString *error)
