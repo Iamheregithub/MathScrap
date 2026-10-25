@@ -1035,7 +1035,7 @@ void UBPreferencesController::rebuildPreferences()
     }
     auto customize = new QPushButton(tr("Customize workspace…"));customize->setObjectName("preferencesCustomizeWorkspace");
     appearanceLayout->addWidget(customize,0,Qt::AlignLeft);
-    appearanceLayout->addWidget(note(tr("Choose which tools appear, rearrange them, and preview the floating toolbar. Tools left off the toolbar remain available in More tools.")));
+    appearanceLayout->addWidget(note(tr("Choose which tools appear, rearrange them, and preview the floating toolbar. Add optional tools through Customize Workspace. The cog in the top toolbar opens Settings & more.")));
     connect(customize,&QPushButton::clicked,this,[this]{
         if(auto action=UBApplication::mainWindow->findChild<QAction*>("actionTeachingCustomize")) action->trigger();
         refreshWorkspacePreferences();

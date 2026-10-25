@@ -527,16 +527,33 @@ bool checkPaperInk(QString *error)
         toolNames.insert(name);
     }
     auto pen=dock->findChild<QToolButton*>("paper-actionPen");auto shape=dock->findChild<QToolButton*>("paper-actionTeachingShapes");auto cover=dock->findChild<QToolButton*>("paper-actionLessonCover");
-    if(!pen||!shape||!cover||!dock->findChild<QToolButton*>("paperMore"))return fail("Paper dock tools are missing");
-    auto more=dock->findChild<QToolButton*>("paperMore")->menu();
-    if(!more||more->actions().count(window->findChild<QAction*>("actionTeachingFunctions"))>1)return fail("More menu duplicates Functions");
-    QMenu *pageMenu=nullptr;for(auto action:more->actions())if(action->menu()&&action->text()==QObject::tr("Page and paper"))pageMenu=action->menu();
-    if(!pageMenu||pageMenu->actions().size()<2||!pageMenu->actions().at(pageMenu->actions().size()-2)->isSeparator()||pageMenu->actions().last()!=window->actionClearPage)return fail("Clear Page is not separated in More menu");
+    if(!pen||!shape||!cover||dock->findChild<QToolButton*>("paperMore"))return fail("Pen toolbar is missing tools or still contains More");
+    auto settingsButton=header->findChild<QToolButton*>("paperMenu");
+    auto settingsMenu=settingsButton?settingsButton->menu():nullptr;
+    auto pageMenu=settingsMenu?settingsMenu->findChild<QMenu*>("paperPageMenu"):nullptr;
+    auto workspaceMenu=settingsMenu?settingsMenu->findChild<QMenu*>("paperWorkspaceMenu"):nullptr;
+    auto viewMenu=settingsMenu?settingsMenu->findChild<QMenu*>("paperViewMenu"):nullptr;
+    auto versionsMenu=settingsMenu?settingsMenu->findChild<QMenu*>("paperDocumentsMenu"):nullptr;
+    if(!settingsMenu||!pageMenu||!workspaceMenu||!viewMenu||!versionsMenu||settingsButton->icon().isNull()||settingsButton->toolTip()!=QObject::tr("Settings & more"))return fail("Categorized settings menu or cog is missing");
+    if(!workspaceMenu->actions().contains(window->actionPreferences)||!workspaceMenu->actions().contains(window->findChild<QAction*>("actionTeachingCustomize"))||!versionsMenu->actions().contains(window->findChild<QAction*>("actionLessonSaveVersion")))return fail("Moved workspace and version commands are missing");
+    for(auto submenu:settingsMenu->findChildren<QMenu*>())for(auto action:submenu->actions())if(QList<QAction*>{window->actionPlay,window->actionCapture,window->actionVirtualKeyboard,window->actionSnap}.contains(action))return fail("Optional tools remain in Settings instead of Customize Workspace");
+    if(pageMenu->actions().size()<2||!pageMenu->actions().at(pageMenu->actions().size()-2)->isSeparator()||pageMenu->actions().last()!=window->actionClearPage)return fail("Clear Page is not separated in Page & paper");
+    for(const auto &id:{"paperLesson","paperGraphDesk"}){auto action=header->findChild<QAction*>(id);if(!action||action->icon().isNull())return fail("Lesson or GraphDesk navigation icon is missing");}
+    if(header->findChildren<QLabel*>().size()!=1)return fail("Document title remains in the top toolbar");
+    auto library=settingsMenu->findChild<QAction*>("paperLibrary");
+    if(!library)return fail("Library command was lost while moving menus");
+    const bool libraryShown=library->isChecked();library->trigger();paper->sync();
+    if(library->isChecked()==libraryShown)return fail("Moved Library command does not toggle");
+    library->trigger();paper->sync();
+    auto dockOpacity=qobject_cast<QGraphicsOpacityEffect*>(dock->graphicsEffect());
+    if(!dockOpacity||qAbs(dockOpacity->opacity()-.7)>.001)return fail("Pen toolbar opacity is not 70 percent");
     if(window->findChild<QAction*>("actionLessonSaveVersion")->text()!=QObject::tr("Create saved version…"))return fail("Saved version label is unclear");
     window->actionSelector->trigger();pen->click();QApplication::processEvents();auto panel=window->findChild<QFrame*>("paperPenPanel");
     if(!panel||panel->isHidden()||!dock->isVisible()||header->height()>62||header->width()<window->width()-12)return fail("Paper pen controls or compact header are not visible");
     auto docs=window->findChild<QToolButton*>("paperDocuments");
     if(!docs||!docs->isVisible()||docs->text()!=QObject::tr("Documents"))return fail("Documents is not visible in the header");
+    auto panelOpacity=qobject_cast<QGraphicsOpacityEffect*>(panel->graphicsEffect());
+    if(!panelOpacity||qAbs(panelOpacity->opacity()-.7)>.001)return fail("Pen options opacity is not 70 percent");
     if(dock->findChild<QToolButton*>("paper-actionTeachingDash"))return fail("Dashed Line still has a separate dock button");
     const int penCentre=pen->mapTo(board->controlView(),QPoint(pen->width()/2,0)).x();
     const int rail=window->findChild<QFrame*>("paperPages")->width();
@@ -591,14 +608,23 @@ bool checkPaperInk(QString *error)
     auto orderWithHand=handOrder.toStringList();if(orderWithHand.isEmpty())orderWithHand=UBPaperInk::defaultTools();
     if(!orderWithHand.contains("actionHand"))orderWithHand<<"actionHand";
     settings->setValue("Teaching/BottomOrder",orderWithHand);settings->setValue("Teaching/Bottom/actionHand",true);paper->rebuild();
-    auto moreMenu=dock->findChild<QMenu*>("paperMoreMenu");
-    if(!dock->findChild<QToolButton*>("paper-actionHand")||!moreMenu||moreMenu->actions().contains(window->actionHand)||moreMenu->actions().contains(window->actionPointer))return fail("Customize toolbar duplicated Hand in More or exposed the removed Laser Pointer");
+    if(!dock->findChild<QToolButton*>("paper-actionHand")||dock->findChild<QToolButton*>("paperMore"))return fail("Optional Hand cannot be added without restoring More");
     settings->setValue("Teaching/Bottom/actionHand",handVisibility);settings->setValue("Teaching/BottomOrder",handOrder);
     paper->rebuild();
     const auto savedOrder=settings->value("Teaching/BottomOrder");bool cancelled=false;
     QTimer::singleShot(0,window,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());auto preview=dialog?dialog->findChild<QListWidget*>("workspaceToolbarPreview"):nullptr;
-        if(preview&&preview->count()){preview->item(0)->setSelected(true);dialog->findChild<QPushButton*>("workspaceRemove")->click();cancelled=true;dialog->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("workspace-customize-window.png"));}if(dialog)dialog->reject();});
+        if(preview&&preview->count()){
+            QSet<QString> availableIds;for(auto list:dialog->findChildren<QListWidget*>())for(int i=0;i<list->count();++i)availableIds.insert(list->item(i)->data(Qt::UserRole).toString());
+            for(const auto &id:{"actionPlay","actionCapture","actionVirtualKeyboard","actionSnap"})if(!availableIds.contains(id)){dialog->reject();return;}
+            if(dialog->findChild<QPushButton*>("workspaceRemove")->text()!=QObject::tr("Remove from toolbar")){dialog->reject();return;}
+            preview->item(0)->setSelected(true);dialog->findChild<QPushButton*>("workspaceRemove")->click();cancelled=true;dialog->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("workspace-customize-window.png"));}if(dialog)dialog->reject();});
     window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!cancelled||settings->value("Teaching/BottomOrder")!=savedOrder)return fail("Cancel changed the saved workspace arrangement");
+    bool contextOpened=false;
+    QTimer::singleShot(0,window,[&]{if(auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget())){contextOpened=dialog->objectName()=="customizeWorkspace";dialog->reject();}});
+    dock->customContextMenuRequested(QPoint(5,5));if(!contextOpened)return fail("Right-click pen toolbar customization is unavailable");
+    settingsMenu->popup(settingsButton->mapToGlobal(QPoint(0,settingsButton->height())));QApplication::processEvents();
+    window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("settings-toolbar-window.png"));
+    settingsMenu->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("settings-menu-window.png"));settingsMenu->hide();
     window->setProperty("paperInkChecked",true);return true;
 }
 
