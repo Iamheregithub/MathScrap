@@ -219,16 +219,7 @@ void UBPaperInk::adoptContextBars()
         bar->setProperty("lessonOriginalIconSize",QSize(22,22));bar->setIconSize(QSize(22,22));
         bar->setStyleSheet(bar->property("lessonOriginalStyle").toString());
         if(name=="lessonShapeToolbar"){
-            mShapePicker=new QToolButton(bar);mShapePicker->setObjectName("paperShapePicker");mShapePicker->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);mShapePicker->setPopupMode(QToolButton::InstantPopup);mShapePicker->setMinimumWidth(105);
-            auto choices=new QMenu(mShapePicker);mShapePicker->setMenu(choices);
-            for(int i=0;i<7;++i)if(auto source=bar->findChild<QAction*>(QString("lessonShape%1").arg(i))){
-                auto alias=choices->addAction(source->icon(),source->text());alias->setCheckable(true);
-                auto update=[this,source,alias]{alias->setChecked(source->isChecked());if(source->isChecked()){mShapePicker->setText(source->text());mShapePicker->setIcon(source->icon());}};
-                connect(source,&QAction::changed,alias,update);connect(alias,&QAction::triggered,source,[source]{source->trigger();});update();
-            }
-            mShapePickerAction=bar->insertWidget(bar->actions().first(),mShapePicker);
-            for(const auto &id:QStringList{"lessonShapeBorder","lessonShapeFill"})if(auto b=bar->findChild<QToolButton*>(id)){b->setToolButtonStyle(Qt::ToolButtonIconOnly);b->setToolTip(id.endsWith("Border")?tr("Border colour"):tr("Fill colour"));}
-            if(auto next=bar->findChild<QAction*>("lessonShapeDrawNext"))next->setVisible(false);
+            auto opacity=new QGraphicsOpacityEffect(bar);opacity->setOpacity(.8);bar->setGraphicsEffect(opacity);
         }else{
             for(auto a:bar->actions()){
                 if(a->text()==tr("Reveal selected")){a->setText(tr("Reveal"));a->setToolTip(tr("Reveal selected covers"));}
@@ -368,13 +359,6 @@ void UBPaperInk::layoutPanels()
     for(const auto &name:QStringList{"lessonShapeToolbar","lessonCoverToolbar"})if(auto bar=mWindow->findChild<QToolBar*>(name)){
         if(!bar->isHidden()&&lesson){
             context=true;
-            if(name=="lessonShapeToolbar"){
-                const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();const bool compact=available<1050||touch;
-                for(int i=0;i<7;++i)if(auto a=bar->findChild<QAction*>(QString("lessonShape%1").arg(i)))a->setVisible(!compact);
-                if(mShapePickerAction)mShapePickerAction->setVisible(compact);
-                for(auto label:bar->findChildren<QLabel*>())if(label->text()==tr("Width")||label->text()==tr("Fill opacity"))label->setVisible(!compact);
-                if(auto slider=bar->findChild<QSlider*>("lessonShapeOpacity")){slider->setFixedWidth(compact?65:85);slider->setToolTip(tr("Fill opacity"));}
-            }
             bar->setMaximumWidth(available);bar->adjustSize();auto anchor=mDock->findChild<QToolButton*>(name=="lessonShapeToolbar"?"paper-actionTeachingShapes":"paper-actionLessonCover");const int centre=anchor&&!anchor->isHidden()?anchor->mapTo(view,QPoint(anchor->width()/2,0)).x():mDock->x()+mDock->width()/2;bar->move(qBound(left,centre-bar->width()/2,qMax(left,view->width()-bar->width()-12)),mDock->y()-bar->height()-9);bar->raise();}
     }
     mPenPanel->setVisible(mTrayOpen&&lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
@@ -415,6 +399,24 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     const QPointF global=event->globalPosF();
 #endif
     const auto type=event->type();
+    // Popups are top-level widgets, outside the floating-toolbar ancestry.
+    // Route every packet while a popup is open, including taps outside it.
+    if(auto popup=QApplication::activePopupWidget()){
+        event->accept();mTabletContact=type!=QEvent::TabletRelease;
+        if(type==QEvent::TabletPress){mTabletUiGesture=true;mTabletTarget=nullptr;}
+        QWidget *hit=nullptr;
+        for(auto candidate:QApplication::topLevelWidgets())if(candidate->isVisible()&&candidate->windowType()==Qt::Popup&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
+            hit=candidate->childAt(candidate->mapFromGlobal(global.toPoint()));if(!hit)hit=candidate;if(candidate==popup)break;
+        }
+        if(!hit&&type==QEvent::TabletPress){
+            while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
+        }else if(hit){
+            const auto mouseType=type==QEvent::TabletPress?QEvent::MouseButtonPress:type==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
+            QMouseEvent mouse(mouseType,hit->mapFromGlobal(global.toPoint()),global,event->button(),event->buttons(),event->modifiers());QApplication::sendEvent(hit,&mouse);
+        }
+        if(type==QEvent::TabletRelease){mTabletUiGesture=false;mTabletTarget=nullptr;}
+        return true;
+    }
     if(type==QEvent::TabletPress&&!mTabletContact){
         mTabletContact=true;mTabletDoubleClick=false;
         const QList<QWidget*> roots={mPenPanel,mDock,mHeader,mPages,mWindow->findChild<QToolBar*>("lessonShapeToolbar"),mWindow->findChild<QToolBar*>("lessonCoverToolbar")};

@@ -598,11 +598,15 @@ void UBTeachingTools::createShapeToolbar()
     mShapeBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     mShapeBar->setStyleSheet("QToolBar {spacing:4px;padding:4px;} QToolButton {height:32px;min-width:30px;padding:2px;} QComboBox {min-height:28px;}");
     mWindow->addToolBarBreak(Qt::TopToolBarArea);mWindow->addToolBar(Qt::TopToolBarArea,mShapeBar);
+    auto panel=new QWidget(mShapeBar);panel->setObjectName("compactShapePanel");auto rows=new QVBoxLayout(panel);rows->setContentsMargins(5,5,5,5);rows->setSpacing(5);
+    auto shapes=new QHBoxLayout;auto appearance=new QHBoxLayout;auto finish=new QHBoxLayout;
+    for(auto row:{shapes,appearance,finish}){row->setSpacing(5);rows->addLayout(row);}
+    mShapeBar->addWidget(panel);
     auto group=new QActionGroup(this);group->setExclusive(true);
     const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond")};
     for(int i=0;i<names.size();++i) {
         mShapeType=i;QPixmap pix(30,30);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#164f63"),2));painter.setBrush(QColor("#e3f0f4"));painter.drawPath(shapePath(QRectF(4,i==0?8:4,22,i==0?14:22)));painter.end();
-        auto action=mShapeBar->addAction(QIcon(pix),names[i]);action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
+        auto action=new QAction(QIcon(pix),names[i],mShapeBar);auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setFixedSize(42,40);shapes->addWidget(choice);action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
         connect(action,&QAction::triggered,this,[this,i]{armShape(i);});
     }
     mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),6);mShapeChoices[mShapeType]->setChecked(true);
@@ -616,21 +620,24 @@ void UBTeachingTools::createShapeToolbar()
         for(int i=0;i<colours.size();++i){auto b=new QToolButton;const auto c=colours[i];b->setFixedSize(30,28);b->setStyleSheet(QString("QToolButton {background:%1;border:1px solid #777;}").arg(c.name()));b->setToolTip(c.name());grid->addWidget(b,i/5,i%5);connect(b,&QToolButton::clicked,this,[this,border,c,menu]{if(border){mNoBorder=false;mShapeBorder=c;}else{mNoFill=false;mShapeFill=c;}applyShapeStyle();menu->close();});}
         auto wrapper=new QWidgetAction(menu);wrapper->setDefaultWidget(panel);menu->addAction(wrapper);
         auto custom=menu->addAction(tr("Custom colour…"));connect(custom,&QAction::triggered,this,[this,border]{auto c=QColorDialog::getColor(border?mShapeBorder:mShapeFill,mWindow);if(!c.isValid())return;if(border){mNoBorder=false;mShapeBorder=c;}else{mNoFill=false;mShapeFill=c;}applyShapeStyle();});
-        mShapeBar->addWidget(button);return button;
+        appearance->addWidget(button);return button;
     };
-    mShapeBar->addSeparator();mBorderButton=colourButton(tr("Border"),true);mFillButton=colourButton(tr("Fill"),false);
-    mShapeBar->addWidget(new QLabel(tr("Width")));mShapeWidth=new QComboBox;mShapeWidth->setObjectName("lessonShapeWidth");
+    mBorderButton=colourButton(tr("Border"),true);mFillButton=colourButton(tr("Fill"),false);
+    appearance->addWidget(new QLabel(tr("Width")));mShapeWidth=new QComboBox(panel);mShapeWidth->setObjectName("lessonShapeWidth");
     for(double w:{1.,2.,3.,5.,8.,12.})mShapeWidth->addItem(QString::number(w),w);
-    mShapeWidth->setCurrentIndex(qMax(0,mShapeWidth->findData(settings->value("Teaching/ShapeWidth",3.).toDouble())));mShapeBar->addWidget(mShapeWidth);
-    mShapeStyle=new QComboBox;mShapeStyle->setObjectName("lessonShapeBorderStyle");mShapeStyle->addItems({tr("Solid"),tr("Dashed")});mShapeStyle->setCurrentIndex(settings->value("Teaching/ShapeDashed",false).toBool()?1:0);mShapeBar->addWidget(mShapeStyle);
-    mShapeBar->addWidget(new QLabel(tr("Fill opacity")));mShapeOpacity=new QSlider(Qt::Horizontal);mShapeOpacity->setObjectName("lessonShapeOpacity");mShapeOpacity->setRange(0,100);mShapeOpacity->setValue(settings->value("Teaching/ShapeOpacity",100).toInt());mShapeOpacity->setFixedWidth(85);mShapeBar->addWidget(mShapeOpacity);
-    auto value=new QLabel(QString::number(mShapeOpacity->value())+"%");value->setMinimumWidth(36);mShapeBar->addWidget(value);
+    mShapeWidth->setCurrentIndex(qMax(0,mShapeWidth->findData(settings->value("Teaching/ShapeWidth",3.).toDouble())));mShapeWidth->hide();
+    mShapeStyle=new QComboBox(panel);mShapeStyle->setObjectName("lessonShapeBorderStyle");mShapeStyle->addItems({tr("Solid"),tr("Dashed")});mShapeStyle->setCurrentIndex(settings->value("Teaching/ShapeDashed",false).toBool()?1:0);mShapeStyle->hide();
+    finish->addWidget(new QLabel(tr("Fill opacity")));mShapeOpacity=new QSlider(Qt::Horizontal);mShapeOpacity->setObjectName("lessonShapeOpacity");mShapeOpacity->setRange(0,100);mShapeOpacity->setValue(settings->value("Teaching/ShapeOpacity",100).toInt());mShapeOpacity->setFixedWidth(110);finish->addWidget(mShapeOpacity);
+    auto value=new QLabel(QString::number(mShapeOpacity->value())+"%");value->setMinimumWidth(36);finish->addWidget(value);
     connect(mShapeOpacity,&QSlider::valueChanged,this,[this,value](int v){value->setText(QString::number(v)+"%");if(!mShapeOpacity->isSliderDown())applyShapeStyle();});
     connect(mShapeOpacity,&QSlider::sliderReleased,this,&UBTeachingTools::applyShapeStyle);
     connect(mShapeWidth,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{applyShapeStyle();});
     connect(mShapeStyle,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{applyShapeStyle();});
-    auto next=mShapeBar->addAction(tr("Draw next"));next->setObjectName("lessonShapeDrawNext");connect(next,&QAction::triggered,this,[this]{armShape(mShapeType);});
-    auto close=mShapeBar->addAction(tr("Close"));connect(close,&QAction::triggered,this,[this]{mShapes->setChecked(false);shapeDialog();});
+    for(int i=0;i<3;++i){const double width=QList<double>{1.,3.,8.}[i];auto button=new QToolButton(panel);button->setObjectName(QString("compactShapeWidth%1").arg(i));button->setToolTip(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);button->setCheckable(true);button->setFixedSize(42,36);
+        QPixmap pix(30,18);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setPen(QPen(QColor("#273b3b"),QList<double>{1.,3.,6.}[i]));painter.drawLine(3,9,27,9);painter.end();button->setIcon(QIcon(pix));appearance->addWidget(button);
+        connect(button,&QToolButton::clicked,this,[this,width]{mShapeWidth->setCurrentIndex(mShapeWidth->findData(width));});auto sync=[this,button,width]{button->setChecked(qFuzzyCompare(mShapeWidth->currentData().toDouble(),width));};connect(mShapeWidth,QOverload<int>::of(&QComboBox::currentIndexChanged),button,[sync](int){sync();});sync();}
+    for(int i=1;i>=0;--i){auto button=new QToolButton(panel);button->setText(i?tr("Dashed"):tr("Solid"));button->setToolTip(button->text());button->setObjectName(QString("compactShapeStyle%1").arg(i));button->setCheckable(true);button->setFixedSize(64,36);finish->insertWidget(0,button);connect(button,&QToolButton::clicked,this,[this,i]{mShapeStyle->setCurrentIndex(i);});auto sync=[this,button,i]{button->setChecked(mShapeStyle->currentIndex()==i);};connect(mShapeStyle,QOverload<int>::of(&QComboBox::currentIndexChanged),button,[sync](int){sync();});sync();}
+    auto close=new QToolButton(panel);close->setText(QString::fromUtf8("×"));close->setToolTip(tr("Close shape controls"));close->setFixedSize(36,36);shapes->addWidget(close);connect(close,&QToolButton::clicked,this,[this]{mShapes->setChecked(false);shapeDialog();});
     auto attach=[this]{cancelShapeDrag();mShapeDrawing=false;QObject::disconnect(mShapeSelectionConnection);if(auto scene=UBApplication::boardController->activeScene())mShapeSelectionConnection=connect(scene.get(),&QGraphicsScene::selectionChanged,this,&UBTeachingTools::syncShapeSelection);syncShapeSelection();};
     connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,attach);attach();
     connect(UBApplication::undoStack,&QUndoStack::indexChanged,this,[this](int){syncShapeSelection();});
