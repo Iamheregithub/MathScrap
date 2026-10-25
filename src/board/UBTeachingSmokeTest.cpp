@@ -587,6 +587,14 @@ bool checkPaperInk(QString *error)
     QApplication::sendEvent(zoomButton,&zoomDouble);QApplication::sendEvent(zoomButton,&zoomRelease);
     if(settings->value("Teaching/ZoomOutTool").toBool()||!window->actionZoomIn->isChecked())return fail("Zoom double-click did not return to zoom in");
     settings->setValue("Teaching/Bottom/actionZoomIn",previousZoom);paper->rebuild();window->actionPen->trigger();
+    const auto handVisibility=settings->value("Teaching/Bottom/actionHand"),handOrder=settings->value("Teaching/BottomOrder");
+    auto orderWithHand=handOrder.toStringList();if(orderWithHand.isEmpty())orderWithHand=UBPaperInk::defaultTools();
+    if(!orderWithHand.contains("actionHand"))orderWithHand<<"actionHand";
+    settings->setValue("Teaching/BottomOrder",orderWithHand);settings->setValue("Teaching/Bottom/actionHand",true);paper->rebuild();
+    auto moreMenu=dock->findChild<QMenu*>("paperMoreMenu");
+    if(!dock->findChild<QToolButton*>("paper-actionHand")||!moreMenu||moreMenu->actions().contains(window->actionHand)||moreMenu->actions().contains(window->actionPointer))return fail("Customize toolbar duplicated Hand in More or exposed the removed Laser Pointer");
+    settings->setValue("Teaching/Bottom/actionHand",handVisibility);settings->setValue("Teaching/BottomOrder",handOrder);
+    paper->rebuild();
     const auto savedOrder=settings->value("Teaching/BottomOrder");bool cancelled=false;
     QTimer::singleShot(0,window,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());auto preview=dialog?dialog->findChild<QListWidget*>("workspaceToolbarPreview"):nullptr;
         if(preview&&preview->count()){preview->item(0)->setSelected(true);dialog->findChild<QPushButton*>("workspaceRemove")->click();cancelled=true;dialog->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("workspace-customize-window.png"));}if(dialog)dialog->reject();});
@@ -646,7 +654,7 @@ bool checkShapeToolbar(QString *error)
         if(count!=expected)return fail(QString("Colour %1 painted %2 pixels, expected %3").arg(i).arg(count).arg(expected));
     }
     auto customize=window->findChild<QAction*>("actionTeachingCustomize");bool clean=true;
-    QTimer::singleShot(0,window,[&]{auto d=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!d){clean=false;return;}for(auto list:d->findChildren<QListWidget*>())for(int i=0;i<list->count();++i)if(list->item(i)->text().startsWith("teachingGroup")||list->item(i)->data(Qt::UserRole).toString()=="teachingGroup3")clean=false;d->reject();});
+    QTimer::singleShot(0,window,[&]{auto d=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!d){clean=false;return;}for(auto list:d->findChildren<QListWidget*>())for(int i=0;i<list->count();++i)if(list->item(i)->text().startsWith("teachingGroup")||list->item(i)->data(Qt::UserRole).toString()=="teachingGroup3"||list->item(i)->data(Qt::UserRole).toString()=="actionPointer")clean=false;d->reject();});
     customize->trigger();if(!clean)return fail("Unnamed spacer remains in toolbar customization");
     auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Shape toolbar regression",true);
     board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);

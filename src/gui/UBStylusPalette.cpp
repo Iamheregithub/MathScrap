@@ -64,7 +64,6 @@ UBStylusPalette::UBStylusPalette(QWidget *parent, Qt::Orientation orient)
     actions << UBApplication::mainWindow->actionZoomIn;
     actions << UBApplication::mainWindow->actionZoomOut;
 
-    actions << UBApplication::mainWindow->actionPointer;
     actions << UBApplication::mainWindow->actionLine;
     if (auto dash = UBApplication::mainWindow->findChild<QAction*>("actionTeachingDash")) actions << dash;
     actions << UBApplication::mainWindow->actionText;

@@ -249,7 +249,7 @@ void UBPaperInk::rebuild()
     mMore=new QMenu(mDock);mMore->setObjectName("paperMoreMenu");
     const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
     mHeader->setMaximumHeight(touch?70:58);mHeader->setStyleSheet(mHeader->property("paperBaseStyle").toString()+(touch?QString(" QToolButton{height:40px;min-height:40px;max-height:44px;min-width:36px;}"):QString()));
-    for(const auto &id:order){if(id=="actionTeachingDash"||id=="actionZoomOut")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
+    for(const auto &id:order){if(id=="actionTeachingDash"||id=="actionZoomOut"||id=="actionPointer")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){mMore->addAction(source);continue;}
         auto b=button(source,labels.value(id,source->text()),mDock);const bool showLabels=UBSettings::settings()->value("Teaching/ToolLabels",true).toBool();b->setToolButtonStyle(showLabels?Qt::ToolButtonTextUnderIcon:Qt::ToolButtonIconOnly);b->setFixedSize(showLabels?(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64)):(touch?64:48),showLabels?(touch?76:62):(touch?64:48));b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
@@ -257,7 +257,12 @@ void UBPaperInk::rebuild()
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
     }
-    for(const auto &id:QStringList{"actionHand","actionPlay","actionZoomIn","actionPointer","actionCapture","actionVirtualKeyboard","actionSnap"})if(auto a=mWindow->findChild<QAction*>(id);a&&!mMore->actions().contains(a))mMore->addAction(a);
+    // Older saved orders may omit optional tools. Keep those in More, but
+    // never duplicate one that the teacher has placed on the bottom toolbar.
+    for(const auto &id:QStringList{"actionHand","actionPlay","actionZoomIn","actionCapture","actionVirtualKeyboard","actionSnap"}){
+        auto a=mWindow->findChild<QAction*>(id);
+        if(a&&!mDock->findChild<QToolButton*>("paper-"+id)&&!mMore->actions().contains(a))mMore->addAction(a);
+    }
     mMore->addSeparator();
     auto library=mMore->addAction(tr("Library"));library->setCheckable(true);library->setChecked(mLibraryOpen);
     connect(library,&QAction::triggered,this,[this](bool show){mLibraryOpen=show;UBApplication::boardController->paletteManager()->rightPalette()->setVisible(show);});
