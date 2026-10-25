@@ -411,7 +411,6 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         for(auto candidate:QApplication::topLevelWidgets())if(candidate->isVisible()&&candidate->windowType()==Qt::Popup&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
             hit=candidate->childAt(candidate->mapFromGlobal(global.toPoint()));if(!hit)hit=candidate;if(candidate==popup)break;
         }
-        if(type==QEvent::TabletPress||type==QEvent::TabletRelease)qWarning()<<"POPUP ROUTE"<<type<<global<<event->button()<<event->buttons()<<"receiver"<<receiver<<"hit"<<hit<<"popup"<<popup;
         if(!hit&&type==QEvent::TabletPress){
             while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
         }else if(auto menu=qobject_cast<QMenu*>(hit)){
@@ -421,12 +420,13 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
             if(action&&action->isEnabled()&&action->menu()&&(type==QEvent::TabletPress||type==QEvent::TabletMove))
                 action->menu()->popup(menu->mapToGlobal(menu->actionGeometry(action).topRight()));
             if(type==QEvent::TabletRelease){
-                qWarning()<<"POPUP CHOICE"<<menu<<action<<mTabletMenu<<mTabletMenuAction<<event->button();
                 QPointer<QAction> chosen=mTabletMenu==menu&&mTabletMenuAction==action?action:nullptr;
                 mTabletMenu=nullptr;mTabletMenuAction=nullptr;
                 if(chosen&&chosen->isEnabled()&&!chosen->isSeparator()&&!chosen->menu()&&event->button()==Qt::LeftButton){
                     while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
-                    if(chosen)chosen->trigger();
+                    // Let Qt finish the native pen release before an action can
+                    // enter another event loop (for example a colour dialog).
+                    QTimer::singleShot(0,this,[chosen]{if(chosen)chosen->trigger();});
                 }
             }
         }else if(hit){
@@ -471,6 +471,19 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         if(!mTabletDoubleClick&&target&&event->button()==Qt::LeftButton&&target->rect().contains(target->mapFromGlobal(global.toPoint()))){mLastTabletTap=target;mTabletTapTimer.start();}
         else{mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
         mTabletUiGesture=false;mTabletTarget=nullptr;
+    }
+    if(type==QEvent::TabletPress&&event->button()==Qt::LeftButton){
+        if(auto button=qobject_cast<QToolButton*>(target.data());button&&button->menu()&&button->popupMode()==QToolButton::InstantPopup){
+            // QToolButton's mouse-press handler enters QMenu::exec(). Doing that
+            // inside a native tablet press prevents Qt from completing its pen
+            // state update, so later tip-up packets can cease to be releases.
+            QPointer<QToolButton> anchor=button;QPointer<QMenu> menu=button->menu();
+            mTabletMenu=nullptr;mTabletMenuAction=nullptr;event->accept();
+            QTimer::singleShot(0,this,[this,anchor,menu]{
+                if(!mClosing&&anchor&&anchor->isVisible()&&menu)menu->popup(anchor->mapToGlobal(QPoint(0,anchor->height())));
+            });
+            return true;
+        }
     }
     // Accept the tablet packet so Qt does not also synthesize a second click.
     // The normal widget mouse handlers retain click, drag and popup semantics.
