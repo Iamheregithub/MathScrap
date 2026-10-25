@@ -700,6 +700,80 @@ bool checkPenTrayTablet(QString *error)
     restore();window->setProperty("penTrayTabletChecked",true);return true;
 }
 
+bool checkShapeThenFunctions(QString *error)
+{
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;auto view=board->controlView();auto viewport=view->viewport();
+    auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
+    class InputProbe : public QObject {
+    public:
+        int tablets=0,mouse=0;
+        bool eventFilter(QObject *,QEvent *e) override {if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}return false;}
+    } probe;
+    qApp->installEventFilter(&probe);
+    struct RemoveProbe {QObject *probe;~RemoveProbe(){qApp->removeEventFilter(probe);}} removeProbe{&probe};
+#ifdef Q_OS_WIN
+    const auto user=GetModuleHandleW(L"user32.dll");
+    auto create=reinterpret_cast<HANDLE(WINAPI *)(POINTER_INPUT_TYPE,ULONG,POINTER_FEEDBACK_MODE)>(GetProcAddress(user,"CreateSyntheticPointerDevice"));
+    auto inject=reinterpret_cast<BOOL(WINAPI *)(HANDLE,const POINTER_TYPE_INFO*,UINT32)>(GetProcAddress(user,"InjectSyntheticPointerInput"));
+    auto destroy=reinterpret_cast<void(WINAPI *)(HANDLE)>(GetProcAddress(user,"DestroySyntheticPointerDevice"));
+    HANDLE device=create&&inject&&destroy?create(PT_PEN,1,POINTER_FEEDBACK_NONE):nullptr;
+    struct ReleaseDevice {HANDLE device;decltype(destroy) release;~ReleaseDevice(){if(device)release(device);}} releaseDevice{device,destroy};
+    if(!device){*error=QString("Windows pen injection unavailable: %1").arg(GetLastError());return false;}
+#endif
+    for(bool native:{false,true}) {
+#ifndef Q_OS_WIN
+        if(native)continue;
+#endif
+        QString injectionError;
+        auto packet=[&](QEvent::Type type,const QPoint &global){
+#ifdef Q_OS_WIN
+            if(native){
+                POINTER_TYPE_INFO input={};input.type=PT_PEN;auto &pen=input.penInfo;pen.pointerInfo.pointerType=PT_PEN;pen.pointerInfo.pointerId=1;
+                const auto scale=window->devicePixelRatioF();pen.pointerInfo.ptPixelLocation={qRound(global.x()*scale),qRound(global.y()*scale)};
+                pen.pointerInfo.pointerFlags=POINTER_FLAG_INRANGE|(type==QEvent::TabletPress?POINTER_FLAG_DOWN|POINTER_FLAG_INCONTACT|POINTER_FLAG_FIRSTBUTTON:type==QEvent::TabletRelease?POINTER_FLAG_UP:POINTER_FLAG_UPDATE|POINTER_FLAG_INCONTACT|POINTER_FLAG_FIRSTBUTTON);
+                pen.penMask=PEN_MASK_PRESSURE;pen.pressure=type==QEvent::TabletRelease?0:800;
+                if(!inject(device,&input,1))injectionError=QString("InjectSyntheticPointerInput: %1").arg(GetLastError());return;
+            }
+#endif
+            QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&e);
+        };
+        auto tap=[&](QPoint global){
+            if(native){packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(100);}
+            else {packet(QEvent::TabletPress,global);packet(QEvent::TabletRelease,global);QApplication::processEvents();}
+        };
+        const auto mode=native?QString("Windows pen"):QString("Qt tablet");
+        auto fail=[&](QString message){window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-functions-failure-window.png"));*error=mode+": "+message+QString("; spontaneous tablets=%1 mouse=%2 injection=%3").arg(probe.tablets).arg(probe.mouse).arg(injectionError);return false;};
+        window->actionPen->trigger();
+        auto doc=UBPersistenceManager::persistenceManager()->createNewDocument(UBPersistenceManager::myDocumentsName,"Triangle then Functions "+mode,true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
+        window->raise();window->activateWindow();settle(100);
+        auto shapes=window->findChild<QToolButton*>("paper-actionTeachingShapes");auto functions=window->findChild<QToolButton*>("paper-actionTeachingFunctions");auto menu=window->findChild<QMenu*>("mathscrapFunctionsMenu");
+        if(!shapes||!functions||!menu)return fail("Required buttons missing");
+        tap(shapes->mapToGlobal(shapes->rect().center()));
+        auto bar=window->findChild<QToolBar*>("lessonShapeToolbar");QToolButton *triangle=nullptr;
+        for(auto b:bar->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->objectName()=="lessonShape3")triangle=b;
+        if(!bar->isVisible()||!triangle)return fail("Shapes tap did not reveal triangle controls");
+        tap(triangle->mapToGlobal(triangle->rect().center()));
+        const auto a=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),b=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
+        packet(QEvent::TabletPress,a);
+        if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(a+b)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,b);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,b);});settle(180);}
+        else{packet(QEvent::TabletMove,b);packet(QEvent::TabletRelease,b);QApplication::processEvents();}
+        int triangles=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())++triangles;
+        if(triangles!=1)return fail(QString("Triangle was not inserted (count %1)").arg(triangles));
+        // No intervening tools, colour menus, or programmatic popup reset.
+        auto choice=menu->findChild<QAction*>("insertFormula-pythagoras");if(!choice)return fail("Pythagorean action missing");bool selected=false,visible=false;
+        auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
+        QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto p=QApplication::activePopupWidget())p->close();});guard.start(2500);
+        QTimer::singleShot(300,&guard,[&]{visible=menu->isVisible();if(visible)tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+        tap(functions->mapToGlobal(functions->rect().center()));
+        if(menu->isVisible())settle(500);
+        guard.stop();QObject::disconnect(connection);
+        int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
+        if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
+        if(native&&probe.tablets==0)return fail("Injected input did not reach Qt as pen events");
+    }
+    window->setProperty("shapeThenFunctionsChecked",true);return true;
+}
+
 bool checkTabletMenus(QString *error)
 {
     auto window=UBApplication::mainWindow;auto view=UBApplication::boardController->controlView();auto viewport=view->viewport();
@@ -1212,6 +1286,7 @@ void finish(bool passed, const QString &detail) {
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
+    report["shapeThenFunctionsChecked"] = UBApplication::mainWindow->property("shapeThenFunctionsChecked").toBool();
     report["tabletMenusChecked"] = UBApplication::mainWindow->property("tabletMenusChecked").toBool();
     report["penTrayTabletChecked"] = UBApplication::mainWindow->property("penTrayTabletChecked").toBool();
     report["settingsToolbarChecked"] = UBApplication::mainWindow->property("paperInkChecked").toBool();
@@ -1237,7 +1312,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkTabletMenus(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkShapeThenFunctions(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkTabletMenus(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;
