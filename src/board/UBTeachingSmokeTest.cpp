@@ -791,10 +791,11 @@ bool checkDocumentThumbnails(QString *error)
     auto manager=UBPersistenceManager::persistenceManager();
     auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Thumbnail loading regression",false);
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
+    QList<std::shared_ptr<UBGraphicsScene>> pages;
+    for(int i=0;i<3;++i)pages<<manager->createDocumentSceneAt(doc,i,false);
+    UBApplication::boardController->setActiveDocumentScene(doc,0);
     for(int i=0;i<3;++i){
-        manager->createDocumentSceneAt(doc,i,false);
-        UBApplication::boardController->setActiveDocumentScene(doc,i);
-        auto page=UBApplication::boardController->activeScene();
+        auto page=pages[i];
         page->setNominalSize(800,600);page->setBackground(false,plain);
         const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><rect width=\"800\" height=\"600\" fill=\"%1\"/></svg>").arg(QStringList{"black","green","blue"}[i]).toUtf8();
         page->addSvg(QUrl(),QPointF(0,0),svg);
@@ -822,7 +823,7 @@ bool checkDocumentThumbnails(QString *error)
     qunsetenv("TEACHING_THUMBNAIL_TEST_DELAY_MS");
     const auto output=QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
     UBApplication::mainWindow->grab().save(output.filePath("documents-thumbnails-window.png"));
-    if(visible!=3||thumbnails->thumbnailCount()!=3){*error=QString("Documents loaded %1 of 3 thumbnails after %2 ms").arg(visible).arg(timer.elapsed());return false;}
+    if(visible!=3||thumbnails->thumbnailCount()!=3){*error=QString("Documents loaded %1 of 3 thumbnails after %2 ms (pages=%3, slots=%4)").arg(visible).arg(timer.elapsed()).arg(doc->pageCount()).arg(thumbnails->thumbnailCount());return false;}
     for(int i=0;i<3;++i)if(!QFileInfo::exists(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile())){*error=QString("Page %1 thumbnail was not generated").arg(i+1);return false;}
     const auto firstImage=thumbnails->thumbnailAt(0)->pixmap().toImage();
     const auto firstPixel=firstImage.pixelColor(firstImage.width()/2,firstImage.height()/2);
