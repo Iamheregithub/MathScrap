@@ -707,11 +707,7 @@ bool checkShapeThenFunctions(QString *error)
     class InputProbe : public QObject {
     public:
         int tablets=0,mouse=0;
-        bool eventFilter(QObject *o,QEvent *e) override {
-            if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}
-            if(e->type()==QEvent::TabletPress||e->type()==QEvent::TabletRelease||e->type()==QEvent::TabletMove){auto t=static_cast<QTabletEvent*>(e);qWarning()<<"PEN SEQUENCE"<<o->metaObject()->className()<<o->objectName()<<e->type()<<e->spontaneous()<<t->globalPosition()<<t->button()<<t->buttons()<<t->pressure()<<"popup"<<QApplication::activePopupWidget();}
-            return false;
-        }
+        bool eventFilter(QObject *,QEvent *e) override {if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}return false;}
     } probe;
     qApp->installEventFilter(&probe);
     struct RemoveProbe {QObject *probe;~RemoveProbe(){qApp->removeEventFilter(probe);}} removeProbe{&probe};

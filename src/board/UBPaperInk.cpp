@@ -472,16 +472,20 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         else{mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
         mTabletUiGesture=false;mTabletTarget=nullptr;
     }
-    if(type==QEvent::TabletPress&&event->button()==Qt::LeftButton){
+    if((type==QEvent::TabletPress||type==QEvent::TabletRelease)&&event->button()==Qt::LeftButton){
         if(auto button=qobject_cast<QToolButton*>(target.data());button&&button->menu()&&button->popupMode()==QToolButton::InstantPopup){
-            // QToolButton's mouse-press handler enters QMenu::exec(). Doing that
-            // inside a native tablet press prevents Qt from completing its pen
-            // state update, so later tip-up packets can cease to be releases.
-            QPointer<QToolButton> anchor=button;QPointer<QMenu> menu=button->menu();
-            mTabletMenu=nullptr;mTabletMenuAction=nullptr;event->accept();
-            QTimer::singleShot(0,this,[this,anchor,menu]{
-                if(!mClosing&&anchor&&anchor->isVisible()&&menu)menu->popup(anchor->mapToGlobal(QPoint(0,anchor->height())));
-            });
+            // Finish the entire tip gesture before opening a native popup. Qt
+            // 6.8 can forward the opener's release into the popup and return
+            // without updating its tablet-button state; the next tap then
+            // arrives as movement rather than a press.
+            event->accept();
+            if(type==QEvent::TabletPress){mTabletMenu=nullptr;mTabletMenuAction=nullptr;}
+            else if(button->rect().contains(button->mapFromGlobal(global.toPoint()))){
+                QPointer<QToolButton> anchor=button;QPointer<QMenu> menu=button->menu();
+                QTimer::singleShot(0,this,[this,anchor,menu]{
+                    if(!mClosing&&anchor&&anchor->isVisible()&&menu)menu->popup(anchor->mapToGlobal(QPoint(0,anchor->height())));
+                });
+            }
             return true;
         }
     }
