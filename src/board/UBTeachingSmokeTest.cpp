@@ -700,6 +700,36 @@ bool checkPenTrayTablet(QString *error)
     restore();window->setProperty("penTrayTabletChecked",true);return true;
 }
 
+bool checkTabletMenus(QString *error)
+{
+    auto window=UBApplication::mainWindow;auto view=UBApplication::boardController->controlView();auto viewport=view->viewport();
+    auto tap=[&](const QPoint &global){for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletPress?.8:0,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletPress?Qt::LeftButton:Qt::NoButton);QApplication::sendEvent(viewport,&e);}QApplication::processEvents();};
+    auto functions=window->findChild<QToolButton*>("paper-actionTeachingFunctions");auto menu=window->findChild<QMenu*>("mathscrapFunctionsMenu");
+    if(!functions||!menu){*error="Functions popup unavailable";return false;}
+    bool selected=false,callback=false,menuAtCallback=false;QString popupName;auto choice=menu->actions().first();auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
+    QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto popup=QApplication::activePopupWidget())popup->close();});guard.start(2000);
+    QTimer::singleShot(250,&guard,[&]{callback=true;menuAtCallback=menu->isVisible();if(auto p=QApplication::activePopupWidget())popupName=p->objectName()+p->metaObject()->className();if(menu->isVisible())tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+    tap(functions->mapToGlobal(functions->rect().center()));guard.stop();QObject::disconnect(connection);
+    if(!selected||menu->isVisible()){window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("popup-failure-window.png"));*error=QString("Functions menu: selected=%1 visible=%2 buttonVisible=%3 timer=%4 menuAtTimer=%5 popup=%6 button=%7,%8").arg(selected).arg(menu->isVisible()).arg(functions->isVisible()).arg(callback).arg(menuAtCallback).arg(popupName).arg(functions->mapToGlobal(QPoint()).x()).arg(functions->mapToGlobal(QPoint()).y());return false;}
+    menu->popup(functions->mapToGlobal(QPoint(0,-menu->sizeHint().height())));QApplication::processEvents();
+    const int before=UBApplication::undoStack->index();tap(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
+    if(menu->isVisible()||UBApplication::undoStack->index()!=before){*error="Stylus outside tap did not dismiss Functions safely";return false;}
+    auto shapes=window->findChild<QAction*>("actionTeachingShapes");shapes->trigger();QApplication::processEvents();
+    auto bar=window->findChild<QToolBar*>("lessonShapeToolbar");auto panel=bar->findChild<QWidget*>("compactShapePanel");
+    QToolButton *triangle=nullptr;for(auto b:panel->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->objectName()=="lessonShape3")triangle=b;
+    if(!triangle||bar->height()>200||bar->width()>560){*error="Compact three-row shape controls are missing or oversized";return false;}
+    tap(triangle->mapToGlobal(triangle->rect().center()));if(!triangle->isChecked()){*error="Stylus cannot select a shape directly";return false;}
+    auto width=bar->findChild<QToolButton*>("compactShapeWidth1");auto style=bar->findChild<QToolButton*>("compactShapeStyle1");
+    tap(width->mapToGlobal(width->rect().center()));tap(width->mapToGlobal(width->rect().center()));
+    tap(style->mapToGlobal(style->rect().center()));tap(style->mapToGlobal(style->rect().center()));
+    if(!width->isChecked()||!style->isChecked()){*error="Compact shape preset selection toggled off";return false;}
+    auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto colours=border->menu();bool changed=false;auto none=colours->actions().first();auto c=QObject::connect(none,&QAction::triggered,window,[&]{changed=true;});
+    guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(colours->isVisible())tap(colours->mapToGlobal(colours->actionGeometry(none).center()));});tap(border->mapToGlobal(border->rect().center()));guard.stop();QObject::disconnect(c);
+    if(!changed||colours->isVisible()){*error="Stylus cannot select a shape colour-menu item";return false;}
+    window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("compact-shapes-window.png"));
+    window->actionPen->trigger();window->setProperty("tabletMenusChecked",true);return true;
+}
+
 bool checkCircleErase(QString *error)
 {
     auto fail=[error](const QString &message){*error=message;return false;};
@@ -802,7 +832,7 @@ bool checkShapeToolbar(QString *error)
     if(auto paper=window->findChild<UBPaperInk*>()){paper->sync();QEventLoop settle;QTimer::singleShot(60,&settle,&QEventLoop::quit);settle.exec();}
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     if(auto dock=window->findChild<QFrame*>("paperDock")){
-        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>95)return fail(QString("Shape panel layout: parent=%1 height=%2 panel=%3,%4,%5,%6 dock=%7,%8,%9,%10")
+        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>200)return fail(QString("Shape panel layout: parent=%1 height=%2 panel=%3,%4,%5,%6 dock=%7,%8,%9,%10")
             .arg(bar->parentWidget()==board->controlView()).arg(bar->height()).arg(bar->x()).arg(bar->y()).arg(bar->width()).arg(bar->height()).arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height()));
     }else if(bar->geometry().top()<window->boardToolBar->geometry().bottom()||bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
@@ -1118,6 +1148,7 @@ void finish(bool passed, const QString &detail) {
     report["lessonControlsAndShapesChecked"] = UBApplication::mainWindow->property("lessonControlsAndShapesChecked").toBool();
     report["windowChromeChecked"] = UBApplication::mainWindow->property("windowChromeChecked").toBool();
     report["toolbarLayoutChecked"] = UBApplication::mainWindow->property("toolbarLayoutChecked").toBool();
+    report["tabletMenusChecked"] = UBApplication::mainWindow->property("tabletMenusChecked").toBool();
     report["penTrayTabletChecked"] = UBApplication::mainWindow->property("penTrayTabletChecked").toBool();
     report["settingsToolbarChecked"] = UBApplication::mainWindow->property("paperInkChecked").toBool();
     report["documentsThumbnailsChecked"] = UBApplication::mainWindow->property("documentsThumbnailsChecked").toBool();
@@ -1142,7 +1173,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkTabletMenus(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;
