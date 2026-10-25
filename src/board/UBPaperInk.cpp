@@ -402,7 +402,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     // Popups are top-level widgets, outside the floating-toolbar ancestry.
     // Route every packet while a popup is open, including taps outside it.
     if(auto popup=QApplication::activePopupWidget()){
-        event->accept();mTabletContact=type!=QEvent::TabletRelease;
+        event->accept();
         if(type==QEvent::TabletPress){mTabletUiGesture=true;mTabletTarget=nullptr;}
         QWidget *hit=nullptr;
         for(auto candidate:QApplication::topLevelWidgets())if(candidate->isVisible()&&candidate->windowType()==Qt::Popup&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
@@ -431,8 +431,10 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         if(type==QEvent::TabletRelease){mTabletUiGesture=false;mTabletTarget=nullptr;}
         return true;
     }
-    if(type==QEvent::TabletPress&&!mTabletContact){
-        mTabletContact=true;mTabletDoubleClick=false;
+    // Each press starts a new gesture. A popup may consume the previous release,
+    // and hovering must never prevent the next tip-down from reaching a control.
+    if(type==QEvent::TabletPress){
+        mTabletDoubleClick=false;
         const QList<QWidget*> roots={mPenPanel,mDock,mHeader,mPages,mWindow->findChild<QToolBar*>("lessonShapeToolbar"),mWindow->findChild<QToolBar*>("lessonCoverToolbar")};
         auto overlay=[&roots](QWidget *widget)->QWidget*{
             if(!widget)return nullptr;
@@ -452,7 +454,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         }else{mTabletUiGesture=false;mTabletTarget=nullptr;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
     }
     // A stroke that started on the page stays a stroke when crossing controls.
-    if(!mTabletUiGesture){if(type==QEvent::TabletRelease)mTabletContact=false;return false;}
+    if(!mTabletUiGesture)return false;
     QPointer<QWidget> target=mTabletTarget;
     if(auto popup=QApplication::activePopupWidget();popup&&popup->rect().contains(popup->mapFromGlobal(global.toPoint())))
         target=popup->childAt(popup->mapFromGlobal(global.toPoint()))?popup->childAt(popup->mapFromGlobal(global.toPoint())):popup;
@@ -464,7 +466,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     if(type==QEvent::TabletRelease){
         if(!mTabletDoubleClick&&target&&event->button()==Qt::LeftButton&&target->rect().contains(target->mapFromGlobal(global.toPoint()))){mLastTabletTap=target;mTabletTapTimer.start();}
         else{mLastTabletTap=nullptr;mTabletTapTimer.invalidate();}
-        mTabletContact=false;mTabletUiGesture=false;mTabletTarget=nullptr;
+        mTabletUiGesture=false;mTabletTarget=nullptr;
     }
     // Accept the tablet packet so Qt does not also synthesize a second click.
     // The normal widget mouse handlers retain click, drag and popup semantics.
@@ -482,7 +484,7 @@ bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
         if(routeTabletEvent(widget,static_cast<QTabletEvent*>(event)))return true;
     if(event->type()==QEvent::TabletLeaveProximity){
         if(auto button=qobject_cast<QAbstractButton*>(mTabletTarget.data()))button->setDown(false);
-        mTabletContact=false;mTabletUiGesture=false;mTabletTarget=nullptr;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();
+        mTabletUiGesture=false;mTabletTarget=nullptr;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();
     }
     auto tool=qobject_cast<QToolButton*>(object);
     if(tool&&tool->property("paperTray").toBool()){

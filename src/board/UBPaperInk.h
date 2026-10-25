@@ -62,5 +62,5 @@ private:
     QElapsedTimer mTabletTapTimer;
     QTimer *mHoverTimer=nullptr,*mCloseTimer=nullptr;
     bool mTrayOpen=false;
-    bool mTabletContact=false,mTabletUiGesture=false,mTabletDoubleClick=false;
+    bool mTabletUiGesture=false,mTabletDoubleClick=false;
 };
