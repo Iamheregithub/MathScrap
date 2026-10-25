@@ -30,7 +30,7 @@ GraphDesk has its own tab. To revise an inserted graph, select it in the lesson,
 
 ## Download and platform status
 
-The current published release is **MathScrap 1.7.7.32**. Windows x64 installers and SHA-256 checksums are available on the [Releases page](https://github.com/Iamheregithub/MathScrap/releases). The installer is currently unsigned.
+The current published release is **MathScrap 1.7.7.33**. Windows x64 installers and SHA-256 checksums are available on the [Releases page](https://github.com/Iamheregithub/MathScrap/releases). The installer is currently unsigned.
 
 MathScrap's automated build and application checks target Windows with Qt 6.8.3 and MSVC 2022. OpenBoard is cross-platform, but MathScrap-specific macOS and Linux packages have not been validated or published here.
 
@@ -38,10 +38,10 @@ The active MathScrap development branch is [`graphdesk-teaching-fork`](https://g
 
 ## Testing and security
 
-Release 1.7.7.32 passed:
+Release 1.7.7.33 passed:
 
 - Native Windows drawing, formula, Zoom, GraphDesk, document/PDF and workspace checks.
-- Stylus selection and outside-tap dismissal in popup menus, direct Functions access, and the compact three-row Shapes tray with persistent width/style selection.
+- Stylus popup selection and outside-tap dismissal, reopening Functions after hover and menu dismissal, safe tablet hover when a menu action opens a dialog, and repeated Border/Fill swatch changes on a selected shape followed by drawing another shape with the chosen colours. The compact three-row Shapes tray retains persistent width/style selection.
 - Tablet ink alignment from global cursor coordinates, including a simulated vertical mismatch in event-local coordinates.
 - Simulated stylus taps on colours, thicknesses, Highlighter and Eraser, including events delivered to the canvas under the controls; drag-off cancellation, no stray toolbar ink, Line double-tap, and pressure-sensitive drawing afterward.
 - Three-page Documents thumbnail generation, visible preview painting, and reopening after asynchronous loading.
@@ -53,7 +53,7 @@ Release 1.7.7.32 passed:
 - File round trips through original OpenBoard 1.7.7.
 - JavaScript DOM and Chromium sandbox regression tests.
 
-[Windows validation run](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438237) · [Security review](docs/security/review-2026-10-24.md) · [Current security and quality status](https://github.com/Iamheregithub/MathScrap/security)
+[Windows validation run](https://github.com/Iamheregithub/MathScrap/actions/runs/40196547276) · [Security review](docs/security/review-2026-10-24.md) · [Current security and quality status](https://github.com/Iamheregithub/MathScrap/security)
 
 CodeQL scans the default and development branches on pushes and pull requests, with scheduled scans as well. Secret scanning, push protection, Dependabot alerts and security updates, and private vulnerability reporting are enabled. Report vulnerabilities privately using the instructions in [SECURITY.md](SECURITY.md).
 

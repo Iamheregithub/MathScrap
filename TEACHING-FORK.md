@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.32**
+**MathScrap 1.7.7.33**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.32)
-- Compiled source: [`2d2c33cac2725ab0bfd31d8785c70e3dfc8616bc`](https://github.com/Iamheregithub/MathScrap/commit/2d2c33cac2725ab0bfd31d8785c70e3dfc8616bc)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438237)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438222)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40181438140)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.33)
+- Compiled source: [`0d953c8d00d5d12775566401931bc63804de9eec`](https://github.com/Iamheregithub/MathScrap/commit/0d953c8d00d5d12775566401931bc63804de9eec)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40196547276)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40196547253)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40196547369)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release fixes stylus interaction with popup menus, including item selection and safe outside-tap dismissal, and opens the Functions chooser directly without a redundant wrapper menu. Shapes now uses the agreed compact three-row card: seven direct shape buttons; Border, Fill and width presets; then Solid/Dashed and fill opacity. The panel uses 80% opacity and retains shape styling, Undo/Redo and save/reopen behavior. The preceding tablet-coordinate alignment and floating-control fixes remain included. Physical Huion hardware validation remains a manual check.
+This release removes stale stylus-contact state that could block later Functions or shape-control taps after popup hover and dismissal. Each new press starts a fresh routing decision; popup release state is cleared before dispatching actions, including actions that open dialogs. Windows regression checks reproduced the Functions lockout on the preceding code and passed with the correction. Additional menu-action checks verify actual hover, press and release delivery to a modal dialog. Expanded checks tap the actual Border and Fill swatches on a selected shape, verify its SVG colours, and draw another shape with the chosen colours. The compact three-row Shapes tray, 80% opacity, prior tablet-coordinate alignment, Undo/Redo and save/reopen behavior remain included. Physical Huion hardware validation remains a manual check.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
