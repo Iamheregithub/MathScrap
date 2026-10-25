@@ -703,7 +703,9 @@ bool checkPenTrayTablet(QString *error)
 bool checkTabletMenus(QString *error)
 {
     auto window=UBApplication::mainWindow;auto view=UBApplication::boardController->controlView();auto viewport=view->viewport();
-    auto tap=[&](const QPoint &global){for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletPress?.8:0,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletPress?Qt::LeftButton:Qt::NoButton);QApplication::sendEvent(viewport,&e);}QApplication::processEvents();};
+    auto packet=[&](QEvent::Type type,const QPoint &global,Qt::MouseButton button,Qt::MouseButtons buttons){QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:(buttons?.8:0),0,0,0,0,0,Qt::NoModifier,button,buttons);QApplication::sendEvent(viewport,&e);};
+    auto hover=[&](const QPoint &global){packet(QEvent::TabletMove,global,Qt::NoButton,Qt::NoButton);};
+    auto tap=[&](const QPoint &global){hover(global);packet(QEvent::TabletPress,global,Qt::LeftButton,Qt::LeftButton);packet(QEvent::TabletRelease,global,Qt::LeftButton,Qt::NoButton);hover(global);QApplication::processEvents();};
     auto functions=window->findChild<QToolButton*>("paper-actionTeachingFunctions");auto menu=window->findChild<QMenu*>("mathscrapFunctionsMenu");
     if(!functions||!menu){*error="Functions popup unavailable";return false;}
     bool selected=false,callback=false,menuAtCallback=false;QString popupName;auto choice=menu->actions().first();auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
@@ -719,9 +721,32 @@ bool checkTabletMenus(QString *error)
     QToolButton *triangle=nullptr;for(auto b:panel->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->objectName()=="lessonShape3")triangle=b;
     if(!triangle||bar->height()>200||bar->width()>560){*error="Compact three-row shape controls are missing or oversized";return false;}
     tap(triangle->mapToGlobal(triangle->rect().center()));if(!triangle->isChecked()){*error="Stylus cannot select a shape directly";return false;}
+    auto width=bar->findChild<QToolButton*>("compactShapeWidth1");auto style=bar->findChild<QToolButton*>("compactShapeStyle1");
+    tap(width->mapToGlobal(width->rect().center()));tap(width->mapToGlobal(width->rect().center()));
+    tap(style->mapToGlobal(style->rect().center()));tap(style->mapToGlobal(style->rect().center()));
+    if(!width->isChecked()||!style->isChecked()){*error="Compact shape preset selection toggled off";return false;}
     auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto colours=border->menu();bool changed=false;auto none=colours->actions().first();auto c=QObject::connect(none,&QAction::triggered,window,[&]{changed=true;});
     guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(colours->isVisible())tap(colours->mapToGlobal(colours->actionGeometry(none).center()));});tap(border->mapToGlobal(border->rect().center()));guard.stop();QObject::disconnect(c);
     if(!changed||colours->isVisible()){*error="Stylus cannot select a shape colour-menu item";return false;}
+    // Exercise actual QWidgetAction colour swatches, not just the plain No border action.
+    for(const auto &name:{QString("lessonShapeBorder"),QString("lessonShapeFill")})for(int index:{2,5}){
+        auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();
+        auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<=index){*error="Shape swatches missing";return false;}
+        auto swatch=swatches[index];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
+        const int undo=UBApplication::undoStack->index();
+        guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));});
+        tap(button->mapToGlobal(button->rect().center()));guard.stop();QObject::disconnect(c);
+        if(!clicked||palette->isVisible()){*error="Stylus cannot choose an actual swatch: "+name;return false;}
+        if(UBApplication::undoStack->index()>undo+1){*error="Shape swatch tap created extra lesson ink";return false;}
+    }
+    // Hover over a popup and dismiss it with the mouse: the next stylus press must
+    // still start a new gesture (hover is never tip contact).
+    menu->popup(functions->mapToGlobal(QPoint(0,-menu->sizeHint().height())));QApplication::processEvents();
+    hover(menu->mapToGlobal(menu->rect().center()));menu->close();QApplication::processEvents();
+    selected=false;connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
+    guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(menu->isVisible())tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+    tap(functions->mapToGlobal(functions->rect().center()));guard.stop();QObject::disconnect(connection);
+    if(!selected||menu->isVisible()){*error="Functions stylus tap stopped working after popup hover and dismissal";return false;}
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("compact-shapes-window.png"));
     window->actionPen->trigger();window->setProperty("tabletMenusChecked",true);return true;
 }
