@@ -823,8 +823,14 @@ bool checkDocumentThumbnails(QString *error)
     UBApplication::applicationController->showBoard();
     UBApplication::applicationController->showDocument();
     UBApplication::documentController->selectDocument(doc);
-    QApplication::processEvents();
-    if(widget->document()->thumbnailScene()->items().size()<3){*error="Thumbnails disappeared when reopening the lesson in Documents";return false;}
+    QElapsedTimer reopenTimer;reopenTimer.start();int reopened=0;
+    while(reopenTimer.elapsed()<3500){
+        QApplication::processEvents();reopened=0;
+        if(widget->document())for(auto candidate:widget->document()->thumbnailScene()->items())if(auto thumb=dynamic_cast<UBThumbnail*>(candidate);thumb&&!thumb->pixmap().isNull())++reopened;
+        if(reopened==3)break;
+        QThread::msleep(15);
+    }
+    if(reopened!=3){*error=QString("Documents reopened with %1 of 3 thumbnails").arg(reopened);return false;}
     UBApplication::mainWindow->setProperty("documentsThumbnailsChecked",true);
     return true;
 }
