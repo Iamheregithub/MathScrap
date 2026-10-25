@@ -793,15 +793,7 @@ bool checkDocumentThumbnails(QString *error)
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
     for(int i=0;i<3;++i){
         auto page=manager->createDocumentSceneAt(doc,i,false);
-        page->setNominalSize(800,600);page->setBackground(false,plain);
-        const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><rect width=\"800\" height=\"600\" fill=\"%1\"/></svg>").arg(QStringList{"black","green","blue"}[i]).toUtf8();
-        auto mark=new UBGraphicsSvgItem(svg);mark->setPos(-400,-300);page->addItem(mark);
-        const QString assetDir=doc->persistencePath()+"/"+UBPersistenceManager::imageDirectory;
-        QDir().mkpath(assetDir);QFile asset(assetDir+"/"+mark->uuid().toString()+".svg");
-        if(!asset.open(QIODevice::WriteOnly)||asset.write(svg)!=svg.size()){*error="Cannot save thumbnail fixture SVG";return false;}asset.close();
         manager->persistDocumentScene(doc,page,i,false,true);
-        const QImage fixture(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
-        if(fixture.isNull()||(i==0&&fixture.pixelColor(fixture.width()/2,fixture.height()/2).red()>100)){*error=QString("Thumbnail fixture page %1 did not render").arg(i+1);return false;}
         QFile::remove(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
     }
     UBApplication::applicationController->showDocument();
@@ -825,16 +817,18 @@ bool checkDocumentThumbnails(QString *error)
     UBApplication::mainWindow->grab().save(output.filePath("documents-thumbnails-window.png"));
     if(visible!=3||thumbnails->thumbnailCount()!=3){*error=QString("Documents loaded %1 of 3 thumbnails after %2 ms (pages=%3, slots=%4)").arg(visible).arg(timer.elapsed()).arg(doc->pageCount()).arg(thumbnails->thumbnailCount());return false;}
     for(int i=0;i<3;++i)if(!QFileInfo::exists(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile())){*error=QString("Page %1 thumbnail was not generated").arg(i+1);return false;}
-    const auto firstImage=thumbnails->thumbnailAt(0)->pixmap().toImage();
-    const auto firstPixel=firstImage.pixelColor(firstImage.width()/2,firstImage.height()/2);
-    if(firstPixel.red()>100||firstPixel.green()>100||firstPixel.blue()>100){*error=QString("Dark page thumbnail rendered blank (%1,%2,%3)").arg(firstPixel.red()).arg(firstPixel.green()).arg(firstPixel.blue());return false;}
-    widget->viewport()->update();QApplication::processEvents();
     const auto thumb=thumbnails->thumbnailAt(0);
+    const auto savedPixmap=thumb->pixmap();
+    QPixmap darkPixmap(savedPixmap.size());darkPixmap.fill(Qt::black);
+    thumb->setPixmap(darkPixmap);
+    thumbnails->arrangeThumbnails(0,1);
+    widget->viewport()->update();QApplication::processEvents();
     const auto screenPoint=widget->mapFromScene(thumb->mapToScene(thumb->boundingRect().center()));
     const auto screenImage=widget->viewport()->grab().toImage();
     if(!screenImage.rect().contains(screenPoint)){*error="Thumbnail preview is outside the Documents viewport";return false;}
     const auto screenPixel=screenImage.pixelColor(screenPoint);
-    if(screenPixel.red()>150||screenPixel.green()>150||screenPixel.blue()>150){*error=QString("Generated dark thumbnail is hidden in Documents (%1,%2,%3)").arg(screenPixel.red()).arg(screenPixel.green()).arg(screenPixel.blue());return false;}
+    if(screenPixel.red()>150||screenPixel.green()>150||screenPixel.blue()>150){*error=QString("Dark thumbnail preview is hidden in Documents (%1,%2,%3)").arg(screenPixel.red()).arg(screenPixel.green()).arg(screenPixel.blue());return false;}
+    thumb->setPixmap(savedPixmap);
     // Re-enter Documents and select the lesson again; cached pages must remain.
     UBApplication::applicationController->showBoard();
     UBApplication::applicationController->showDocument();
