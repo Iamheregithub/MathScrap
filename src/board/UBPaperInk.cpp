@@ -403,6 +403,9 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     // Route every packet while a popup is open, including taps outside it.
     if(auto popup=QApplication::activePopupWidget()){
         event->accept();
+        // Release before dispatch: an action or embedded control may enter a
+        // modal event loop, whose tablet events belong to that dialog.
+        if(type==QEvent::TabletRelease){mTabletUiGesture=false;mTabletTarget=nullptr;}
         if(type==QEvent::TabletPress){mTabletUiGesture=true;mTabletTarget=nullptr;}
         QWidget *hit=nullptr;
         for(auto candidate:QApplication::topLevelWidgets())if(candidate->isVisible()&&candidate->windowType()==Qt::Popup&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
@@ -428,7 +431,6 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
             const auto mouseType=type==QEvent::TabletPress?QEvent::MouseButtonPress:type==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
             QMouseEvent mouse(mouseType,hit->mapFromGlobal(global.toPoint()),global,event->button(),event->buttons(),event->modifiers());QApplication::sendEvent(hit,&mouse);
         }
-        if(type==QEvent::TabletRelease){mTabletUiGesture=false;mTabletTarget=nullptr;}
         return true;
     }
     // Each press starts a new gesture. A popup may consume the previous release,
