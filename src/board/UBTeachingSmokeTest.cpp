@@ -771,8 +771,8 @@ bool checkTabletMenus(QString *error)
         QDialog dialog(window);dialog.resize(180,80);dialog.move(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
         QTimer::singleShot(0,&dialog,[&]{
             const auto local=dialog.rect().center(),global=dialog.mapToGlobal(local);
-            for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){
-                QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),local,global,type==QEvent::TabletPress?.8:0,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletPress?Qt::LeftButton:Qt::NoButton);
+            for(auto type:{QEvent::TabletMove,QEvent::TabletPress,QEvent::TabletRelease}){
+                QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),local,global,type==QEvent::TabletPress?.8:0,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletPress?Qt::LeftButton:Qt::NoButton);
                 QApplication::sendEvent(&dialog,&e);modalBlocked|=e.isAccepted();
             }
             modalReached=true;dialog.accept();
