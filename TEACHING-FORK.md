@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.29**
+**MathScrap 1.7.7.30**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.29)
-- Compiled source: [`34142771b11be345eb6baa58f4eeb1063821ef3c`](https://github.com/Iamheregithub/MathScrap/commit/34142771b11be345eb6baa58f4eeb1063821ef3c)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40158764864)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40158764965)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40158765003)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.30)
+- Compiled source: [`fb4c2d5fc02d0b9e33bf3afb5bbb9e92af3294af`](https://github.com/Iamheregithub/MathScrap/commit/fb4c2d5fc02d0b9e33bf3afb5bbb9e92af3294af)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827497)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827173)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40172827248)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release sets the floating pen tray and colour/thickness panel to 70% opacity, removes More from the tray, and moves page, view, document/version and workspace commands into a categorized Settings & more cog menu in the top toolbar. Optional tools remain available in Customize Workspace; configured tools that do not fit are reachable through Toolbar overflow in the cog menu. Lesson and GraphDesk use matching outline icons, and the document title is removed from the toolbar. The preceding Documents thumbnail, classroom tool and recovery fixes remain included.
+This release fixes stylus taps falling through the floating controls onto the lesson canvas. Tablet gestures that start on controls now use the widgets' normal click and drag handling, with direct overlay hit-testing, instead of being treated as drawing input. Simulated Windows tablet tests cover colour/thickness changes, Highlighter/Eraser selection, drag-off cancellation, toolbar background taps, Line double-tap and pressure-sensitive drawing afterward. The pen tray and colour/thickness panel now use 80% opacity. The categorized cog menu, matching navigation icons, toolbar title removal, Documents thumbnails and earlier fixes remain included. Physical Huion driver/hardware validation remains a manual check.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
