@@ -161,7 +161,7 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     mHeader->setStyleSheet("QToolBar{background:#f8f5ec;border:0;border-bottom:1px solid #ded8cc;spacing:8px;padding:6px;} QToolButton{background:transparent;color:#273b3b;border:1px solid transparent;border-radius:7px;height:30px;min-height:30px;max-height:36px;padding:4px 8px;margin:0;} QToolButton:hover{background:#ebe6da;} QToolButton:checked{background:#dceae4;border-color:#7ba99d;} QLabel{background:transparent;color:#273b3b;}");
     mHeader->setProperty("paperBaseStyle",mHeader->styleSheet());mHeader->setMaximumHeight(58);mWindow->setMenuWidget(mHeader);
     auto documents=button(mWindow->actionDocument,tr("Documents"),mHeader);documents->setObjectName("paperDocuments");documents->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);documents->setToolTip(tr("Open your lesson documents"));mHeader->addWidget(documents);
-    mHeader->setIconSize(QSize(22,22));mHeader->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    mHeader->setIconSize(QSize(26,26));mHeader->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     auto lesson=mHeader->addAction(inkIcon("lesson"),tr("Lesson"));lesson->setObjectName("paperLesson");lesson->setCheckable(true);lesson->setChecked(true);
     connect(lesson,&QAction::triggered,this,[this,lesson]{mWindow->teachingTabs()->setCurrentIndex(0);lesson->setChecked(true);});
     auto graph=mHeader->addAction(inkIcon("actionTeachingGraphDesk"),tr("GraphDesk"));graph->setObjectName("paperGraphDesk");graph->setCheckable(true);
@@ -185,7 +185,6 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     mDock=new QFrame(view);mDock->setObjectName("paperDock");mDock->setStyleSheet(panelStyle());mDock->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(mDock,&QWidget::customContextMenuRequested,this,[this]{mWindow->findChild<QAction*>("actionTeachingCustomize")->trigger();});auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
     mPenPanel=new QFrame(view);mPenPanel->setObjectName("paperPenPanel");mPenPanel->setStyleSheet(panelStyle());auto penLayout=new QVBoxLayout(mPenPanel);penLayout->setContentsMargins(14,12,14,12);penLayout->setSpacing(9);
-    for(auto panel:{mDock,mPenPanel}){auto opacity=new QGraphicsOpacityEffect(panel);opacity->setOpacity(0.7);panel->setGraphicsEffect(opacity);}
     auto colours=new QGridLayout;colours->setSpacing(7);penLayout->addLayout(colours);
     for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBDrawingController::drawingController()->setColorIndex(i);});}
     auto widths=new QHBoxLayout;penLayout->addLayout(widths);
@@ -207,7 +206,8 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     auto timer=new QTimer(this);timer->setInterval(3000);connect(timer,&QTimer::timeout,this,[this]{if(mPages->isVisible())refreshPages();});timer->start();
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this,timer]{mClosing=true;timer->stop();qApp->removeEventFilter(this);});
     connect(view,&QObject::destroyed,this,[this]{mClosing=true;});
-    for(auto panel:{mDock,mPenPanel}){auto shadow=new QGraphicsDropShadowEffect(panel);shadow->setBlurRadius(20);shadow->setOffset(0,4);shadow->setColor(QColor(73,60,38,35));panel->setGraphicsEffect(shadow);}
+    // A widget supports one effect; a later drop shadow would replace opacity.
+    for(auto panel:{mDock,mPenPanel}){auto opacity=new QGraphicsOpacityEffect(panel);opacity->setOpacity(0.7);panel->setGraphicsEffect(opacity);}
     qApp->installEventFilter(this);adoptContextBars();if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();rebuild();refreshPages();sync();
 }
 void UBPaperInk::adoptContextBars()
