@@ -57,6 +57,8 @@ private:
     QString mDocumentId,mTrayAction;
     QPointer<QToolButton> mTrayAnchor,mHoverAnchor;
     QPointer<QWidget> mTabletTarget,mLastTabletTap;
+    QPointer<QMenu> mTabletMenu;
+    QPointer<QAction> mTabletMenuAction;
     QElapsedTimer mTabletTapTimer;
     QTimer *mHoverTimer=nullptr,*mCloseTimer=nullptr;
     bool mTrayOpen=false;

@@ -410,6 +410,20 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         }
         if(!hit&&type==QEvent::TabletPress){
             while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
+        }else if(auto menu=qobject_cast<QMenu*>(hit)){
+            auto action=menu->actionAt(menu->mapFromGlobal(global.toPoint()));
+            menu->setActiveAction(action);
+            if(type==QEvent::TabletPress){mTabletMenu=menu;mTabletMenuAction=action;}
+            if(action&&action->isEnabled()&&action->menu()&&(type==QEvent::TabletPress||type==QEvent::TabletMove))
+                action->menu()->popup(menu->mapToGlobal(menu->actionGeometry(action).topRight()));
+            if(type==QEvent::TabletRelease){
+                QPointer<QAction> chosen=mTabletMenu==menu&&mTabletMenuAction==action?action:nullptr;
+                mTabletMenu=nullptr;mTabletMenuAction=nullptr;
+                if(chosen&&chosen->isEnabled()&&!chosen->isSeparator()&&!chosen->menu()&&event->button()==Qt::LeftButton){
+                    while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
+                    if(chosen)chosen->trigger();
+                }
+            }
         }else if(hit){
             const auto mouseType=type==QEvent::TabletPress?QEvent::MouseButtonPress:type==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
             QMouseEvent mouse(mouseType,hit->mapFromGlobal(global.toPoint()),global,event->button(),event->buttons(),event->modifiers());QApplication::sendEvent(hit,&mouse);
