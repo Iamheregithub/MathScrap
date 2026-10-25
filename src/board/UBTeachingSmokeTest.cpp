@@ -791,14 +791,14 @@ bool checkDocumentThumbnails(QString *error)
     auto manager=UBPersistenceManager::persistenceManager();
     auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Thumbnail loading regression",false);
     if(!doc){*error="Cannot create thumbnail regression lesson";return false;}
-    QList<std::shared_ptr<UBGraphicsScene>> pages;
-    for(int i=0;i<3;++i)pages<<manager->createDocumentSceneAt(doc,i,false);
-    UBApplication::boardController->setActiveDocumentScene(doc,0);
     for(int i=0;i<3;++i){
-        auto page=pages[i];
+        auto page=manager->createDocumentSceneAt(doc,i,false);
         page->setNominalSize(800,600);page->setBackground(false,plain);
         const auto svg=QString("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"800\" height=\"600\"><rect width=\"800\" height=\"600\" fill=\"%1\"/></svg>").arg(QStringList{"black","green","blue"}[i]).toUtf8();
-        page->addSvg(QUrl(),QPointF(0,0),svg);
+        auto mark=new UBGraphicsSvgItem(svg);mark->setPos(-400,-300);page->addItem(mark);
+        const QString assetDir=doc->persistencePath()+"/"+UBPersistenceManager::imageDirectory;
+        QDir().mkpath(assetDir);QFile asset(assetDir+"/"+mark->uuid().toString()+".svg");
+        if(!asset.open(QIODevice::WriteOnly)||asset.write(svg)!=svg.size()){*error="Cannot save thumbnail fixture SVG";return false;}asset.close();
         manager->persistDocumentScene(doc,page,i,false,true);
         const QImage fixture(UBThumbnailAdaptor::thumbnailUrl(doc,i).toLocalFile());
         if(fixture.isNull()||(i==0&&fixture.pixelColor(fixture.width()/2,fixture.height()/2).red()>100)){*error=QString("Thumbnail fixture page %1 did not render").arg(i+1);return false;}
