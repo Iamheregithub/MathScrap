@@ -6,17 +6,17 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.27**
+**MathScrap 1.7.7.28**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.27)
-- Compiled source: [`c8f25e464400b7f6eb604b806551a5717a990703`](https://github.com/Iamheregithub/MathScrap/commit/c8f25e464400b7f6eb604b806551a5717a990703)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500085)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500124)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40148500753)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.28)
+- Compiled source: [`2e74ca82bbabe6c5f2303c45ad04089145830861`](https://github.com/Iamheregithub/MathScrap/commit/2e74ca82bbabe6c5f2303c45ad04089145830861)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40153534000)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40153533925)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40153533932)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release fixes Documents previews in lessons with multiple pages: the background loader now waits for in-progress thumbnail reads, and the thumbnail card no longer covers an already generated page image. A Windows regression checks generation, visible painting and reopen. Classroom pacing controls, the streamlined More menu, geometry, recovery, Preferences and selection-origin fixes remain included.
+This release removes the legacy Laser Pointer from the lesson toolbar customization and stops optional tools from appearing in More once placed on the bottom toolbar. The preceding release's three-page Documents thumbnail generation, visible preview and reopen fixes remain included, along with the earlier classroom tools and recovery fixes.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
