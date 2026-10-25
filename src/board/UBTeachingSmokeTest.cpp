@@ -777,7 +777,7 @@ bool checkTabletMenus(QString *error)
     };
     auto modalAction=menu->addAction("Tablet modal regression");bool modalReached=false,modalBlocked=false;
     auto modalConnection=QObject::connect(modalAction,&QAction::triggered,window,[&]{
-        TabletProbeDialog dialog(window);dialog.resize(180,80);dialog.move(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
+        TabletProbeDialog dialog(window);dialog.setTabletTracking(true);dialog.resize(180,80);dialog.move(viewport->mapToGlobal(QPoint(viewport->width()/2,viewport->height()/4)));
         QTimer::singleShot(0,&dialog,[&]{
             const auto local=dialog.rect().center(),global=dialog.mapToGlobal(local);
             for(auto type:{QEvent::TabletMove,QEvent::TabletPress,QEvent::TabletRelease}){
