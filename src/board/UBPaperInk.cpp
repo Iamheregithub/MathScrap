@@ -102,7 +102,7 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
     auto b=new QToolButton(parent);b->setObjectName("paper-"+source->objectName());b->setAutoRaise(true);
     auto dash=source->objectName()=="actionLine"?mWindow->findChild<QAction*>("actionTeachingDash"):nullptr;
     auto zoom=source->objectName()=="actionZoomIn"?mWindow->actionZoomOut:nullptr;
-    auto proxy=new QAction(b);proxy->setMenu(source->menu());proxy->setText(label);proxy->setToolTip(source->toolTip());
+    auto proxy=new QAction(b);proxy->setText(label);proxy->setToolTip(source->toolTip());
     auto update=[source,proxy,label,dash,zoom]{
         const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();
         const bool out=zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool();

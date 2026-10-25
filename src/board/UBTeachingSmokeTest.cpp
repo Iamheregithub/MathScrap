@@ -708,7 +708,7 @@ bool checkTabletMenus(QString *error)
     if(!functions||!menu){*error="Functions popup unavailable";return false;}
     bool selected=false,callback=false,menuAtCallback=false;QString popupName;auto choice=menu->actions().first();auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
     QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto popup=QApplication::activePopupWidget())popup->close();});guard.start(2000);
-    QTimer::singleShot(60,&guard,[&]{callback=true;menuAtCallback=menu->isVisible();if(auto p=QApplication::activePopupWidget())popupName=p->objectName()+p->metaObject()->className();if(menu->isVisible())tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+    QTimer::singleShot(250,&guard,[&]{callback=true;menuAtCallback=menu->isVisible();if(auto p=QApplication::activePopupWidget())popupName=p->objectName()+p->metaObject()->className();if(menu->isVisible())tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
     tap(functions->mapToGlobal(functions->rect().center()));guard.stop();QObject::disconnect(connection);
     if(!selected||menu->isVisible()){window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("popup-failure-window.png"));*error=QString("Functions menu: selected=%1 visible=%2 buttonVisible=%3 timer=%4 menuAtTimer=%5 popup=%6 button=%7,%8").arg(selected).arg(menu->isVisible()).arg(functions->isVisible()).arg(callback).arg(menuAtCallback).arg(popupName).arg(functions->mapToGlobal(QPoint()).x()).arg(functions->mapToGlobal(QPoint()).y());return false;}
     menu->popup(functions->mapToGlobal(QPoint(0,-menu->sizeHint().height())));QApplication::processEvents();
@@ -720,7 +720,7 @@ bool checkTabletMenus(QString *error)
     if(!triangle||bar->height()>200||bar->width()>560){*error="Compact three-row shape controls are missing or oversized";return false;}
     tap(triangle->mapToGlobal(triangle->rect().center()));if(!triangle->isChecked()){*error="Stylus cannot select a shape directly";return false;}
     auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto colours=border->menu();bool changed=false;auto none=colours->actions().first();auto c=QObject::connect(none,&QAction::triggered,window,[&]{changed=true;});
-    guard.start(2000);QTimer::singleShot(60,&guard,[&]{if(colours->isVisible())tap(colours->mapToGlobal(colours->actionGeometry(none).center()));});tap(border->mapToGlobal(border->rect().center()));guard.stop();QObject::disconnect(c);
+    guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(colours->isVisible())tap(colours->mapToGlobal(colours->actionGeometry(none).center()));});tap(border->mapToGlobal(border->rect().center()));guard.stop();QObject::disconnect(c);
     if(!changed||colours->isVisible()){*error="Stylus cannot select a shape colour-menu item";return false;}
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("compact-shapes-window.png"));
     window->actionPen->trigger();window->setProperty("tabletMenusChecked",true);return true;
