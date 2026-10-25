@@ -411,6 +411,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
         for(auto candidate:QApplication::topLevelWidgets())if(candidate->isVisible()&&candidate->windowType()==Qt::Popup&&candidate->rect().contains(candidate->mapFromGlobal(global.toPoint()))){
             hit=candidate->childAt(candidate->mapFromGlobal(global.toPoint()));if(!hit)hit=candidate;if(candidate==popup)break;
         }
+        if(type==QEvent::TabletPress||type==QEvent::TabletRelease)qWarning()<<"POPUP ROUTE"<<type<<global<<event->button()<<event->buttons()<<"receiver"<<receiver<<"hit"<<hit<<"popup"<<popup;
         if(!hit&&type==QEvent::TabletPress){
             while(auto active=QApplication::activePopupWidget()){active->close();if(QApplication::activePopupWidget()==active)break;}
         }else if(auto menu=qobject_cast<QMenu*>(hit)){
@@ -420,6 +421,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
             if(action&&action->isEnabled()&&action->menu()&&(type==QEvent::TabletPress||type==QEvent::TabletMove))
                 action->menu()->popup(menu->mapToGlobal(menu->actionGeometry(action).topRight()));
             if(type==QEvent::TabletRelease){
+                qWarning()<<"POPUP CHOICE"<<menu<<action<<mTabletMenu<<mTabletMenuAction<<event->button();
                 QPointer<QAction> chosen=mTabletMenu==menu&&mTabletMenuAction==action?action:nullptr;
                 mTabletMenu=nullptr;mTabletMenuAction=nullptr;
                 if(chosen&&chosen->isEnabled()&&!chosen->isSeparator()&&!chosen->menu()&&event->button()==Qt::LeftButton){
