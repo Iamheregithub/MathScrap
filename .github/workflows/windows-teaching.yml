@@ -144,7 +144,12 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --clobber
           } else {
-            gh release create $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "MathScrap $version" --notes "Windows x64 installer. Native drawing, teaching tools, recovery and original OpenBoard file compatibility checks passed. Source code is available at the tagged commit under the repository licence."
+            $notesPath = "OpenBoard/release_scripts/teaching/CHANGELOG-$version.md"
+            if (Test-Path $notesPath) {
+              gh release create $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "MathScrap $version" --notes-file $notesPath
+            } else {
+              gh release create $tag OpenBoard/dist/MathScrap-Windows-x64-Setup.exe OpenBoard/dist/SHA256SUMS.txt --target $env:GITHUB_SHA --title "MathScrap $version" --notes "Windows x64 installer. Native drawing, teaching tools, recovery and original OpenBoard file compatibility checks passed. Source code is available at the tagged commit under the repository licence."
+            }
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload validation report

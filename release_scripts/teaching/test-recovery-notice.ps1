@@ -40,6 +40,7 @@ Remove-Item -LiteralPath $failure.blocked -Force
 Move-Item -LiteralPath $failure.held -Destination $failure.blocked
 Run-Recovery 'recovery-failure-dismiss'
 Run-Recovery 'recovery-reopen'
+Run-Recovery 'recovery-delete-damaged'
 $env:LESSONBOARD_HISTORY_TEST_ROOT = Join-Path $dist 'recovery-empty-history'
 Run-Recovery 'recovery-empty-seed' 89
 Run-Recovery 'recovery-empty-reopen'

@@ -289,6 +289,14 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
             if(!reverted||revertedText.contains("New work after deleting history")||!revertedText.contains("Edits before deleting history")){done(false,"Old deletion baseline suppressed recovery after returning to previous content");return;}
             done(true,"Delete all includes current edits; new content resumes automatic recovery and remains restorable");return;
         }
+        if(mode=="recovery-delete-damaged"){
+            const QString blobs=history->rootPath()+"/"+state.value("lessonId").toString()+"/blobs",held=blobs+"-held";
+            if(!QDir().rename(blobs,held)){done(false,"Cannot prepare damaged backup storage");return;}
+            QFile blocker(blobs);if(!blocker.open(QIODevice::WriteOnly)){done(false,"Cannot create damaged backup storage fixture");return;}blocker.write("Test blocker");blocker.close();
+            if(!history->clearHistory(&error)||!history->documents().isEmpty()){done(false,"Damaged backup storage prevented Delete all: "+error);return;}
+            if(!history->checkpoint(false,&error)||!history->documents().isEmpty()){done(false,"Deleted damaged history returned without edits");return;}
+            done(true,"Damaged recovery history can be deleted without deleting the saved lesson");return;
+        }
         if(mode=="recovery-reopen"||mode=="recovery-reopen-ack"){
             if(shown||history->recoveryPromptPending()||history->documents().isEmpty()){done(false,"Dismissed recovery prompt returned without new recoverable work");return;}
             if(mode=="recovery-reopen"&&history->uncleanSessionDetected()){done(false,"An orderly exit was marked unclean");return;}

@@ -71,6 +71,9 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
 }
 bool UBLessonHistory::saveSession(bool clean,const QString &checkpointError){QJsonArray ids;for(const auto &id:mTouched)ids.append(id);QJsonObject o;o["clean"]=clean;if(!checkpointError.isEmpty())o["checkpointError"]=checkpointError;o["documents"]=ids;o["time"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);if(!writeObject(mRoot+"/session.json",o)){mError=tr("Cannot save the recovery session marker.");return false;}return true;}
 bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
+    return saveSnapshot(keepVersion,error,force,false);
+}
+bool UBLessonHistory::saveSnapshot(bool keepVersion,QString *error,bool force,bool recordDeletion) {
     auto fail=[&](const QString &message){if(error)*error=message;return false;};
     if(mBusy)return fail(tr("A recovery save is already running."));
     auto board=UBApplication::boardController;
@@ -104,6 +107,7 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
         if(relative!="metadata.rdf"){content.addData(relative.toUtf8());content.addData(hash.toLatin1());}
     }
     const QString digest=QString::fromLatin1(content.result().toHex());
+    if(recordDeletion){mClearedDigests.insert(id,digest);mError.clear();return true;}
     // Delete all stays empty for unchanged content, including across restarts.
     // New work, or an explicit Create saved version, resumes recovery normally.
     if(!force&&mClearedDigests.value(id)==digest){mError.clear();return true;}
@@ -142,13 +146,13 @@ bool UBLessonHistory::clearHistory(QString *error)
     auto fail=[&](const QString &message){mError=message;if(error)*error=message;return false;};
     const QDir root(mRoot);const auto live=QDir(UBSettings::userDocumentDirectory()).canonicalPath();
     if(!live.isEmpty()&&root.canonicalPath()==live)return fail(tr("The history folder cannot be the Documents folder."));
-    // Include edits made since the last automatic backup in the deletion
-    // baseline, so closing immediately does not recreate the deleted history.
-    if(!checkpoint(false,error))return false;
     const auto folders=root.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name);
     for(const auto &id:folders)if(validId(id)){
         const auto digest=readObject(root.filePath(id+"/recovery.json")).value("digest").toString();if(!digest.isEmpty())mClearedDigests.insert(id,digest);
     }
+    // Record current content without creating another backup. Deletion must
+    // also work when the recovery storage itself is damaged or unwritable.
+    if(!saveSnapshot(false,error,false,true))return false;
     if(!saveRecoveryNotice(error))return false;
     for(const auto &id:folders)if(validId(id)){
         const QString path=root.filePath(id);

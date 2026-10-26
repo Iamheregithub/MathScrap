@@ -22,6 +22,7 @@ public:
     QString rootPath() const { return mRoot; }
     QString lastError() const { return mError; }
 private:
+    bool saveSnapshot(bool keepVersion, QString *error, bool force, bool recordDeletion);
     bool saveSession(bool clean, const QString &checkpointError = {});
     bool saveRecoveryNotice(QString *error);
     void prune(const QString &id);
