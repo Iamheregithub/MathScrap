@@ -1,0 +1,5 @@
+# The generated worker embeds these sources verbatim. Keep identical bytes on Windows.
+resources/library/applications/FunctionCalculator.wgt/engine.js text eol=lf
+resources/library/applications/FunctionCalculator.wgt/worker.js text eol=lf
+resources/library/applications/FunctionCalculator.wgt/vendor/nerdamer.js text eol=lf
+resources/library/applications/FunctionCalculator.wgt/exact-worker-source.js text eol=lf

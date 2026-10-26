@@ -25,6 +25,7 @@ public:
     QString rootPath() const { return mRoot; }
     QString lastError() const { return mError; }
 private:
+    friend struct UBLessonHistoryTestAccess;
     bool saveSnapshot(bool keepVersion, QString *error, bool force, bool recordDeletion);
     bool saveSession(bool clean, const QString &checkpointError = {});
     bool saveRecoveryNotice(QString *error);

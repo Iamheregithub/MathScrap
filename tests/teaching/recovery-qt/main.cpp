@@ -3,13 +3,19 @@
 #include <QtConcurrent>
 #include <QtTest>
 #include "stubs.h"
-#define private public
 #include "UBLessonHistory.h"
-#undef private
 #include "UBInputActivity.h"
 #include "UBLessonBackupStore.h"
 #include <atomic>
 #include <thread>
+
+// Access through a friend rather than redefining private: MSVC encodes access
+// in method symbols, so changing it in only one translation unit cannot link.
+struct UBLessonHistoryTestAccess {
+    static void start(UBLessonHistory &h){h.startAutomaticCheckpoint();}
+    static bool draining(const UBLessonHistory &h){return h.mDraining;}
+    static bool backingUp(const UBLessonHistory &h){return h.mBackingUp;}
+};
 
 namespace {
 int checks=0;
@@ -17,7 +23,7 @@ void check(bool ok,const char *description){++checks;if(!ok)qFatal("FAIL: %s",de
 QByteArray bytes(const QString &path){QFile f(path);if(!f.open(QIODevice::ReadOnly))return {};return f.readAll();}
 void put(const QString &path,const QByteArray &data){QSaveFile f(path);check(f.open(QIODevice::WriteOnly)&&f.write(data)==data.size()&&f.commit(),"write fixture");}
 QJsonObject json(const QString &path){return QJsonDocument::fromJson(bytes(path)).object();}
-void settle(UBLessonHistory &history){QElapsedTimer deadline;deadline.start();while((history.mDraining||history.mBackingUp)&&deadline.elapsed()<10000)QTest::qWait(5);check(!history.mDraining&&!history.mBackingUp,"automatic checkpoint completes");}
+void settle(UBLessonHistory &history){QElapsedTimer deadline;deadline.start();while((UBLessonHistoryTestAccess::draining(history)||UBLessonHistoryTestAccess::backingUp(history))&&deadline.elapsed()<10000)QTest::qWait(5);check(!UBLessonHistoryTestAccess::draining(history)&&!UBLessonHistoryTestAccess::backingUp(history),"automatic checkpoint completes");}
 void activity(QWidget &target){QMouseEvent e(QEvent::MouseButtonRelease,QPointF(1,1),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);QApplication::sendEvent(&target,&e);}
 }
 int main(int argc,char **argv){
@@ -39,28 +45,28 @@ int main(int argc,char **argv){
     check(bytes(board.doc->persistencePath()+"/page000.svg")=="original writing","restore leaves live lesson intact");
 
     activity(target);check(!UBInputActivity::instance()->isIdle(),"input postpones background work");
-    history.startAutomaticCheckpoint();check(!history.mDraining,"automatic checkpoint does not begin between letters");
+    UBLessonHistoryTestAccess::start(history);check(!UBLessonHistoryTestAccess::draining(history),"automatic checkpoint does not begin between letters");
     QTest::qWait(1600);
-    board.scene->pressed=true;history.startAutomaticCheckpoint();check(!history.mDraining,"held stroke postpones automatic checkpoint");board.scene->pressed=false;
+    board.scene->pressed=true;UBLessonHistoryTestAccess::start(history);check(!UBLessonHistoryTestAccess::draining(history),"held stroke postpones automatic checkpoint");board.scene->pressed=false;
     Fixture::holdDrain=true;
-    QElapsedTimer call;call.start();history.startAutomaticCheckpoint();
-    check(call.elapsed()<100&&history.mDraining,"automatic drain returns without blocking GUI");
+    QElapsedTimer call;call.start();UBLessonHistoryTestAccess::start(history);
+    check(call.elapsed()<100&&UBLessonHistoryTestAccess::draining(history),"automatic drain returns without blocking GUI");
     check(Fixture::enteredDrain.tryAcquire(1,1000),"worker entered pending-write drain");
     int ticks=0;QTimer heartbeat;heartbeat.setInterval(5);QObject::connect(&heartbeat,&QTimer::timeout,[&]{++ticks;});heartbeat.start();QTest::qWait(50);
     check(ticks>=3,"GUI remains responsive while disk queue is blocked");
     const int before=Fixture::pageWrites;board.scene->modified=true;board.scene->text="writing resumed during drain";activity(target);
     Fixture::holdDrain=false;Fixture::releaseDrain.release();settle(history);
     check(Fixture::pageWrites==before,"resumed writing cancels preparation after drain");
-    QTest::qWait(1600);history.startAutomaticCheckpoint();settle(history);
+    QTest::qWait(1600);UBLessonHistoryTestAccess::start(history);settle(history);
     check(Fixture::pageWrites==before+1,"automatic checkpoint serializes only once");
     check(json(manifest).value("files").toArray().size()==2,"automatic checkpoint publishes readable manifest");
 
     // A long disk job runs off-thread while input/timers continue on the GUI.
     const auto asset=board.doc->persistencePath()+"/asset.bin";
     put(asset,QByteArray(48*1024*1024,'x'));
-    ticks=0;history.startAutomaticCheckpoint();
-    QElapsedTimer deadline;deadline.start();while(!history.mBackingUp&&deadline.elapsed()<3000)QTest::qWait(1);
-    check(history.mBackingUp,"repository backup launched asynchronously");
+    ticks=0;UBLessonHistoryTestAccess::start(history);
+    QElapsedTimer deadline;deadline.start();while(!UBLessonHistoryTestAccess::backingUp(history)&&deadline.elapsed()<3000)QTest::qWait(1);
+    check(UBLessonHistoryTestAccess::backingUp(history),"repository backup launched asynchronously");
     activity(target);QTest::qWait(30);check(ticks>0,"GUI processes input while backup hashes and copies files");
     check(history.clearHistory(&error)&&!QFile::exists(manifest),"Delete all waits for worker and removes its published history");
     QTest::qWait(30);check(!QFile::exists(manifest),"no late completion recreates deleted recovery history");
