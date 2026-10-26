@@ -921,7 +921,7 @@ bool checkEraseAll(QString *error)
     tap();tap();settle(QApplication::doubleClickInterval()+80);
     if(eraser->text()!=QObject::tr("Erase All")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Stylus double-tap to Erase All modified the page");
     tap();settle(QApplication::doubleClickInterval()+80);const auto after=render();
-    if(strokes()!=0||shape->scene()!=scene.get()||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
+    if(strokes()!=0||shape->scene()!=scene||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
     UBApplication::undoStack->undo();if(render()!=before||strokes()!=strokeCount)return fail("Erase All Undo did not restore handwriting and highlighting");
     UBApplication::undoStack->redo();if(render()!=after||strokes()!=0)return fail("Erase All Redo did not restore cleared result");
     UBApplication::undoStack->undo();const int restoredUndo=UBApplication::undoStack->index();
