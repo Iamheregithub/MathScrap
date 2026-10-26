@@ -9,6 +9,7 @@
 #include <QPointF>
 #include <QRectF>
 class UBMainWindow;
+class QWidget;
 class QAction;
 class UBGraphicsSvgItem;
 class UBLessonHistory;
@@ -28,6 +29,7 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
+    bool deleteAllHistory(QWidget *parent);
     void createCoverToolbar();
     void armCover();
     void cancelCoverDrag();

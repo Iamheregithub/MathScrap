@@ -40,6 +40,19 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
     if(mDisabled)return;
     QDir().mkpath(mRoot);
     const auto previous=readObject(mRoot+"/session.json");mUnclean=!previous.isEmpty()&&!previous.value("clean").toBool();
+    const auto notice=readObject(mRoot+"/recovery-notice.json");
+    const auto cleared=notice.value("cleared").toObject();for(auto it=cleared.begin();it!=cleared.end();++it)if(validId(it.key()))mClearedDigests.insert(it.key(),it.value().toString());
+    if(mUnclean||!previous.value("checkpointError").toString().isEmpty()){
+        QCryptographicHash key(QCryptographicHash::Sha256);int copies=0;
+        for(const auto &value:documents()){
+            const auto info=value.toObject();const auto snapshot=readObject(mRoot+"/"+info.value("id").toString()+"/recovery.json");
+            if(snapshot.value("files").toArray().isEmpty())continue;
+            key.addData(info.value("id").toString().toUtf8());key.addData(QByteArray(1,'\0'));
+            key.addData(snapshot.value("digest").toString().isEmpty()?QJsonDocument(snapshot).toJson(QJsonDocument::Compact):snapshot.value("digest").toString().toLatin1());++copies;
+        }
+        if(copies)mRecoveryNoticeKey=QString::fromLatin1(key.result().toHex());
+        mRecoveryAcknowledged=!mRecoveryNoticeKey.isEmpty()&&notice.value("acknowledged").toString()==mRecoveryNoticeKey;
+    }
     for(const auto &id:previous.value("documents").toArray())mTouched.insert(id.toString());
     saveSession(false);
     if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write"){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
@@ -48,12 +61,15 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this]{
         // The save-lifecycle fixture exercises the same final checkpoint as a
         // normal lesson session, while the older tool fixtures remain isolated.
-        const bool exerciseNormalExit=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write";
-        QString error;const bool saved=(mTesting&&!exerciseNormalExit)||checkpoint(true,&error);saveSession(saved);
+        const bool exerciseNormalExit=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="recovery-dismiss"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="recovery-delete"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-checkpoint-failure";
+        QString error;const bool saved=(mTesting&&!exerciseNormalExit)||checkpoint(true,&error);
+        // A failed backup is not a crashed process. Preserve its error separately.
+        if(!saved)qWarning()<<"Recovery checkpoint failed during orderly exit:"<<error;
+        saveSession(true,saved?QString():error);
     });
 }
-bool UBLessonHistory::saveSession(bool clean){QJsonArray ids;for(const auto &id:mTouched)ids.append(id);QJsonObject o;o["clean"]=clean;o["documents"]=ids;o["time"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);if(!writeObject(mRoot+"/session.json",o)){mError=tr("Cannot save the recovery session marker.");return false;}return true;}
-bool UBLessonHistory::checkpoint(bool keepVersion,QString *error) {
+bool UBLessonHistory::saveSession(bool clean,const QString &checkpointError){QJsonArray ids;for(const auto &id:mTouched)ids.append(id);QJsonObject o;o["clean"]=clean;if(!checkpointError.isEmpty())o["checkpointError"]=checkpointError;o["documents"]=ids;o["time"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);if(!writeObject(mRoot+"/session.json",o)){mError=tr("Cannot save the recovery session marker.");return false;}return true;}
+bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
     auto fail=[&](const QString &message){if(error)*error=message;return false;};
     if(mBusy)return fail(tr("A recovery save is already running."));
     auto board=UBApplication::boardController;
@@ -67,7 +83,6 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error) {
     const QString id=doc->uuid().toString(QUuid::WithoutBraces);
     if(!validId(id))return fail(tr("The lesson has no valid identifier."));
     const QString folder=mRoot+"/"+id, blobs=folder+"/blobs";
-    if(!QDir().mkpath(blobs)||!QDir().mkpath(folder+"/versions"))return fail(tr("Cannot create the lesson history folder."));
     const QDir source(doc->persistencePath());QDirIterator iterator(source.absolutePath(),QDir::Files|QDir::Hidden|QDir::NoDotAndDotDot,QDirIterator::Subdirectories);
     QStringList paths;while(iterator.hasNext()){iterator.next();if(iterator.fileInfo().isSymLink())return fail(tr("Linked files cannot be included in recovery copies."));if(!iterator.fileName().contains(".thumbnail.")&&!iterator.fileName().startsWith('.'))paths<<source.relativeFilePath(iterator.filePath());}paths.sort();
     QJsonArray entries;QCryptographicHash content(QCryptographicHash::Sha256);
@@ -77,13 +92,20 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error) {
         const bool immutableAsset=relative.endsWith(".pdf",Qt::CaseInsensitive)||relative.endsWith(".png",Qt::CaseInsensitive)||relative.endsWith(".jpg",Qt::CaseInsensitive);
         QString hash=immutableAsset?mFingerprints.value(fingerprint):QString();if(hash.isEmpty())hash=shaFile(path);
         if(hash.isEmpty())return fail(tr("Cannot read %1.").arg(relative));
-        if(!QFile::exists(blobs+"/"+hash)){if(!atomicCopy(path,blobs+"/"+hash)||shaFile(blobs+"/"+hash)!=hash)return fail(tr("Could not verify the recovery copy of %1.").arg(relative));}
         mFingerprints.insert(fingerprint,hash);
         QJsonObject entry;entry["path"]=relative;entry["sha256"]=hash;entries.append(entry);
         // Metadata contains a save timestamp. It is retained, but does not create redundant versions.
         if(relative!="metadata.rdf"){content.addData(relative.toUtf8());content.addData(hash.toLatin1());}
     }
-    const QString digest=QString::fromLatin1(content.result().toHex());auto previous=readObject(folder+"/recovery.json");
+    const QString digest=QString::fromLatin1(content.result().toHex());
+    // Delete all stays empty for unchanged content, including across restarts.
+    // New work, or an explicit Create saved version, resumes recovery normally.
+    if(!force&&mClearedDigests.value(id)==digest){mError.clear();return true;}
+    if(!QDir().mkpath(blobs)||!QDir().mkpath(folder+"/versions"))return fail(tr("Cannot create the lesson history folder."));
+    for(const auto &value:entries){const auto entry=value.toObject();const auto hash=entry.value("sha256").toString(),relative=entry.value("path").toString();
+        if(!QFile::exists(blobs+"/"+hash)&&(!atomicCopy(source.filePath(relative),blobs+"/"+hash)||shaFile(blobs+"/"+hash)!=hash))return fail(tr("Could not verify the recovery copy of %1.").arg(relative));
+    }
+    auto previous=readObject(folder+"/recovery.json");
     QJsonObject snapshot;snapshot["name"]=doc->name();snapshot["id"]=id;snapshot["created"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);snapshot["digest"]=digest;snapshot["files"]=entries;
     const auto oldVersions=versions(id);QJsonObject last;
     for(const auto &v:oldVersions)if(v.toObject().value("file")!="recovery.json"){last=v.toObject();break;}
@@ -95,6 +117,33 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error) {
     }
     if(changed||previous.isEmpty())if(!writeObject(folder+"/recovery.json",snapshot))return fail(tr("Cannot commit the recovery copy."));
     mTouched.insert(id);if(!saveSession(false))return fail(mError);prune(id);mError.clear();return true;
+}
+bool UBLessonHistory::saveRecoveryNotice(QString *error)
+{
+    QJsonObject cleared;for(auto it=mClearedDigests.begin();it!=mClearedDigests.end();++it)cleared[it.key()]=it.value();
+    if(writeObject(mRoot+"/recovery-notice.json",{{"acknowledged",mRecoveryNoticeKey},{"cleared",cleared}}))return true;
+    mError=tr("Cannot remember the recovery choice. Check that the lesson history folder is writable.");if(error)*error=mError;return false;
+}
+bool UBLessonHistory::acknowledgeRecoveryPrompt(QString *error)
+{
+    if(!saveRecoveryNotice(error))return false;mRecoveryAcknowledged=true;return true;
+}
+bool UBLessonHistory::clearHistory(QString *error)
+{
+    auto fail=[&](const QString &message){mError=message;if(error)*error=message;return false;};
+    const QDir root(mRoot);const auto live=QDir(UBSettings::userDocumentDirectory()).canonicalPath();
+    if(!live.isEmpty()&&root.canonicalPath()==live)return fail(tr("The history folder cannot be the Documents folder."));
+    const auto folders=root.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name);
+    for(const auto &id:folders)if(validId(id)){
+        const auto digest=readObject(root.filePath(id+"/recovery.json")).value("digest").toString();if(!digest.isEmpty())mClearedDigests.insert(id,digest);
+    }
+    if(!saveRecoveryNotice(error))return false;
+    for(const auto &id:folders)if(validId(id)){
+        const QString path=root.filePath(id);
+        if(!(QFileInfo(path).isSymLink()?QFile::remove(path):QDir(path).removeRecursively()))return fail(tr("Cannot remove all recovery history. Your lessons have not been deleted."));
+    }
+    mTouched.clear();mFingerprints.clear();mRecoveryAcknowledged=true;mError.clear();
+    if(!saveSession(false)){if(error)*error=mError;return false;}return true;
 }
 QJsonArray UBLessonHistory::documents() const {
     QJsonArray result;const QDir dir(mRoot);for(const auto &id:dir.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name))if(validId(id)){

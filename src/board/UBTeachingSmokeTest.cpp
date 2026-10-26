@@ -962,7 +962,10 @@ bool checkShapeToolbar(QString *error)
         for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())return svg;
         return nullptr;
     };
-    for(int type=0;type<7;++type){auto shape=draw(type,type==6);if(!shape)return fail(QString("Drag drawing failed for shape %1").arg(type));QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");if(type==3||type==5){int handles=0;for(auto h:shape->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(h))++handles;if(handles!=3)return fail("Triangle must have three vertex handles");}}
+    for(int type=0;type<8;++type){auto shape=draw(type,type==7);if(!shape)return fail(QString("Drag drawing failed for shape %1").arg(type));QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");if(type==6||type==7){const auto points=d.elementsByTagName("polygon").at(0).toElement().attribute("points").split(QRegularExpression("\\s+"),Qt::SkipEmptyParts);if(points.size()!=(type==7?5:4))return fail("Pentagon or legacy diamond geometry changed");}if(type==3||type==5){int handles=0;for(auto h:shape->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(h))++handles;if(handles!=3)return fail("Triangle must have three vertex handles");}}
+    int visibleShapes=0;bool pentagon=false,diamond=false;
+    for(auto b:bar->findChild<QWidget*>("compactShapePanel")->findChildren<QToolButton*>())if(b->defaultAction()){++visibleShapes;pentagon|=b->defaultAction()->objectName()=="lessonShape7";diamond|=b->defaultAction()->objectName()=="lessonShape6";}
+    if(visibleShapes!=7||!pentagon||diamond)return fail("Shapes tray did not replace Diamond with Pentagon");
     auto stylePage=manager->createDocumentSceneAt(doc,1,false);board->setActiveDocumentScene(doc,1);scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
     auto target=draw(0);if(!target)return fail("Cannot draw styled rectangle");
     auto before=target->fileData();width->setCurrentIndex(width->findData(8.));style->setCurrentIndex(1);opacity->setValue(35);

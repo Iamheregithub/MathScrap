@@ -209,6 +209,76 @@ bool penToolbarWorkflow(QString *error)
 void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE");const QString reportPath=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT");const QDir output=QFileInfo(reportPath).dir();QJsonObject report;report["mode"]=mode;
     auto done=[&](bool passed,const QString &detail){report["passed"]=passed;report["detail"]=detail;write(reportPath,report);qApp->exit(passed?0:31);};
     auto tools=UBApplication::mainWindow->findChild<UBLessonTools*>("lessonTools");if(!tools){done(false,"Lesson tools unavailable");return;}auto history=tools->history();auto board=UBApplication::boardController;auto manager=UBPersistenceManager::persistenceManager();QString error;
+    auto stopWithoutExit=[&]{
+#ifdef Q_OS_WIN
+        TerminateProcess(GetCurrentProcess(),89);
+#else
+        std::_Exit(89);
+#endif
+    };
+    if(mode.startsWith("recovery-")||mode=="save-checkpoint-failure"){
+        const QString statePath=output.filePath("recovery-notice-state.json");
+        if(mode=="recovery-empty-seed"){report["prepared"]=true;write(reportPath,report);stopWithoutExit();return;}
+        if(mode=="recovery-empty-reopen"){
+            if(!history->uncleanSessionDetected()||history->recoveryPromptPending()||UBApplication::mainWindow->property("recoveryPromptShown").toBool()){done(false,"Empty history produced a recovery prompt");return;}
+            done(true,"An unclean marker without recovery copies does not prompt");return;
+        }
+        if(mode=="recovery-seed"){
+            auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Recovery notice fixture",true);board->setActiveDocumentScene(doc,0);
+            const QString marker="Recovery fixture "+QUuid::createUuid().toString();auto scene=board->activeScene();scene->addText(marker,QPointF(-160,-100));
+            UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Pen);scene->inputDevicePress(QPointF(-100,0));scene->inputDeviceMove(QPointF(100,0));scene->inputDeviceRelease();
+            if(!history->checkpoint(true,&error)){done(false,error);return;}
+            QJsonObject state{{"lessonId",doc->uuid().toString(QUuid::WithoutBraces)},{"lessonPath",doc->persistencePath()},{"marker",marker}};
+            state["digest"]=read(history->rootPath()+"/"+state.value("lessonId").toString()+"/recovery.json").value("digest");write(statePath,state);
+            report["prepared"]=true;write(reportPath,report);stopWithoutExit();return;
+        }
+        const auto state=read(statePath);if(state.isEmpty()){done(false,"Recovery notice state missing");return;}
+        auto doc=std::make_shared<UBDocumentProxy>(state.value("lessonPath").toString());auto scene=manager->loadDocumentScene(doc,0,false);
+        int strokes=0;if(scene)for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)++strokes;
+        if(!scene||!sceneText(scene).contains(state.value("marker").toString())||!strokes){done(false,"The saved lesson changed or disappeared while handling recovery history");return;}
+        board->setActiveDocumentScene(doc,0);
+        if(mode=="save-checkpoint-failure"){
+            if(!history->checkpoint(true,&error,true)){done(false,error);return;}
+            const QString blobs=history->rootPath()+"/"+state.value("lessonId").toString()+"/blobs",held=blobs+"-held";
+            if(!QDir().rename(blobs,held)){done(false,"Cannot prepare a backup-write failure");return;}QFile blocker(blobs);if(!blocker.open(QIODevice::WriteOnly)){done(false,"Cannot block backup folder for test");return;}blocker.write("Test blocker");blocker.close();
+            report["blocked"]=blobs;report["held"]=held;report["prepared"]=true;write(reportPath,report);UBApplication::mainWindow->close();return;
+        }
+        const bool shown=UBApplication::mainWindow->property("recoveryPromptShown").toBool();
+        const bool dismissed=mode=="recovery-dismiss"||mode=="recovery-dismiss-crash"||mode=="recovery-failure-dismiss";
+        if(dismissed||mode=="recovery-review"){
+            if(!shown||history->recoveryPromptPending()||history->documents().isEmpty()){done(false,"Recovery dismissal was not remembered or removed copies");return;}
+            if(mode=="recovery-failure-dismiss"&&history->uncleanSessionDetected()){done(false,"Backup failure was misreported as a crash");return;}
+            if(mode=="recovery-review"&&!UBApplication::mainWindow->property("recoveryReviewVisited").toBool()){done(false,"Review did not open readable recovery history");return;}
+            auto restored=history->restoreCopy(state.value("lessonId").toString(),"recovery.json",&error);
+            if(!restored||!sceneText(manager->loadDocumentScene(restored,0)).contains(state.value("marker").toString())){done(false,"Dismissal damaged recovery copies: "+error);return;}
+            board->setActiveDocumentScene(doc,0);report["prepared"]=true;report["passed"]=true;report["detail"]="Recovery prompt choice persisted and copies remained restorable";write(reportPath,report);
+            if(mode=="recovery-dismiss-crash")stopWithoutExit();else if(mode=="recovery-dismiss")UBApplication::mainWindow->close();else done(true,report.value("detail").toString());return;
+        }
+        if(mode=="recovery-delete-cancel"){
+            if(!shown||!UBApplication::mainWindow->property("recoveryDeleteCancelled").toBool()||history->documents().isEmpty()){done(false,"Cancelling Delete all removed recovery copies");return;}
+            report["prepared"]=true;write(reportPath,report);stopWithoutExit();return;
+        }
+        if(mode=="recovery-delete"){
+            if(!shown||!UBApplication::mainWindow->property("recoveryDeleteConfirmed").toBool()||!history->documents().isEmpty()||history->recoveryPromptPending()){done(false,"Confirmed Delete all did not clear history and its prompt");return;}
+            report["prepared"]=true;write(reportPath,report);UBApplication::mainWindow->close();return;
+        }
+        if(mode=="recovery-delete-reopen"||mode=="recovery-explicit-version"){
+            if(shown||history->recoveryPromptPending()||!history->documents().isEmpty()){done(false,"Deleted history or prompt returned on restart");return;}
+            if(!history->checkpoint(false,&error)||!history->documents().isEmpty()){done(false,"Unchanged content recreated deleted history");return;}
+            if(mode=="recovery-explicit-version"){
+                UBApplication::mainWindow->findChild<QAction*>("actionLessonSaveVersion")->trigger();
+                if(history->documents().isEmpty()){done(false,"Explicit saved version did not resume recovery after Delete all");return;}
+            }
+            done(true,"Deleted history stayed empty across restart; live lesson and pen strokes were retained");return;
+        }
+        if(mode=="recovery-reopen"||mode=="recovery-reopen-ack"){
+            if(shown||history->recoveryPromptPending()||history->documents().isEmpty()){done(false,"Dismissed recovery prompt returned without new recoverable work");return;}
+            if(mode=="recovery-reopen"&&history->uncleanSessionDetected()){done(false,"An orderly exit was marked unclean");return;}
+            if(mode=="recovery-reopen-ack"&&!history->uncleanSessionDetected()){done(false,"The interrupted-session fixture did not remain unclean");return;}
+            done(true,"Dismissed copies remain available without repeatedly prompting after restart");return;
+        }
+        done(false,"Unknown recovery test mode");return;
+    }
     if(mode=="save-write"){
         if(history->uncleanSessionDetected()){done(false,"Save fixture started with an unclean session");return;}
         auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Normal exit save fixture",true);
@@ -290,4 +360,24 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
     done(false,"Unknown lesson tools test mode");
 }
 }
-void scheduleLessonToolsTest(QObject *context){QTimer::singleShot(120000,context,[]{qCritical("Lesson tools test timed out");qApp->exit(32);});QTimer::singleShot(7000,context,run);}
+void scheduleLessonToolsTest(QObject *context){
+    const auto mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE");
+    if(mode.startsWith("recovery-")){
+        auto poll=new QTimer(context);poll->setInterval(80);QObject::connect(poll,&QTimer::timeout,context,[mode]{
+            auto window=UBApplication::mainWindow;auto modal=QApplication::activeModalWidget();if(!modal)return;
+            if(auto box=qobject_cast<QMessageBox*>(modal)){
+                if(box->objectName()=="lessonRecoveryPrompt"){
+                    box->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("recovery-prompt-window.png"));
+                    if(mode=="recovery-delete"||mode=="recovery-delete-cancel")box->findChild<QPushButton*>("deleteAllRecovery")->click();
+                    else box->button(mode=="recovery-review"?QMessageBox::Yes:QMessageBox::No)->click();
+                }else if(box->objectName()=="confirmDeleteRecoveryHistory"){
+                    const bool cancel=mode=="recovery-delete-cancel";window->setProperty(cancel?"recoveryDeleteCancelled":"recoveryDeleteConfirmed",true);
+                    box->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("recovery-delete-window.png"));box->button(cancel?QMessageBox::Cancel:QMessageBox::Yes)->click();
+                }
+            }else if(modal->objectName()=="lessonRecoveryHistory"&&mode=="recovery-review"){
+                auto list=modal->findChild<QListWidget*>();auto remove=modal->findChild<QPushButton*>("deleteAllRecoveryHistory");window->setProperty("recoveryReviewVisited",list&&list->count()>0&&remove&&remove->isEnabled());modal->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("recovery-history-window.png"));qobject_cast<QDialog*>(modal)->accept();
+            }
+        });poll->start();
+    }
+    QTimer::singleShot(120000,context,[]{qCritical("Lesson tools test timed out");qApp->exit(32);});QTimer::singleShot(7000,context,run);
+}

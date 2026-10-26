@@ -23,3 +23,5 @@ foreach ($scenario in @('autosaved','quick')) {
     }
 }
 Remove-Item Env:LESSONBOARD_TOOLS_TEST_MODE,Env:LESSONBOARD_TOOLS_TEST_REPORT,Env:LESSONBOARD_HISTORY_TEST_ROOT,Env:LESSONBOARD_SAVE_QUICK -ErrorAction SilentlyContinue
+
+& (Join-Path $PSScriptRoot "test-recovery-notice.ps1")

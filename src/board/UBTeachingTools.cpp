@@ -476,6 +476,8 @@ QPainterPath UBTeachingTools::shapePath(const QRectF &r) const
         QPolygonF vertices;
         if (mShapeType == 3) vertices << QPointF(r.center().x(),r.top()) << r.bottomRight() << r.bottomLeft();
         else if (mShapeType == 5) vertices << r.topLeft() << r.bottomRight() << r.bottomLeft();
+        else if(mShapeType==7)vertices << QPointF(r.center().x(),r.top()) << QPointF(r.right(),r.top()+r.height()*.382)
+                        << QPointF(r.left()+r.width()*.809,r.bottom()) << QPointF(r.left()+r.width()*.191,r.bottom()) << QPointF(r.left(),r.top()+r.height()*.382);
         else vertices << QPointF(r.center().x(),r.top()) << QPointF(r.right(),r.center().y())
                       << QPointF(r.center().x(),r.bottom()) << QPointF(r.left(),r.center().y());
         p.addPolygon(vertices); p.closeSubpath();
@@ -547,7 +549,7 @@ void UBTeachingTools::syncShapeSelection()
     const auto g=groups.at(0).toElement();
     mSyncingShape=true;
     auto metadata=doc.elementsByTagName("metadata");
-    if(!metadata.isEmpty())mShapeType=qBound(0,metadata.at(0).toElement().text().toInt(),6);
+    if(!metadata.isEmpty())mShapeType=qBound(0,metadata.at(0).toElement().text().toInt(),7);
     mShapeChoices[mShapeType]->setChecked(true);
     mNoBorder=g.attribute("stroke")=="none"; if(!mNoBorder)mShapeBorder=QColor(g.attribute("stroke"));
     mNoFill=g.attribute("fill","none")=="none"; if(!mNoFill)mShapeFill=QColor(g.attribute("fill"));
@@ -592,7 +594,7 @@ void UBTeachingTools::createShapeToolbar()
     mShapeBorder=settings->value("Teaching/ShapeBorder",QColor(Qt::black)).value<QColor>();
     mShapeFill=settings->value("Teaching/ShapeFill",QColor("#ffdd00")).value<QColor>();
     mNoBorder=settings->value("Teaching/ShapeNoBorder",false).toBool();mNoFill=settings->value("Teaching/ShapeNoFill",true).toBool();
-    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),6);
+    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),7);if(mShapeType==6)mShapeType=7;
     mShapeBar=new QToolBar(tr("Shape controls"),mWindow);mShapeBar->setObjectName("lessonShapeToolbar");
     mShapeBar->setMovable(false);mShapeBar->setFloatable(false);mShapeBar->setIconSize(QSize(26,26));
     mShapeBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -603,13 +605,15 @@ void UBTeachingTools::createShapeToolbar()
     for(auto row:{shapes,appearance,finish}){row->setSpacing(5);rows->addLayout(row);}
     mShapeBar->addWidget(panel);
     auto group=new QActionGroup(this);group->setExclusive(true);
-    const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond")};
+    const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond"),tr("Pentagon")};
     for(int i=0;i<names.size();++i) {
         mShapeType=i;QPixmap pix(30,30);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#273b3b"),1.65));painter.setBrush(Qt::NoBrush);painter.drawPath(shapePath(QRectF(4,i==0?8:4,22,i==0?14:22)));painter.end();
-        auto action=new QAction(QIcon(pix),names[i],mShapeBar);auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setFixedSize(42,40);choice->setIconSize(QSize(26,26));shapes->addWidget(choice);action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
+        auto action=new QAction(QIcon(pix),names[i],mShapeBar);
+        // Keep the legacy diamond ID for existing lessons, but replace its tray slot.
+        if(i!=6){auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setFixedSize(42,40);choice->setIconSize(QSize(26,26));shapes->addWidget(choice);}action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
         connect(action,&QAction::triggered,this,[this,i]{armShape(i);});
     }
-    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),6);mShapeChoices[mShapeType]->setChecked(true);
+    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),7);if(mShapeType==6)mShapeType=7;mShapeChoices[mShapeType]->setChecked(true);
     auto colourButton=[&](const QString &text,bool border) {
         auto button=new QToolButton;button->setText(text);button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);button->setPopupMode(QToolButton::InstantPopup);
         button->setObjectName(border?"lessonShapeBorder":"lessonShapeFill");auto menu=new QMenu(button);button->setMenu(menu);

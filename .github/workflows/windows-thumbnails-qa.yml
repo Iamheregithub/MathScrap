@@ -48,6 +48,9 @@ jobs:
       - name: Exercise Documents thumbnails and native interactions
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Exercise save, recovery dismissal and history deletion
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-save-lifecycle.ps1
       - name: Preserve report and screenshots
         if: always()
         uses: actions/upload-artifact@v4
