@@ -9,6 +9,7 @@
 #include "board/UBBoardController.h"
 #include "document/UBDocumentProxy.h"
 #include "domain/UBGraphicsScene.h"
+#include "frameworks/UBFileSystemUtils.h"
 namespace {
 QJsonObject readObject(const QString &path) {
     QFile f(path); if (!f.open(QIODevice::ReadOnly)) return {};
@@ -78,8 +79,13 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
     auto doc=board->selectedDocument();auto manager=UBPersistenceManager::persistenceManager();
     // Drain all earlier background saves before reading a consistent repository.
     manager->flushPendingWrites();
+    // Rewriting an unchanged page after loading can change its serialized
+    // representation (for example text layout) without any new lesson content.
+    // Retain the saved bytes so a deleted recovery copy stays deleted.
+    const QString pagePath=doc->persistencePath()+UBFileSystemUtils::digitFileFormat("/page%1.svg",board->activeSceneIndex());
+    const bool savePage=board->activeScene()->isModified()||!QFile::exists(pagePath);
     board->persistCurrentScene(true,true);
-    if(!UBSvgSubsetAdaptor::persistScene(doc,board->activeScene(),board->activeSceneIndex())||!UBMetadataDcSubsetAdaptor::persist(doc))return fail(tr("The current lesson could not be saved. The previous recovery copy was kept."));
+    if((savePage&&!UBSvgSubsetAdaptor::persistScene(doc,board->activeScene(),board->activeSceneIndex()))||!QFile::exists(pagePath)||!UBMetadataDcSubsetAdaptor::persist(doc))return fail(tr("The current lesson could not be saved. The previous recovery copy was kept."));
     const QString id=doc->uuid().toString(QUuid::WithoutBraces);
     if(!validId(id))return fail(tr("The lesson has no valid identifier."));
     const QString folder=mRoot+"/"+id, blobs=folder+"/blobs";
@@ -133,6 +139,9 @@ bool UBLessonHistory::clearHistory(QString *error)
     auto fail=[&](const QString &message){mError=message;if(error)*error=message;return false;};
     const QDir root(mRoot);const auto live=QDir(UBSettings::userDocumentDirectory()).canonicalPath();
     if(!live.isEmpty()&&root.canonicalPath()==live)return fail(tr("The history folder cannot be the Documents folder."));
+    // Include edits made since the last automatic backup in the deletion
+    // baseline, so closing immediately does not recreate the deleted history.
+    if(!checkpoint(false,error))return false;
     const auto folders=root.entryList(QDir::Dirs|QDir::NoDotAndDotDot,QDir::Name);
     for(const auto &id:folders)if(validId(id)){
         const auto digest=readObject(root.filePath(id+"/recovery.json")).value("digest").toString();if(!digest.isEmpty())mClearedDigests.insert(id,digest);

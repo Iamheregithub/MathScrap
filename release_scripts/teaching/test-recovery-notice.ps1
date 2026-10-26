@@ -29,7 +29,7 @@ Run-Recovery 'recovery-review'
 Run-Recovery 'recovery-seed' 89
 Run-Recovery 'recovery-delete-cancel' 89
 Run-Recovery 'recovery-delete'
-if (Get-ChildItem $env:LESSONBOARD_HISTORY_TEST_ROOT -Directory | Where-Object { $_.Name -match '^[0-9a-fA-F-]{36}$' }) { throw 'Delete all left lesson history folders after closing' }
+if (Get-ChildItem $env:LESSONBOARD_HISTORY_TEST_ROOT -Directory | Where-Object { $_.Name -match '^[0-9a-fA-F-]{36}$' }) { Get-Content (Join-Path $dist 'recovery-notice-state.json') | Write-Host; Get-Content (Join-Path $env:LESSONBOARD_HISTORY_TEST_ROOT 'recovery-notice.json') | Write-Host; Get-ChildItem $env:LESSONBOARD_HISTORY_TEST_ROOT -Filter recovery.json -Recurse | ForEach-Object { Get-Content $_.FullName | Write-Host }; Get-ChildItem $dist -Filter 'recovery-seed-page*.svg' | ForEach-Object { Get-Content $_.FullName | Write-Host }; $state = Get-Content (Join-Path $dist 'recovery-notice-state.json') -Raw | ConvertFrom-Json; Get-ChildItem $state.lessonPath -Filter 'page*.svg' | ForEach-Object { Get-Content $_.FullName | Write-Host }; throw 'Delete all left lesson history folders after closing' }
 Run-Recovery 'recovery-delete-reopen'
 Run-Recovery 'recovery-explicit-version'
 $failure = Run-Recovery 'save-checkpoint-failure'

@@ -230,6 +230,7 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
             if(!history->checkpoint(true,&error)){done(false,error);return;}
             QJsonObject state{{"lessonId",doc->uuid().toString(QUuid::WithoutBraces)},{"lessonPath",doc->persistencePath()},{"marker",marker}};
             state["digest"]=read(history->rootPath()+"/"+state.value("lessonId").toString()+"/recovery.json").value("digest");write(statePath,state);
+            for(const auto &name:QDir(doc->persistencePath()).entryList({"page*.svg"},QDir::Files)){QFile::remove(output.filePath("recovery-seed-"+name));QFile::copy(doc->persistencePath()+"/"+name,output.filePath("recovery-seed-"+name));}
             report["prepared"]=true;write(reportPath,report);stopWithoutExit();return;
         }
         const auto state=read(statePath);if(state.isEmpty()){done(false,"Recovery notice state missing");return;}
