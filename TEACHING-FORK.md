@@ -6,17 +6,19 @@ See [README.md](README.md) for features, controls and the current download.
 
 ## Current release
 
-**MathScrap 1.7.7.34**
+**MathScrap 1.7.7.35**
 
-- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.34)
-- Compiled source: [`a6312d6ec02c584ad0f6a53dd2c8e0491489763f`](https://github.com/Iamheregithub/MathScrap/commit/a6312d6ec02c584ad0f6a53dd2c8e0491489763f)
-- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40214101868)
-- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40214101851)
-- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40214101863)
+- [Release and installer](https://github.com/Iamheregithub/MathScrap/releases/tag/mathscrap-v1.7.7.35)
+- Compiled source: [`72d9b7c215e0d3272d7fffab109a6f6ef3fb7d5c`](https://github.com/Iamheregithub/MathScrap/commit/72d9b7c215e0d3272d7fffab109a6f6ef3fb7d5c)
+- [Windows build, native/exploratory checks, recovery, compatibility and packaging](https://github.com/Iamheregithub/MathScrap/actions/runs/40264631974)
+- [Development-branch DOM and Chromium security regression checks](https://github.com/Iamheregithub/MathScrap/actions/runs/40264631888)
+- [Development-branch CodeQL scan](https://github.com/Iamheregithub/MathScrap/actions/runs/40264631923)
 - Setup filename: `MathScrap-Windows-x64-Setup.exe`
 - SHA-256 checksum: use `SHA256SUMS.txt` attached to the release.
 
-This release fixes Windows pen input that opened Functions after drawing a shape but failed to select an equation. Stylus popup buttons now wait until the tip is released, then queue menu opening; chosen menu actions also run after the release finishes. This avoids Qt 6.8 popup forwarding and nested event handling leaving the pen-button state incomplete. The exact triangle → Functions → Pythagorean theorem sequence was reproduced using Windows synthetic pen injection, while direct Qt tablet packets had passed. Both now pass, and the native check requires spontaneous pen events, verifies equation insertion, then draws another triangle and applies Border and Fill swatches with the Windows pen. The compact three-row Shapes tray and 80% opacity remain included. Existing toolbar, drawing, Undo/Redo, document and recovery checks remain in the release gate. Physical Huion hardware validation remains a manual check.
+This release remembers recovery-prompt dismissal across restarts, adds confirmed Delete all controls to the prompt and Versions, and replaces Diamond with Pentagon in the Shapes tray. Deleted history stays empty for unchanged content, including edits present when deletion was confirmed. New content or an explicit saved version resumes recovery; returning to earlier content updates the recovery copy too. Deletion also works when recovery storage is damaged. Saved lessons in Documents remain intact. An orderly exit with a failed backup records its error separately from a crash.
+
+The Windows pen-input correction from 1.7.7.34 remains included and is retested in this release. The compact three-row Shapes tray, 80% opacity pen tray, toolbar, drawing, Undo/Redo, document and file-compatibility checks remain in the release gate. Physical Huion hardware validation remains a manual check.
 
 The installer is unsigned. Its per-user installation directory and internal profile retain the `OpenBoardTeaching` identifier so upgrades preserve settings and lessons. Existing OpenBoard installations use a separate profile. Exchange UBZ files to transfer lessons between the applications.
 
@@ -30,9 +32,10 @@ The workflow:
 2. Builds and stages the native application using [build-windows.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/build-windows.ps1).
 3. Runs native startup, drawing, formula, GraphDesk, document/PDF and workspace checks.
 4. Runs per-colour thickness, covers, saved-version and crash-recovery checks.
-5. Runs exploratory live-canvas checks across Pages states and zoom levels using [test-exploratory.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/test-exploratory.ps1).
-6. Builds an instrumented original OpenBoard 1.7.7 and round-trips generated lesson files.
-7. Creates the Inno Setup installer, computes its checksum, and publishes the release and validation artifacts.
+5. Runs normal-close/restart, recovery dismissal, review, deletion, new-work, damaged-storage and backup-error checks using [test-save-lifecycle.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/test-save-lifecycle.ps1).
+6. Runs exploratory live-canvas checks across Pages states and zoom levels using [test-exploratory.ps1](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/test-exploratory.ps1).
+7. Builds an instrumented original OpenBoard 1.7.7 and round-trips generated lesson files.
+8. Creates the Inno Setup installer, computes its checksum, and publishes the release and validation artifacts.
 
 The installer version is set in [OpenBoardTeaching.iss](https://github.com/Iamheregithub/MathScrap/blob/graphdesk-teaching-fork/release_scripts/teaching/OpenBoardTeaching.iss). Increase it for a new application release.
 
@@ -98,6 +101,8 @@ The [security-regression workflow](.github/workflows/security-regression.yml) ru
 The lesson format remains OpenBoard's UBZ format, version 4.8.0. Formula objects, GraphDesk graphs, shapes and covers carry metadata in SVG assets. Original OpenBoard can display these objects; MathScrap supplies the extra editing, triangle-vertex and cover-reveal controls.
 
 Recovery runs every 20 seconds when the application is not drawing or displaying a modal dialog. Changed lessons also receive retained versions. Restores create separate lessons rather than replacing the current lesson. Recovery history is separate from the configurable Documents folder; moving Documents does not move that history.
+
+**Not now** remembers dismissal for the available recovery copies, which remain accessible in Versions. **Delete all…** in the prompt and **Delete all history…** in Versions ask for confirmation, remove recovery copies and retained versions, and preserve saved lessons in Documents. Unchanged content stays cleared across restarts; new content or **Create saved version…** resumes recovery. Existing diamond objects retain their original shape identity and remain editable, while the tray offers Pentagon.
 
 The Windows compatibility checks create, import, edit, export and reopen generated lessons through both MathScrap and the original OpenBoard 1.7.7 source. They check page counts, PDF assets, text, drawing geometry/colours, SVG references and transforms, archive integrity and rendered pages. Original OpenBoard receives only a test entry point and isolated test profile; its readers and writers are unchanged.
 
