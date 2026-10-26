@@ -122,6 +122,9 @@ bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
         if(!writeObject(folder+"/versions/"+name,snapshot))return fail(tr("Cannot commit the saved version."));
     }
     if(changed||previous.isEmpty())if(!writeObject(folder+"/recovery.json",snapshot))return fail(tr("Cannot commit the recovery copy."));
+    // Once new work (or an explicit version) resumes history, the old
+    // deletion baseline must not suppress a later undo back to that content.
+    if(mClearedDigests.remove(id)&&!saveRecoveryNotice(error))return false;
     mTouched.insert(id);if(!saveSession(false))return fail(mError);prune(id);mError.clear();return true;
 }
 bool UBLessonHistory::saveRecoveryNotice(QString *error)

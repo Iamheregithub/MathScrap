@@ -230,7 +230,6 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
             if(!history->checkpoint(true,&error)){done(false,error);return;}
             QJsonObject state{{"lessonId",doc->uuid().toString(QUuid::WithoutBraces)},{"lessonPath",doc->persistencePath()},{"marker",marker}};
             state["digest"]=read(history->rootPath()+"/"+state.value("lessonId").toString()+"/recovery.json").value("digest");write(statePath,state);
-            for(const auto &name:QDir(doc->persistencePath()).entryList({"page*.svg"},QDir::Files)){QFile::remove(output.filePath("recovery-seed-"+name));QFile::copy(doc->persistencePath()+"/"+name,output.filePath("recovery-seed-"+name));}
             report["prepared"]=true;write(reportPath,report);stopWithoutExit();return;
         }
         const auto state=read(statePath);if(state.isEmpty()){done(false,"Recovery notice state missing");return;}
@@ -271,6 +270,24 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
                 if(history->documents().isEmpty()){done(false,"Explicit saved version did not resume recovery after Delete all");return;}
             }
             done(true,"Deleted history stayed empty across restart; live lesson and pen strokes were retained");return;
+        }
+        if(mode=="recovery-new-work"){
+            scene->addText("Edits before deleting history",QPointF(-160,-160));
+            if(!history->clearHistory(&error)||!history->documents().isEmpty()){done(false,"Cannot clear history with current edits: "+error);return;}
+            if(!history->checkpoint(false,&error)||!history->documents().isEmpty()){done(false,"Current edits from before Delete all recreated history");return;}
+            auto newText=scene->addText("New work after deleting history",QPointF(-160,-220));
+            if(!history->checkpoint(false,&error)||history->documents().isEmpty()){done(false,"New lesson content did not resume automatic recovery: "+error);return;}
+            auto restored=history->restoreCopy(state.value("lessonId").toString(),"recovery.json",&error);
+            const auto recovered=restored?sceneText(manager->loadDocumentScene(restored,0)):QString();
+            if(!recovered.contains("New work after deleting history")||!recovered.contains("Edits before deleting history")||!recovered.contains(state.value("marker").toString())){done(false,"New recovery copy lost lesson text: "+error);return;}
+            // Returning to the pre-change content must update recovery too.
+            board->setActiveDocumentScene(doc,0);
+            scene->QGraphicsScene::removeItem(newText);delete newText;scene->setModified(true);
+            if(!history->checkpoint(false,&error)){done(false,error);return;}
+            auto reverted=history->restoreCopy(state.value("lessonId").toString(),"recovery.json",&error);
+            const auto revertedText=reverted?sceneText(manager->loadDocumentScene(reverted,0)):QString();
+            if(!reverted||revertedText.contains("New work after deleting history")||!revertedText.contains("Edits before deleting history")){done(false,"Old deletion baseline suppressed recovery after returning to previous content");return;}
+            done(true,"Delete all includes current edits; new content resumes automatic recovery and remains restorable");return;
         }
         if(mode=="recovery-reopen"||mode=="recovery-reopen-ack"){
             if(shown||history->recoveryPromptPending()||history->documents().isEmpty()){done(false,"Dismissed recovery prompt returned without new recoverable work");return;}
