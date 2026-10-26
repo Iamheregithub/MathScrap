@@ -2,8 +2,9 @@
   "name": "openboard-teaching-tests",
   "private": true,
   "scripts": {
-    "test": "node graphdesk-dom.cjs && node security-dom.cjs && node help-templates.cjs",
-    "browser": "node graphdesk-smoke.cjs"
+    "test": "node graphdesk-dom.cjs && node security-dom.cjs && node help-templates.cjs && node calculator-engine.cjs",
+    "browser": "node graphdesk-smoke.cjs",
+    "calculator:browser": "node calculator-browser.cjs"
   },
   "devDependencies": {
     "jsdom": "30.1.2",

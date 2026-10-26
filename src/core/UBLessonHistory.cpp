@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBLessonHistory.h"
 #include <QtWidgets>
+#include <QtConcurrent>
+#include "UBInputActivity.h"
 #include "UBApplication.h"
 #include "UBSettings.h"
 #include "UBPersistenceManager.h"
@@ -23,12 +25,6 @@ QString shaFile(const QString &path) {
     QFile f(path);if(!f.open(QIODevice::ReadOnly))return {};
     QCryptographicHash h(QCryptographicHash::Sha256);if(!h.addData(&f))return {};
     return QString::fromLatin1(h.result().toHex());
-}
-bool atomicCopy(const QString &from,const QString &to) {
-    QFile input(from);QSaveFile output(to);
-    if(!input.open(QIODevice::ReadOnly)||!output.open(QIODevice::WriteOnly))return false;
-    while(!input.atEnd()){auto bytes=input.read(1024*1024);if(bytes.isEmpty()&&input.error()!=QFile::NoError)return false;if(output.write(bytes)!=bytes.size())return false;}
-    return output.commit();
 }
 bool validId(const QString &id){return QRegularExpression("^[0-9a-fA-F-]{36}$").match(id).hasMatch();}
 }
@@ -56,9 +52,29 @@ UBLessonHistory::UBLessonHistory(QObject *parent):QObject(parent) {
     }
     for(const auto &id:previous.value("documents").toArray())mTouched.insert(id.toString());
     saveSession(false);
-    if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write"){auto timer=new QTimer(this);timer->setInterval(20000);connect(timer,&QTimer::timeout,this,[this]{
-        if(!QApplication::activeModalWidget()&&QApplication::mouseButtons()==Qt::NoButton&&UBApplication::boardController->activeScene()&&!UBApplication::boardController->activeScene()->isInputDevicePressed()){QString error;if(!checkpoint(false,&error)&&!error.isEmpty()&&error!=mError){mError=error;UBApplication::showMessage(tr("Recovery save failed: %1").arg(error));}}
-    });timer->start();}
+    UBInputActivity::instance();
+    connect(&mDrainWatcher,&QFutureWatcher<void>::finished,this,[this]{
+        if(!mDraining || !mDrainWatcher.isFinished())return;
+        mDraining=false;
+        // The user may have resumed writing while the worker drained.
+        if(!readyForAutomaticSave())return;
+        QString error;UBLessonBackupJob job;
+        if(!prepareSnapshot(job,&error)){
+            if(!error.isEmpty())qWarning()<<"Recovery preparation failed:"<<error;
+            return;
+        }
+        mAutomaticJob=job;mBackingUp=true;mAutomaticDue=false;
+        mBackupWatcher.setFuture(QtConcurrent::run([job]{return UBLessonBackupStore::save(job);}));
+    });
+    connect(&mBackupWatcher,&QFutureWatcher<UBLessonBackupResult>::finished,this,[this]{
+        if(mBackingUp && mBackupWatcher.isFinished())finishAutomaticSave();
+    });
+    if(!mTesting||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="crash"||qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE")=="save-write"){
+        auto interval=new QTimer(this);interval->setInterval(20000);
+        connect(interval,&QTimer::timeout,this,[this]{mAutomaticDue=true;startAutomaticCheckpoint();});interval->start();
+        auto retry=new QTimer(this);retry->setInterval(500);
+        connect(retry,&QTimer::timeout,this,[this]{if(mAutomaticDue)startAutomaticCheckpoint();});retry->start();
+    }
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this]{
         // The save-lifecycle fixture exercises the same final checkpoint as a
         // normal lesson session, while the older tool fixtures remain isolated.
@@ -73,63 +89,93 @@ bool UBLessonHistory::saveSession(bool clean,const QString &checkpointError){QJs
 bool UBLessonHistory::checkpoint(bool keepVersion,QString *error,bool force) {
     return saveSnapshot(keepVersion,error,force,false);
 }
-bool UBLessonHistory::saveSnapshot(bool keepVersion,QString *error,bool force,bool recordDeletion) {
-    auto fail=[&](const QString &message){if(error)*error=message;return false;};
-    if(mBusy)return fail(tr("A recovery save is already running."));
+UBLessonHistory::~UBLessonHistory()
+{
+    finishAutomaticSave();
+}
+
+bool UBLessonHistory::readyForAutomaticSave() const
+{
+    const auto board=UBApplication::boardController;
+    return board && board->selectedDocument() && board->activeScene()
+        && !QApplication::activeModalWidget() && !QApplication::activePopupWidget()
+        && !board->activeScene()->isInputDevicePressed() && UBInputActivity::instance()->isIdle();
+}
+
+void UBLessonHistory::startAutomaticCheckpoint()
+{
+    if(mDisabled||mBusy||mDraining||mBackingUp||!readyForAutomaticSave())return;
+    // Wait for the serialization queue on a worker, never on the GUI thread.
+    // Only the completion callback may read the live scene.
+    mDraining=true;
+    auto manager=UBPersistenceManager::persistenceManager();
+    mDrainWatcher.setFuture(QtConcurrent::run([manager]{manager->flushPendingWrites();}));
+}
+
+void UBLessonHistory::finishAutomaticSave()
+{
+    if(mDraining){
+        mDrainWatcher.waitForFinished();
+        mDraining=false; // Also invalidates an already queued finished callback.
+    }
+    if(!mBackingUp)return;
+    mBackupWatcher.waitForFinished();
+    mBackingUp=false;
+    const auto result=mBackupWatcher.result();
+    QString error;
+    if(!applyBackupResult(mAutomaticJob,result,&error)){
+        mAutomaticDue=true;
+        if(!result.sourceChanged && !error.isEmpty())qWarning()<<"Recovery save failed:"<<error;
+    }
+}
+
+bool UBLessonHistory::prepareSnapshot(UBLessonBackupJob &job,QString *error)
+{
+    auto board=UBApplication::boardController;
+    if(!board||!board->selectedDocument()||!board->activeScene())return false;
+    QElapsedTimer elapsed;elapsed.start();
+    auto doc=board->selectedDocument();auto scene=board->activeScene();
+    job.root=mRoot;job.source=doc->persistencePath();job.name=doc->name();
+    job.id=doc->uuid().toString(QUuid::WithoutBraces);job.clearedDigest=mClearedDigests.value(job.id);
+    const QString pagePath=job.source+UBFileSystemUtils::digitFileFormat("/page%1.svg",board->activeSceneIndex());
+    const bool savePage=scene->isModified()||!QFile::exists(pagePath);
+    // Serialize the GUI-owned scene exactly once. The expensive repository
+    // scan, hashing, copy verification and pruning happen on the worker.
+    scene->saveWidgetSnapshots();
+    const bool saved=(!savePage||UBSvgSubsetAdaptor::persistScene(doc,scene,board->activeSceneIndex()))
+        && QFile::exists(pagePath) && UBMetadataDcSubsetAdaptor::persist(doc);
+    // Leave the scene's modified flag intact: normal persistence still needs
+    // to refresh its on-disk thumbnail. This path intentionally skips rendering
+    // a thumbnail on the handwriting thread.
+    if(elapsed.elapsed()>100)qWarning()<<"mathscrap.performance recovery preparation ms:"<<elapsed.elapsed();
+    if(!saved){if(error)*error=tr("The current lesson could not be saved. The previous recovery copy was kept.");return false;}
+    return true;
+}
+
+bool UBLessonHistory::applyBackupResult(const UBLessonBackupJob &job,const UBLessonBackupResult &result,QString *error)
+{
+    if(!result.success){if(error)*error=result.error;return false;}
+    if(job.recordDeletion){mClearedDigests.insert(job.id,result.digest);mError.clear();return true;}
+    if(result.suppressed){mError.clear();return true;}
+    if(mClearedDigests.remove(job.id)&&!saveRecoveryNotice(error))return false;
+    mTouched.insert(job.id);
+    if(!saveSession(false)){if(error)*error=mError;return false;}
+    mError.clear();return true;
+}
+
+bool UBLessonHistory::saveSnapshot(bool keepVersion,QString *error,bool force,bool recordDeletion)
+{
+    if(mBusy){if(error)*error=tr("A recovery save is already running.");return false;}
+    finishAutomaticSave();
     auto board=UBApplication::boardController;
     if(!board||!board->selectedDocument()||!board->activeScene())return true;
     QScopedValueRollback<bool> busy(mBusy,true);
-    auto doc=board->selectedDocument();auto manager=UBPersistenceManager::persistenceManager();
-    // Drain all earlier background saves before reading a consistent repository.
-    manager->flushPendingWrites();
-    // Rewriting an unchanged page after loading can change its serialized
-    // representation (for example text layout) without any new lesson content.
-    // Retain the saved bytes so a deleted recovery copy stays deleted.
-    const QString pagePath=doc->persistencePath()+UBFileSystemUtils::digitFileFormat("/page%1.svg",board->activeSceneIndex());
-    const bool savePage=board->activeScene()->isModified()||!QFile::exists(pagePath);
-    board->persistCurrentScene(true,true);
-    if((savePage&&!UBSvgSubsetAdaptor::persistScene(doc,board->activeScene(),board->activeSceneIndex()))||!QFile::exists(pagePath)||!UBMetadataDcSubsetAdaptor::persist(doc))return fail(tr("The current lesson could not be saved. The previous recovery copy was kept."));
-    const QString id=doc->uuid().toString(QUuid::WithoutBraces);
-    if(!validId(id))return fail(tr("The lesson has no valid identifier."));
-    const QString folder=mRoot+"/"+id, blobs=folder+"/blobs";
-    const QDir source(doc->persistencePath());QDirIterator iterator(source.absolutePath(),QDir::Files|QDir::Hidden|QDir::NoDotAndDotDot,QDirIterator::Subdirectories);
-    QStringList paths;while(iterator.hasNext()){iterator.next();if(iterator.fileInfo().isSymLink())return fail(tr("Linked files cannot be included in recovery copies."));if(!iterator.fileName().contains(".thumbnail.")&&!iterator.fileName().startsWith('.'))paths<<source.relativeFilePath(iterator.filePath());}paths.sort();
-    QJsonArray entries;QCryptographicHash content(QCryptographicHash::Sha256);
-    content.addData(doc->name().toUtf8());
-    for(const auto &relative:paths){const QString path=source.filePath(relative);const QFileInfo info(path);
-        const QString fingerprint=QString("%1|%2|%3").arg(path).arg(info.size()).arg(info.lastModified().toMSecsSinceEpoch());
-        const bool immutableAsset=relative.endsWith(".pdf",Qt::CaseInsensitive)||relative.endsWith(".png",Qt::CaseInsensitive)||relative.endsWith(".jpg",Qt::CaseInsensitive);
-        QString hash=immutableAsset?mFingerprints.value(fingerprint):QString();if(hash.isEmpty())hash=shaFile(path);
-        if(hash.isEmpty())return fail(tr("Cannot read %1.").arg(relative));
-        mFingerprints.insert(fingerprint,hash);
-        QJsonObject entry;entry["path"]=relative;entry["sha256"]=hash;entries.append(entry);
-        // Metadata contains a save timestamp. It is retained, but does not create redundant versions.
-        if(relative!="metadata.rdf"){content.addData(relative.toUtf8());content.addData(hash.toLatin1());}
-    }
-    const QString digest=QString::fromLatin1(content.result().toHex());
-    if(recordDeletion){mClearedDigests.insert(id,digest);mError.clear();return true;}
-    // Delete all stays empty for unchanged content, including across restarts.
-    // New work, or an explicit Create saved version, resumes recovery normally.
-    if(!force&&mClearedDigests.value(id)==digest){mError.clear();return true;}
-    if(!QDir().mkpath(blobs)||!QDir().mkpath(folder+"/versions"))return fail(tr("Cannot create the lesson history folder."));
-    for(const auto &value:entries){const auto entry=value.toObject();const auto hash=entry.value("sha256").toString(),relative=entry.value("path").toString();
-        if(!QFile::exists(blobs+"/"+hash)&&(!atomicCopy(source.filePath(relative),blobs+"/"+hash)||shaFile(blobs+"/"+hash)!=hash))return fail(tr("Could not verify the recovery copy of %1.").arg(relative));
-    }
-    auto previous=readObject(folder+"/recovery.json");
-    QJsonObject snapshot;snapshot["name"]=doc->name();snapshot["id"]=id;snapshot["created"]=QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);snapshot["digest"]=digest;snapshot["files"]=entries;
-    const auto oldVersions=versions(id);QJsonObject last;
-    for(const auto &v:oldVersions)if(v.toObject().value("file")!="recovery.json"){last=v.toObject();break;}
-    const bool changed=digest!=previous.value("digest").toString();
-    const bool versionChanged=digest!=last.value("digest").toString();
-    if(versionChanged&&(keepVersion||last.isEmpty()||QDateTime::fromString(last.value("created").toString(),Qt::ISODateWithMs).secsTo(QDateTime::currentDateTimeUtc())>=300)){
-        const QString name=QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz")+"-"+QUuid::createUuid().toString(QUuid::WithoutBraces)+".json";
-        if(!writeObject(folder+"/versions/"+name,snapshot))return fail(tr("Cannot commit the saved version."));
-    }
-    if(changed||previous.isEmpty())if(!writeObject(folder+"/recovery.json",snapshot))return fail(tr("Cannot commit the recovery copy."));
-    // Once new work (or an explicit version) resumes history, the old
-    // deletion baseline must not suppress a later undo back to that content.
-    if(mClearedDigests.remove(id)&&!saveRecoveryNotice(error))return false;
-    mTouched.insert(id);if(!saveSession(false))return fail(mError);prune(id);mError.clear();return true;
+    // Explicit saves, deletion, and shutdown must finish before returning.
+    UBPersistenceManager::persistenceManager()->flushPendingWrites();
+    UBLessonBackupJob job;
+    if(!prepareSnapshot(job,error))return false;
+    job.keepVersion=keepVersion;job.force=force;job.recordDeletion=recordDeletion;
+    return applyBackupResult(job,UBLessonBackupStore::save(job),error);
 }
 bool UBLessonHistory::saveRecoveryNotice(QString *error)
 {
@@ -143,6 +189,7 @@ bool UBLessonHistory::acknowledgeRecoveryPrompt(QString *error)
 }
 bool UBLessonHistory::clearHistory(QString *error)
 {
+    finishAutomaticSave();
     auto fail=[&](const QString &message){mError=message;if(error)*error=message;return false;};
     const QDir root(mRoot);const auto live=QDir(UBSettings::userDocumentDirectory()).canonicalPath();
     if(!live.isEmpty()&&root.canonicalPath()==live)return fail(tr("The history folder cannot be the Documents folder."));
@@ -158,7 +205,7 @@ bool UBLessonHistory::clearHistory(QString *error)
         const QString path=root.filePath(id);
         if(!(QFileInfo(path).isSymLink()?QFile::remove(path):QDir(path).removeRecursively()))return fail(tr("Cannot remove all recovery history. Your lessons have not been deleted."));
     }
-    mTouched.clear();mFingerprints.clear();mRecoveryAcknowledged=true;mError.clear();
+    mTouched.clear();mRecoveryAcknowledged=true;mError.clear();
     if(!saveSession(false)){if(error)*error=mError;return false;}return true;
 }
 QJsonArray UBLessonHistory::documents() const {
@@ -173,14 +220,8 @@ QJsonArray UBLessonHistory::versions(const QString &id) const {
         auto entry=readObject(versions.filePath(name));if(!entry.isEmpty()){entry["file"]="versions/"+name;result.append(entry);}
     }return result;
 }
-void UBLessonHistory::prune(const QString &id) {
-    const QString folder=mRoot+"/"+id;QDir dir(folder+"/versions");auto names=dir.entryList({"*.json"},QDir::Files,QDir::Name|QDir::Reversed);
-    for(int i=50;i<names.size();++i)QFile::remove(dir.filePath(names[i]));
-    QSet<QString> needed;for(const auto &v:versions(id))for(const auto &f:v.toObject().value("files").toArray())needed.insert(f.toObject().value("sha256").toString());
-    QDir blobs(folder+"/blobs");for(const auto &name:blobs.entryList(QDir::Files))if(QRegularExpression("^[a-f0-9]{64}$").match(name).hasMatch()&&!needed.contains(name))QFile::remove(blobs.filePath(name));
-    if(mFingerprints.size()>50000)mFingerprints.clear();
-}
 std::shared_ptr<UBDocumentProxy> UBLessonHistory::restoreCopy(const QString &id,const QString &version,QString *error) {
+    finishAutomaticSave();
     auto fail=[&](const QString &message)->std::shared_ptr<UBDocumentProxy>{if(error)*error=message;return nullptr;};
     if(!validId(id)||!(version=="recovery.json"||QRegularExpression("^versions/[a-f0-9-]+\\.json$").match(version).hasMatch()))return fail(tr("Invalid recovery selection."));
     const QString folder=mRoot+"/"+id;const auto snapshot=readObject(folder+"/"+version);const auto files=snapshot.value("files").toArray();

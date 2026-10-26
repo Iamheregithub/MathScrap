@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:ub="http://uniboard.mnemis.com/widgets"
+ id="https://mathscrap.local/widgets/function-calculator" version="1.0" width="680" height="660"
+ ub:roles="content" ub:resizable="false" ub:freezable="false" ub:transparent="false">
+ <name>Function Calculator</name><content src="index.html"/>
+ <preference name="functionCalculatorState" value=""/>
+</widget>

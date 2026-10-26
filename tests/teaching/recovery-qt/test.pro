@@ -1,0 +1,9 @@
+QT += widgets concurrent testlib
+CONFIG += console c++17
+CONFIG -= app_bundle
+TEMPLATE = app
+TARGET = recovery-qt-test
+REPO = $$PWD/../../..
+INCLUDEPATH += $$REPO/src/core $$PWD
+HEADERS += $$REPO/src/core/UBLessonHistory.h
+SOURCES += $$PWD/main.cpp $$PWD/production-history.cpp $$REPO/src/core/UBLessonBackupStore.cpp $$REPO/src/core/UBInputActivity.cpp

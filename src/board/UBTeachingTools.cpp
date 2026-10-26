@@ -22,6 +22,7 @@
 #include "board/UBDrawingController.h"
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBGraphicsWidgetItem.h"
 #include "domain/UBQuadraticFormula.h"
 #include "domain/UBMathFormula.h"
 
@@ -79,6 +80,35 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     connect(quadratic,&QAction::triggered,this,[insertFormula]{insertFormula("quadratic");});
     auto functions=add("actionTeachingFunctions",tr("Functions"),":/images/teaching/functions.svg");
     auto formulaMenu=new QMenu(mWindow);formulaMenu->setObjectName("mathscrapFunctionsMenu");functions->setMenu(formulaMenu);
+    auto calculator=formulaMenu->addAction(tr("Function Calculator"));
+    calculator->setObjectName("insertFunctionCalculator");
+    connect(calculator,&QAction::triggered,this,[this]{
+        if(UBApplication::applicationController->displayMode()!=UBApplicationController::Board)
+            UBApplication::applicationController->showBoard();
+        mWindow->teachingTabs()->setCurrentIndex(0);
+        auto board=UBApplication::boardController;auto scene=board->activeScene();if(!scene)return;
+        // Stop shape placement explicitly, including when Selector was already
+        // active: re-triggering Selector alone does not emit a tool change.
+        cancelShapeDrag();mShapeDrawing=false;
+        if(mShapeBar)mShapeBar->hide();mShapes->setChecked(false);
+        if(auto cover=mWindow->findChild<QAction*>("actionLessonCover");cover&&cover->isChecked())cover->trigger();
+        board->controlView()->viewport()->unsetCursor();
+        const QString path=UBSettings::settings()->applicationApplicationsLibraryDirectory()+"/FunctionCalculator.wgt";
+        if(!QFileInfo::exists(path+"/index.html")){
+            QMessageBox::warning(mWindow,tr("Function Calculator"),tr("The Function Calculator files are missing. Reinstall the complete MathScrap package."));return;
+        }
+        auto view=board->controlView();
+        const QPointF centre=view->mapToScene(view->viewport()->rect().center());
+        auto item=board->addW3cWidget(QUrl::fromLocalFile(path),centre);if(!item)return;
+        item->setTransform(QTransform()); // fit once, independent of import DPI scaling
+        // Widget uses the existing proportion-preserving delegate and document
+        // preference persistence. No temporary browser page or remote service.
+        const qreal scale=qMin(qreal(1),qMin(view->viewport()->width()*.85/(680*view->transform().m11()),
+                                                        view->viewport()->height()*.80/(660*view->transform().m22())));
+        item->setScale(scale);item->setPos(centre-QPointF(340,330)*scale);
+        mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);item->setFocus();
+    });
+    formulaMenu->addSeparator();
     for(const auto &kind:UBMathFormula::kinds()){
         if(kind=="pythagoras"||kind=="quotient")formulaMenu->addSeparator();
         auto choice=formulaMenu->addAction(UBMathFormula::title(kind));choice->setObjectName("insertFormula-"+kind);
@@ -354,10 +384,11 @@ void UBTeachingTools::customize()
     auto search=new QLineEdit;search->setPlaceholderText(tr("Find a tool…"));search->setClearButtonEnabled(true);toolLayout->addWidget(search);
     auto available=new QListWidget;available->setObjectName("workspaceAvailableTools");available->setSelectionMode(QAbstractItemView::ExtendedSelection);available->setIconSize(QSize(26,26));available->setSpacing(4);toolLayout->addWidget(available,1);
     auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
-    auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out."));note->setWordWrap(true);toolLayout->addWidget(note);
+    auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out. Eraser: double-click or double-tap to switch to / from Erase All."));note->setWordWrap(true);toolLayout->addWidget(note);
     auto appearance=new QWidget;auto appearanceLayout=new QVBoxLayout(appearance);appearanceLayout->setSpacing(18);tabs->addTab(appearance,tr("Layout && appearance"));
     auto touch=new QCheckBox(tr("Touch-friendly controls — larger buttons and shade handles"));touch->setObjectName("lessonTouchFriendly");touch->setChecked(settings->value("Teaching/TouchFriendly",false).toBool());appearanceLayout->addWidget(touch);
     auto labels=new QCheckBox(tr("Show labels on the bottom toolbar"));labels->setObjectName("workspaceToolLabels");labels->setChecked(settings->value("Teaching/ToolLabels",true).toBool());appearanceLayout->addWidget(labels);
+    auto hover=new QCheckBox(tr("Open pen trays on hover"));hover->setObjectName("workspacePenTrayHover");hover->setChecked(settings->value("Teaching/PenTrayHover",false).toBool());hover->setToolTip(tr("Automatically show colour and thickness options when the pointer rests over Pen, Highlight, Eraser or Line. Click or tap a tool to open its tray when this is off."));appearanceLayout->addWidget(hover);
     auto pages=new QCheckBox(tr("Show the Pages sidebar"));pages->setObjectName("workspacePages");pages->setChecked(settings->value("Teaching/PaperInkPages",true).toBool());appearanceLayout->addWidget(pages);
     auto explanation=new QLabel(tr("The top navigation keeps Documents, Lesson, GraphDesk, undo and page controls within reach. Settings & more is available from the cog in the top toolbar. Right-click the pen tray to customize it."));explanation->setWordWrap(true);appearanceLayout->addWidget(explanation);appearanceLayout->addStretch();
     dialog.setStyleSheet("QDialog{background:#f7f3e9;color:#263c3b;} QTabWidget::pane{border:1px solid #ddd7cb;border-radius:8px;background:#fffdf7;} QTabBar::tab{padding:10px 18px;background:#eee9de;color:#263c3b;} QTabBar::tab:selected{background:#dceae4;} QListWidget{background:#fffdf7;border:1px solid #d8d2c5;border-radius:10px;padding:5px;outline:0;} QListWidget::item{padding:5px;border-radius:6px;color:#263c3b;} QListWidget::item:selected{background:#dceae4;color:#263c3b;} QLineEdit{padding:8px;background:#fffdf7;color:#263c3b;border:1px solid #d8d2c5;border-radius:6px;} QCheckBox{color:#263c3b;spacing:10px;}");
@@ -383,13 +414,13 @@ void UBTeachingTools::customize()
     connect(preview->model(),&QAbstractItemModel::rowsInserted,&dialog,[=]{refreshPreview();});refreshPreview();
     auto apply=[&]{
         QStringList order;for(auto list:{preview,available})for(int row=0;row<list->count();++row){const auto id=list->item(row)->data(Qt::UserRole).toString();order<<id;settings->setValue("Teaching/Bottom/"+id,list==preview);}
-        settings->setValue("Teaching/BottomOrder",order);settings->setValue("Teaching/TouchFriendly",touch->isChecked());settings->setValue("Teaching/ToolLabels",labels->isChecked());settings->setValue("Teaching/PaperInkPages",pages->isChecked());settings->save();
+        settings->setValue("Teaching/BottomOrder",order);settings->setValue("Teaching/TouchFriendly",touch->isChecked());settings->setValue("Teaching/ToolLabels",labels->isChecked());settings->setValue("Teaching/PenTrayHover",hover->isChecked());settings->setValue("Teaching/PaperInkPages",pages->isChecked());settings->save();
         applyLayout();if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();if(auto paper=mWindow->findChild<UBPaperInk*>())paper->applyPreferences();
         if(wasMaximized&&!mWindow->isMaximized())mWindow->showMaximized();
     };
     auto buttons=new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Apply|QDialogButtonBox::Cancel|QDialogButtonBox::RestoreDefaults);buttons->button(QDialogButtonBox::Ok)->setText(tr("Done"));layout->addWidget(buttons);
     connect(buttons->button(QDialogButtonBox::Apply),&QPushButton::clicked,&dialog,apply);
-    connect(buttons->button(QDialogButtonBox::RestoreDefaults),&QPushButton::clicked,&dialog,[&]{populate(true);touch->setChecked(false);labels->setChecked(true);pages->setChecked(true);refreshPreview();});
+    connect(buttons->button(QDialogButtonBox::RestoreDefaults),&QPushButton::clicked,&dialog,[&]{populate(true);touch->setChecked(false);labels->setChecked(true);hover->setChecked(false);pages->setChecked(true);refreshPreview();});
     connect(buttons,&QDialogButtonBox::accepted,&dialog,&QDialog::accept);connect(buttons,&QDialogButtonBox::rejected,&dialog,&QDialog::reject);
     mCustomize->setProperty("teachingOpenPenTab",false);
     if(dialog.exec()==QDialog::Accepted)apply();

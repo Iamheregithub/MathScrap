@@ -888,6 +888,48 @@ bool checkTabletMenus(QString *error)
     window->actionPen->trigger();window->setProperty("tabletMenusChecked",true);return true;
 }
 
+bool checkEraseAll(QString *error)
+{
+    auto fail=[error](const QString &message){*error=message;return false;};
+    auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;auto dc=UBDrawingController::drawingController();
+    auto manager=UBPersistenceManager::persistenceManager();
+    auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Erase All regression",true);
+    board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
+    auto paper=window->findChild<UBPaperInk*>();paper->sync();QApplication::processEvents();
+    auto eraser=window->findChild<QToolButton*>("paper-actionEraser");auto viewport=board->controlView()->viewport();
+    if(!eraser||!eraser->isVisible())return fail("Erase All regression cannot reach Eraser");
+    auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
+    auto tap=[&]{const QPoint global=eraser->mapToGlobal(eraser->rect().center());
+        for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+            QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);
+#else
+            QTabletEvent event(type,viewport->mapFromGlobal(global),global,QTabletEvent::Stylus,QTabletEvent::Pen,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,1,Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);
+#endif
+            QApplication::sendEvent(viewport,&event);
+        }QApplication::processEvents();
+    };
+    window->actionLine->trigger();dc->setPenColor(false,Qt::black,0);dc->setColorIndex(0);dc->setLineWidthIndex(2);
+    scene->inputDevicePress(QPointF(-170,0));scene->inputDeviceMove(QPointF(170,0));scene->inputDeviceRelease();
+    window->actionMarker->trigger();scene->inputDevicePress(QPointF(-150,50));scene->inputDeviceMove(QPointF(150,50));scene->inputDeviceRelease();
+    const QByteArray svg="<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#ffdd00'/></svg>";
+    auto shape=scene->addSvg(QUrl(),QPointF(0,100),svg);scene->clearSelection();
+    auto render=[scene]{QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);const auto context=scene->renderingContext();scene->setRenderingContext(UBGraphicsScene::NonScreen);scene->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));scene->setRenderingContext(context);return image;};
+    auto strokes=[scene]{int count=0;for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)++count;return count;};
+    const auto before=render();const int strokeCount=strokes(),undo=UBApplication::undoStack->index();
+    if(strokeCount<2)return fail("Erase All fixture did not create ink and highlighting");
+    tap();tap();settle(QApplication::doubleClickInterval()+80);
+    if(eraser->text()!=QObject::tr("Erase All")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Stylus double-tap to Erase All modified the page");
+    tap();settle(QApplication::doubleClickInterval()+80);const auto after=render();
+    if(strokes()!=0||shape->scene()!=scene.get()||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
+    UBApplication::undoStack->undo();if(render()!=before||strokes()!=strokeCount)return fail("Erase All Undo did not restore handwriting and highlighting");
+    UBApplication::undoStack->redo();if(render()!=after||strokes()!=0)return fail("Erase All Redo did not restore cleared result");
+    UBApplication::undoStack->undo();const int restoredUndo=UBApplication::undoStack->index();
+    tap();tap();settle(QApplication::doubleClickInterval()+80);
+    if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=restoredUndo||dc->stylusTool()!=UBStylusTool::Eraser)return fail("Stylus double-tap back to Eraser cleared ink or failed to select Eraser");
+    window->actionPen->trigger();window->setProperty("eraseAllChecked",true);return true;
+}
+
 bool checkCircleErase(QString *error)
 {
     auto fail=[error](const QString &message){*error=message;return false;};
@@ -1336,7 +1378,7 @@ void scheduleTeachingSmokeTest(QObject *context)
             return;
         }
         QString chromeError;
-        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkShapeThenFunctions(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkTabletMenus(&chromeError) || !checkCircleErase(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
+        if (!checkWindowAndToolbar(&chromeError) || !checkLessonControlsAndShapes(&chromeError) || !checkShapeToolbar(&chromeError) || !checkPaperInk(&chromeError) || !checkShapeThenFunctions(&chromeError) || !checkPenTrayTablet(&chromeError) || !checkTabletMenus(&chromeError) || !checkCircleErase(&chromeError) || !checkEraseAll(&chromeError) || !checkPreferencesRedesign(&chromeError) || !checkSelectionOrigin(&chromeError)) { finish(false, chromeError); return; }
         if(!checkMathFormulae(&chromeError)){finish(false,chromeError);return;}
         if (!UBApplication::mainWindow->findChild<QAction*>("actionTeachingQuadratic")) { finish(false,"Quadratic formula action missing"); return; }
         UBQuadraticFormula::State example{1,6,7,0}, restored;

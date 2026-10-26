@@ -1076,6 +1076,9 @@ UBGraphicsW3CWidgetItem::UBGraphicsW3CWidgetItem(const QUrl& pWidgetUrl, QGraphi
         height = widgetElement.attribute("height", "150").toInt();
 
         mMetadatas.id = widgetElement.attribute("id", "");
+        // Identify by manifest, since document-owned widget folders use UUIDs.
+        if(mMetadatas.id=="https://mathscrap.local/widgets/function-calculator")
+            setData(0,QStringLiteral("mathscrap-function-calculator"));
 
         /* some early widget (<= 4.3.4) where using identifier instead of id */
         if (mMetadatas.id.length() == 0)

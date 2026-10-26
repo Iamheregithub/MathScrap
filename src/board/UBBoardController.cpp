@@ -28,6 +28,7 @@
 
 
 #include "UBBoardController.h"
+#include "core/UBInputActivity.h"
 #include "UBTeachingTools.h"
 
 #include <QtWidgets>
@@ -2046,8 +2047,23 @@ void UBBoardController::autosaveTimeout()
         return;
     }
 
+    if (!UBInputActivity::instance()->isIdle() || (mActiveScene && mActiveScene->isInputDevicePressed())
+        || QApplication::activeModalWidget() || QApplication::activePopupWidget()) {
+        // Retry after writing pauses; do not wait another full autosave interval.
+        if (!mAutosaveIdleTimer) {
+            mAutosaveIdleTimer = new QTimer(this);
+            mAutosaveIdleTimer->setSingleShot(true);
+            connect(mAutosaveIdleTimer, &QTimer::timeout, this, &UBBoardController::autosaveTimeout);
+        }
+        if (!mAutosaveIdleTimer->isActive()) mAutosaveIdleTimer->start(500);
+        return;
+    }
+    if (mAutosaveIdleTimer) mAutosaveIdleTimer->stop();
+    QElapsedTimer elapsed; elapsed.start();
     saveData(sf_showProgress);
     UBSettings::settings()->save();
+    if (elapsed.elapsed() > 100)
+        qWarning() << "mathscrap.performance autosave preparation ms:" << elapsed.elapsed();
 }
 
 void UBBoardController::appMainModeChanged(UBApplicationController::MainMode md)

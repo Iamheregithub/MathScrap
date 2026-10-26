@@ -39,3 +39,6 @@ SOURCES      += src/core/main.cpp \
 
 HEADERS += src/core/UBLessonHistory.h
 SOURCES += src/core/UBLessonHistory.cpp
+
+HEADERS += src/core/UBInputActivity.h src/core/UBLessonBackupStore.h
+SOURCES += src/core/UBInputActivity.cpp src/core/UBLessonBackupStore.cpp

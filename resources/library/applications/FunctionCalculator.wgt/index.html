@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Function Calculator</title><link rel="stylesheet" href="vendor/mathquill/mathquill.css"><link rel="stylesheet" href="calculator.css">
+<script defer src="vendor/mathquill/mathquill.js"></script><script defer src="exact-worker-source.js"></script><script defer src="engine.js"></script><script defer src="calculator.js"></script></head>
+<body><main><header><h1>Function Calculator</h1><div class="mode" role="group" aria-label="Angle units"><button id="degrees" aria-pressed="true">Degrees</button><button id="radians" aria-pressed="false">Radians</button></div></header>
+<label id="expression-label">Expression or f(x)</label><div id="expression" class="math-input" aria-labelledby="expression-label"></div>
+<div id="x-row" hidden><label id="x-label">x =</label><div id="x-value" class="math-input" aria-labelledby="x-label"></div></div>
+<section class="answer" aria-label="Answer" aria-live="polite"><div id="status">Enter an expression to calculate.</div><div id="exact"></div><div id="decimal"></div></section>
+<div class="keypad" aria-label="Math keypad">
+<button data-cmd="\frac" aria-label="Fraction" title="Fraction">▭/▭</button><button data-cmd="\sqrt" aria-label="Square root">√</button><button data-cmd="\nthroot" aria-label="Indexed root">ⁿ√</button><button data-type="^" aria-label="Power">aᵇ</button><button data-write="\log_{}\left(\right)" data-key="Left Left Left" aria-label="Logarithm with base">logₐ</button><button data-type="ln(" aria-label="Natural logarithm">ln</button>
+<button data-type="sin(">sin</button><button data-type="cos(">cos</button><button data-type="tan(">tan</button><button data-type="arcsin(" aria-label="Inverse sine">sin⁻¹</button><button data-type="arccos(" aria-label="Inverse cosine">cos⁻¹</button><button data-type="arctan(" aria-label="Inverse tangent">tan⁻¹</button>
+<button data-type="7">7</button><button data-type="8">8</button><button data-type="9">9</button><button data-type="/" aria-label="Divide">÷</button><button data-type="(" aria-label="Open parenthesis">(</button><button data-type=")" aria-label="Close parenthesis">)</button>
+<button data-type="4">4</button><button data-type="5">5</button><button data-type="6">6</button><button data-type="*" aria-label="Multiply">×</button><button data-cmd="\pi" aria-label="Pi">π</button><button data-type="e" aria-label="Euler's number">e</button>
+<button data-type="1">1</button><button data-type="2">2</button><button data-type="3">3</button><button data-type="-" aria-label="Subtract">−</button><button data-type="x">x</button><button data-write="\left|\right|" data-key="Left" aria-label="Absolute value">|a|</button>
+<button data-type="0">0</button><button data-type=".">.</button><button data-key="Backspace" aria-label="Backspace">⌫</button><button data-type="+" aria-label="Add">+</button><button data-type="log(" aria-label="Base ten logarithm">log</button><button id="clear">Clear</button>
+</div><footer><button data-key="Left" aria-label="Move left">←</button><button data-key="Right" aria-label="Move right">→</button><button data-key="Up" aria-label="Move up">↑</button><button data-key="Down" aria-label="Move down">↓</button><button data-key="Tab">Next slot</button><button id="calculate">Calculate</button></footer>
+<p class="hint">Type naturally: sqrt → √ · / → fraction · ^ → power. Tap a field to edit.</p>
+</main></body></html>

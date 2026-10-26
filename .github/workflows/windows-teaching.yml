@@ -43,6 +43,9 @@ jobs:
           arch: win64_msvc2022_64
           modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
           cache: true
+      - name: Recovery worker and input responsiveness checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-recovery-responsive.ps1
       - name: Restore native compilation
         uses: actions/cache/restore@v4
         id: native-cache

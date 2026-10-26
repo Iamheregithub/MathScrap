@@ -353,6 +353,23 @@ void UBBoardView::tabletEvent (QTabletEvent * event)
 
     QPointF scenePos = viewportTransform ().inverted ().map (tabletPos);
 
+    // The calculator is interactive page content, even when the pen tool is
+    // selected. Map from global coordinates (Huion drivers may report stale
+    // local positions), preserve the full gesture, and consume the tablet
+    // packet so Qt cannot synthesize a duplicate click or draw an ink dot.
+    if(event->type()==QEvent::TabletPress){
+        auto hit=scene()?scene()->itemAt(scenePos,QTransform()):nullptr;
+        mCalculatorTabletGesture=hit&&hit->data(0).toString()=="mathscrap-function-calculator";
+    }
+    if(mCalculatorTabletGesture){
+        const auto mouseType=event->type()==QEvent::TabletPress?QEvent::MouseButtonPress:
+                             event->type()==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
+        QMouseEvent mouse(mouseType,tabletPos,globalPos,event->button(),event->buttons(),event->modifiers());
+        QApplication::sendEvent(viewport(),&mouse);
+        if(event->type()==QEvent::TabletRelease)mCalculatorTabletGesture=false;
+        event->accept();return;
+    }
+
     qreal pressure = 1.0;
     currentTool = (UBStylusTool::Enum)dc->stylusTool();
 
@@ -1107,6 +1124,9 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
     mJustSelectedItems.clear();
 
     setMovingItem(scene()->itemAt(this->mapToScene(eventPosition.toPoint()), QTransform()));
+    if(event->button()==Qt::LeftButton&&getMovingItem()&&getMovingItem()->data(0).toString()=="mathscrap-function-calculator"){
+        mFormulaInputMouse=true;QGraphicsView::mousePressEvent(event);event->accept();return;
+    }
     for(auto hit=getMovingItem();hit;hit=hit->parentItem()) {
         if(event->button()==Qt::LeftButton&&hit->data(0).toString()=="mathscrap-formula-input") {
             mFormulaInputMouse=true;QGraphicsView::mousePressEvent(event);event->accept();return;
@@ -1685,6 +1705,13 @@ void UBBoardView::mouseReleaseEvent (QMouseEvent *event)
 
 void UBBoardView::forcedTabletRelease ()
 {
+    if(mCalculatorTabletGesture){
+        // Losing pen proximity must cancel a held calculator key, not leave a
+        // gesture active for the next tray tap. Release outside the widget.
+        QMouseEvent release(QEvent::MouseButtonRelease,QPointF(-1,-1),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+        QGraphicsView::mouseReleaseEvent(&release);
+        mCalculatorTabletGesture=false;mFormulaInputMouse=false;setMovingItem(nullptr);
+    }
     if (mMouseButtonIsPressed || mTabletStylusIsPressed || mPendingStylusReleaseEvent)
     {
         qWarning () << "dirty mouse/tablet state:";

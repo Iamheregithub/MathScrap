@@ -325,6 +325,7 @@ class UBBoardController : public UBDocumentContainer
         QList<std::shared_ptr<UBDocument>> mRecentDocuments;
 
         QTimer *mAutosaveTimer;
+        QTimer *mAutosaveIdleTimer = nullptr;
 
     private slots:
         void stylusToolDoubleClicked(int tool);

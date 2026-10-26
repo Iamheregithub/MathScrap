@@ -66,7 +66,7 @@ void ub_message_output(QtMsgType type, const QMessageLogContext& context, const 
     qt_message_output(type, context, msg);
 #endif
 
-    if (UBApplication::app() && UBApplication::app()->isVerbose()) {
+    if (UBApplication::app() && (UBApplication::app()->isVerbose() || msg.startsWith("mathscrap.performance"))) {
         QString logFileNamePath = UBSettings::userDataDirectory() + "/log/"+ qApp->applicationName() + ".log";
         QFile logFile(logFileNamePath);
 

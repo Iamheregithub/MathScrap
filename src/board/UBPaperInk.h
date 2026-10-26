@@ -28,12 +28,15 @@ public:
     static QString toolLabel(const QString &id);
     static QIcon toolIcon(const QString &id);
     void sync();
+signals:
+    void eraseAllModeChanged();
 protected:
     bool eventFilter(QObject *object,QEvent *event) override;
 private:
     void layoutPanels();
     void openTray(QToolButton *anchor);
     void closeTray();
+    void requestEraseAll();
     void selectTrayTool();
     int trayTool() const;
     void refreshPages();
@@ -61,6 +64,8 @@ private:
     QPointer<QAction> mTabletMenuAction;
     QElapsedTimer mTabletTapTimer;
     QTimer *mHoverTimer=nullptr,*mCloseTimer=nullptr;
+    QTimer *mEraseAllTimer=nullptr;
+    bool mEraseAllMode=false;
     bool mTrayOpen=false;
     bool mTabletUiGesture=false,mTabletDoubleClick=false;
 };
