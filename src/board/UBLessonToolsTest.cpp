@@ -282,7 +282,9 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
             if(!recovered.contains("New work after deleting history")||!recovered.contains("Edits before deleting history")||!recovered.contains(state.value("marker").toString())){done(false,"New recovery copy lost lesson text: "+error);return;}
             // Returning to the pre-change content must update recovery too.
             board->setActiveDocumentScene(doc,0);
-            scene->QGraphicsScene::removeItem(newText);delete newText;scene->setModified(true);
+            // addText registers the item in the scene's deletion set. Keep that
+            // ownership intact so shutdown does not try to delete it twice.
+            scene->removeItem(newText);scene->setModified(true);
             if(!history->checkpoint(false,&error)){done(false,error);return;}
             auto reverted=history->restoreCopy(state.value("lessonId").toString(),"recovery.json",&error);
             const auto revertedText=reverted?sceneText(manager->loadDocumentScene(reverted,0)):QString();
