@@ -124,7 +124,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     tap(drawn,"lock");if(!drawn->Delegate()->isLocked())return fail("Circular lock button did not relock");
     if(UBApplication::undoStack->index()!=undo)return fail("Cover controls added unrequested undo entries");
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF p=view->mapFromScene(point);QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),p,viewport->mapToGlobal(p.toPoint()),type==QEvent::TabletRelease?0.:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
+    auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF p=view->mapFromScene(point);QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),p+QPointF(0,48),viewport->mapToGlobal(p.toPoint()),type==QEvent::TabletRelease?0.:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
     grip=controlPoint(drawn,"grip");pen(QEvent::TabletPress,grip);pen(QEvent::TabletMove,grip+QPointF(0,45));pen(QEvent::TabletRelease,grip+QPointF(0,45));
     if(qAbs(localRect(drawn).top()-45)>4||localRect(drawn).bottom()!=original.bottom())return fail("Stylus top-handle reveal failed");
     auto button=controlPoint(drawn,"lock");pen(QEvent::TabletPress,button);pen(QEvent::TabletRelease,button);if(drawn->Delegate()->isLocked())return fail("Stylus lock button failed");

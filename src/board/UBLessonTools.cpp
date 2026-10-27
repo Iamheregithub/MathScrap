@@ -182,9 +182,9 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     const bool release=type==QEvent::MouseButtonRelease||type==QEvent::TabletRelease;
     if(tablet){auto e=static_cast<QTabletEvent*>(event);
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-        position=e->position();
+        position=view->viewport()->mapFromGlobal(e->globalPosition().toPoint());
 #else
-        position=e->posF();
+        position=view->viewport()->mapFromGlobal(e->globalPosF().toPoint());
 #endif
     }else{auto e=static_cast<QMouseEvent*>(event);if(type!=QEvent::MouseMove&&e->button()!=Qt::LeftButton)return false;position=e->pos();}
     // Tablet packets aimed at floating toolbars can be forwarded to the viewport.
