@@ -133,10 +133,10 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     // A shape-drawing mode must not capture an on-cover button press.
     const auto beforeShape=drawn->Delegate()->isLocked();window->findChild<QAction*>("lessonShape0")->trigger();tap(drawn,"lock");
     if(drawn->Delegate()->isLocked()==beforeShape)return fail("Shape tool swallowed cover lock button");window->actionSelector->trigger();drawn->setCoverLocked(true);
-    const auto coverData=drawn->fileData();const auto coverPos=drawn->pos();
+    const auto coverData=drawn->fileData();const auto coverPos=drawn->mapToScene(QPointF(0,0));
     shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isScreenShade())shade=svg;
     if(!shade||!shade->Delegate()->isLocked())return fail("Screen shade did not start fixed");
-    const auto shadePos=shade->pos();const auto shadeGeometry=localRect(shade);
+    const auto shadePos=shade->pos(),shadeOrigin=shade->mapToScene(QPointF(0,0));const auto shadeGeometry=localRect(shade);
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     auto penButton=window->findChild<QToolButton*>("paper-actionPen");if(!penButton)return fail("Pen button missing");
     const auto penLocation=view->mapToScene(viewport->mapFromGlobal(penButton->mapToGlobal(penButton->rect().center())));
@@ -157,11 +157,11 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     UBSvgSubsetAdaptor::persistScene(document,scene,0);auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Cover lesson did not reopen");
     bool foundCover=false,foundShade=false,foundUnlocked=false;
     for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
-        if(svg->fileData()==coverData&&QLineF(svg->pos(),coverPos).length()<.02&&svg->Delegate()->isLocked())foundCover=true;
-        if(svg->fileData()==shadeData&&QLineF(svg->pos(),shadePos).length()<.02&&svg->Delegate()->isLocked())foundShade=true;
-        if(svg->uuid()==unlockedId&&!svg->Delegate()->isLocked()&&QLineF(svg->pos(),unlocked->pos()).length()<.1&&qAbs(svg->sceneTransform().m11()-unlocked->sceneTransform().m11())<.01&&qAbs(svg->sceneTransform().m12()-unlocked->sceneTransform().m12())<.01)foundUnlocked=true;
+        if(svg->fileData()==coverData&&QLineF(svg->mapToScene(QPointF(0,0)),coverPos).length()<.02&&svg->Delegate()->isLocked())foundCover=true;
+        if(svg->fileData()==shadeData&&QLineF(svg->mapToScene(QPointF(0,0)),shadeOrigin).length()<.02&&svg->Delegate()->isLocked())foundShade=true;
+        if(svg->uuid()==unlockedId&&!svg->Delegate()->isLocked()&&QLineF(svg->mapToScene(QPointF(0,0)),unlocked->mapToScene(QPointF(0,0))).length()<.1&&qAbs(svg->sceneTransform().m11()-unlocked->sceneTransform().m11())<.01&&qAbs(svg->sceneTransform().m12()-unlocked->sceneTransform().m12())<.01)foundUnlocked=true;
     }
-    if(!foundCover||!foundShade||!foundUnlocked)return fail("Position, lock, size or reveal state changed on reopen");
+    if(!foundCover||!foundShade||!foundUnlocked)return fail(QString("Position, lock, size or reveal state changed on reopen: locked cover=%1 shade=%2 unlocked cover=%3").arg(foundCover).arg(foundShade).arg(foundUnlocked));
     // The close target stays full-size and on-screen at near-total reveal and zoom.
     shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,10000));
     shade->refreshCoverControls();auto close=shade->coverControlRect("close");
