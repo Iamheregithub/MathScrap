@@ -2,7 +2,7 @@
   "name": "openboard-teaching-tests",
   "private": true,
   "scripts": {
-    "test": "node graphdesk-dom.cjs && node security-dom.cjs && node help-templates.cjs && node calculator-engine.cjs",
+    "test": "node graphdesk-dom.cjs && node security-dom.cjs && node help-templates.cjs && node calculator-engine.cjs && node legacy-calculator.cjs",
     "browser": "node graphdesk-smoke.cjs",
     "calculator:browser": "node calculator-browser.cjs"
   },

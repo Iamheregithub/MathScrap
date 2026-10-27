@@ -16,6 +16,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify Calculator widget build and dependencies
+        working-directory: resources/library/applications/Calculator.wgt
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          git diff --exit-code -- dist/calculator.js
+          npm audit --audit-level=moderate
       - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: tests/teaching
       - run: npx playwright install --with-deps chromium
