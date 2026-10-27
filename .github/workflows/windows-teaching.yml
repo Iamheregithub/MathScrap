@@ -68,12 +68,12 @@ jobs:
         with:
           path: OpenBoard/build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
-      - name: Native startup, drawing, and GraphDesk checks
-        shell: pwsh
-        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
       - name: Favourites, reveal covers, versions and crash recovery checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-lesson-tools.ps1
+      - name: Native startup, drawing, and GraphDesk checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
       - name: Normal lesson save and restart checks
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-save-lifecycle.ps1

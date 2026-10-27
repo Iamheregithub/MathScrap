@@ -710,8 +710,8 @@ bool checkShapeThenFunctions(QString *error)
     auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
     class InputProbe : public QObject {
     public:
-        int tablets=0,mouse=0;
-        bool eventFilter(QObject *,QEvent *e) override {if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::MouseButtonPress)++mouse;}return false;}
+        int tablets=0,releases=0,mouse=0;
+        bool eventFilter(QObject *,QEvent *e) override {if(e->spontaneous()){if(e->type()==QEvent::TabletPress)++tablets;if(e->type()==QEvent::TabletRelease)++releases;if(e->type()==QEvent::MouseButtonPress)++mouse;}return false;}
     } probe;
     qApp->installEventFilter(&probe);
     struct RemoveProbe {QObject *probe;~RemoveProbe(){qApp->removeEventFilter(probe);}} removeProbe{&probe};
@@ -741,8 +741,15 @@ bool checkShapeThenFunctions(QString *error)
 #endif
             QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&e);
         };
+        auto waitForRelease=[&](int before){
+            if(!native)return;
+            QElapsedTimer deadline;deadline.start();while(probe.releases<=before&&deadline.elapsed()<1500)settle(20);
+            if(probe.releases<=before)injectionError="Native pen release was not delivered";
+            // Let zero-delay UI actions and floating-tray layout finish too.
+            settle(30);
+        };
         auto tap=[&](QPoint global){
-            if(native){packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(250);}
+            if(native){const int before=probe.releases;packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(250);waitForRelease(before);}
             else {packet(QEvent::TabletPress,global);packet(QEvent::TabletRelease,global);QApplication::processEvents();}
         };
         const auto mode=native?QString("Windows pen"):QString("Qt tablet");
@@ -758,9 +765,10 @@ bool checkShapeThenFunctions(QString *error)
         if(!bar->isVisible()||!triangle)return fail("Shapes tap did not reveal triangle controls");
         tap(triangle->mapToGlobal(triangle->rect().center()));
         const auto a=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),b=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
-        packet(QEvent::TabletPress,a);
+        const int firstRelease=probe.releases;packet(QEvent::TabletPress,a);
         if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(a+b)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,b);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,b);});settle(350);}
         else{packet(QEvent::TabletMove,b);packet(QEvent::TabletRelease,b);QApplication::processEvents();}
+        waitForRelease(firstRelease);
         // Synthetic pointer injection is asynchronous. A busy runner may still
         // be dispatching the release after the nominal 350ms interval. Wait
         // for the completed object, not a preview, without relaxing assertions.
@@ -772,10 +780,10 @@ bool checkShapeThenFunctions(QString *error)
         auto choice=menu->findChild<QAction*>("insertFormula-pythagoras");if(!choice)return fail("Pythagorean action missing");bool selected=false,visible=false;
         auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
         QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto p=QApplication::activePopupWidget())p->close();});guard.start(2500);
-        QTimer::singleShot(500,&guard,[&]{visible=menu->isVisible();if(visible)tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));});
+        QTimer menuReady;menuReady.setInterval(20);QObject::connect(&menuReady,&QTimer::timeout,window,[&]{if(menu->isVisible()){visible=true;menuReady.stop();tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));}});menuReady.start();
         tap(functions->mapToGlobal(functions->rect().center()));
-        if(menu->isVisible())settle(750);
-        guard.stop();QObject::disconnect(connection);
+        QElapsedTimer menuDeadline;menuDeadline.start();while(!selected&&guard.isActive()&&menuDeadline.elapsed()<2600)settle(20);
+        menuReady.stop();guard.stop();QObject::disconnect(connection);
         int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
         if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
         UBGraphicsSvgItem *formula=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))formula=svg;
@@ -783,9 +791,10 @@ bool checkShapeThenFunctions(QString *error)
         const auto oldPosition=formula->pos();
         const auto from=viewport->mapToGlobal(view->mapFromScene(formula->mapToScene(QPointF(10,formula->boundingRect().height()/2))));
         const auto to=from+QPoint(30,20);
-        packet(QEvent::TabletPress,from);
+        const int moveRelease=probe.releases;packet(QEvent::TabletPress,from);
         if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,to);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletRelease,to);});settle(250);}
         else{packet(QEvent::TabletMove,to);packet(QEvent::TabletRelease,to);QApplication::processEvents();}
+        waitForRelease(moveRelease);
         if(QLineF(oldPosition,formula->pos()).length()<5)return fail("Formula cannot be dragged immediately after insertion");
         if(native&&probe.tablets==0)return fail("Injected input did not reach Qt as pen events");
         if(native){
@@ -793,8 +802,9 @@ bool checkShapeThenFunctions(QString *error)
             if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));
             tap(triangle->mapToGlobal(triangle->rect().center()));
             const auto start=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),end=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
-            const int beforeCount=shapeCount();
+            const int beforeCount=shapeCount(),secondRelease=probe.releases;
             packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(350);
+            waitForRelease(secondRelease);
             QElapsedTimer deadline;deadline.start();while(shapeCount()==beforeCount&&deadline.elapsed()<1500)settle(20);
             UBGraphicsSvgItem *target=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())target=svg;
             if(!target)return fail("Cannot create another triangle after inserting a formula");
@@ -803,7 +813,7 @@ bool checkShapeThenFunctions(QString *error)
                 auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();const auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<3)return fail("Shape colour swatches missing");
                 auto swatch=swatches[2];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
                 QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[&]{palette->close();});guard.start(2500);
-                QTimer::singleShot(500,&guard,[&]{if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));});tap(button->mapToGlobal(button->rect().center()));if(palette->isVisible())settle(750);guard.stop();QObject::disconnect(c);
+                QTimer swatchReady;swatchReady.setInterval(20);QObject::connect(&swatchReady,&QTimer::timeout,window,[&]{if(palette->isVisible()){swatchReady.stop();tap(swatch->mapToGlobal(swatch->rect().center()));}});swatchReady.start();tap(button->mapToGlobal(button->rect().center()));QElapsedTimer paletteDeadline;paletteDeadline.start();while(!clicked&&guard.isActive()&&paletteDeadline.elapsed()<2600)settle(20);swatchReady.stop();guard.stop();QObject::disconnect(c);
                 QDomDocument styled;styled.setContent(target->fileData());const auto attribute=name.endsWith("Border")?"stroke":"fill";
                 if(!clicked||palette->isVisible()||QColor(styled.elementsByTagName("g").at(0).toElement().attribute(attribute))!=QColor(swatch->toolTip()))return fail("Native pen cannot apply "+name+" swatch");
             }
