@@ -193,7 +193,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     auto scene=board->activeScene();if(!scene)return false;const auto point=view->mapToScene(position.toPoint());
     if(mButtonCover){
         if(release){auto target=mButtonCover;const auto role=mButtonRole;mButtonCover.clear();
-            if(target&&target->scene()==scene&&target->coverControlRect(role).contains(position)){
+            if(target&&target->scene()==scene&&mButtonRect.contains(position)){
                 if(role=="close")target->Delegate()->remove(false);
                 else{
                     const bool unlock=target->Delegate()->isLocked();target->setCoverLocked(!unlock);
@@ -205,8 +205,8 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     }
     // Full-size on-object buttons work with pen and mouse, regardless of tool.
     if(press)for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
-        svg->refreshCoverControls();const QString role=svg->isScreenShade()?"close":"lock";
-        if(svg->coverControlRect(role).contains(position)){mButtonCover=svg;mButtonRole=role;event->accept();return true;}
+        const QString role=svg->isScreenShade()?"close":"lock";
+        if(svg->coverControlRect(role).contains(position)){mButtonCover=svg;mButtonRole=role;mButtonRect=svg->coverControlRect(role);event->accept();return true;}
         if(svg->coverControlRect("grip").contains(position)){
             mShadeDrag=svg;mShadeBefore=svg->fileData();mShadeStart=svg->mapFromScene(point);
             scene->clearSelection();break;

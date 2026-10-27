@@ -260,9 +260,11 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
     qApp->installEventFilter(this);
     applyLayout();
-    new UBPaperInk(mWindow);
-    // Cover buttons and reveal grips take precedence over shape drawing.
+    auto paper=new UBPaperInk(mWindow);
+    // Toolbar tablet routing goes first, then on-cover controls, then shape
+    // drawing. A full-page shade must never swallow taps on the pen toolbar.
     if(auto lesson=mWindow->findChild<UBLessonTools*>()){qApp->removeEventFilter(lesson);qApp->installEventFilter(lesson);}
+    qApp->removeEventFilter(paper);qApp->installEventFilter(paper);
 }
 
 bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)

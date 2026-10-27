@@ -48,6 +48,7 @@ private:
     QPointF mShadeStart;
     QPointer<UBGraphicsSvgItem> mButtonCover;
     QString mButtonRole;
+    QRectF mButtonRect;
     QPointer<UBGraphicsSvgItem> mMoveCover;
     QPointF mMoveStart,mMoveOriginal;
     UBMainWindow *mWindow;

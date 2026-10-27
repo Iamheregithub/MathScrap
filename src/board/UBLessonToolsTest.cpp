@@ -137,6 +137,12 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isScreenShade())shade=svg;
     if(!shade||!shade->Delegate()->isLocked())return fail("Screen shade did not start fixed");
     const auto shadePos=shade->pos();const auto shadeGeometry=localRect(shade);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    auto penButton=window->findChild<QToolButton*>("paper-actionPen");if(!penButton)return fail("Pen button missing");
+    const auto penLocation=view->mapToScene(viewport->mapFromGlobal(penButton->mapToGlobal(penButton->rect().center())));
+    const auto toolbarUndo=UBApplication::undoStack->index();pen(QEvent::TabletPress,penLocation);pen(QEvent::TabletRelease,penLocation);
+    if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Pen||UBApplication::undoStack->index()!=toolbarUndo)return fail("Full-page shade swallowed a stylus toolbar tap");window->actionSelector->trigger();
+#endif
     const auto shadeBody=shade->mapToScene(shadeGeometry.center());drag(shadeBody,shadeBody+QPointF(60,30));
     shade->Delegate()->setLocked(false);shade->setPos(shadePos+QPointF(20,20));shade->setScale(2);shade->setRotation(15);
     if(shade->pos()!=shadePos||!shade->Delegate()->isLocked()||shade->scale()!=1||shade->rotation()!=0)return fail("Screen shade could move, resize or unlock");
