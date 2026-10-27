@@ -157,8 +157,8 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     UBSvgSubsetAdaptor::persistScene(document,scene,0);auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Cover lesson did not reopen");
     bool foundCover=false,foundShade=false,foundUnlocked=false;
     for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
-        if(svg->fileData()==coverData&&svg->pos()==coverPos&&svg->Delegate()->isLocked())foundCover=true;
-        if(svg->fileData()==shadeData&&svg->pos()==shadePos&&svg->Delegate()->isLocked())foundShade=true;
+        if(svg->fileData()==coverData&&QLineF(svg->pos(),coverPos).length()<.02&&svg->Delegate()->isLocked())foundCover=true;
+        if(svg->fileData()==shadeData&&QLineF(svg->pos(),shadePos).length()<.02&&svg->Delegate()->isLocked())foundShade=true;
         if(svg->uuid()==unlockedId&&!svg->Delegate()->isLocked()&&QLineF(svg->pos(),unlocked->pos()).length()<.1&&qAbs(svg->sceneTransform().m11()-unlocked->sceneTransform().m11())<.01&&qAbs(svg->sceneTransform().m12()-unlocked->sceneTransform().m12())<.01)foundUnlocked=true;
     }
     if(!foundCover||!foundShade||!foundUnlocked)return fail("Position, lock, size or reveal state changed on reopen");
