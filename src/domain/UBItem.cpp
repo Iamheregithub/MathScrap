@@ -73,8 +73,9 @@ UBGraphicsItemDelegate *UBGraphicsItem::Delegate() const
 
 void UBGraphicsItem::assignZValue(QGraphicsItem *item, qreal value)
 {
+    if(auto cover=dynamic_cast<UBGraphicsSvgItem*>(item);cover&&cover->isLessonCover())value=2000000.0;
     item->setZValue(value);
-    item->setData(UBGraphicsItemData::ItemOwnZValue, value);
+    item->setData(UBGraphicsItemData::ItemOwnZValue, item->zValue());
 }
 
 bool UBGraphicsItem::isFlippable(QGraphicsItem *item)

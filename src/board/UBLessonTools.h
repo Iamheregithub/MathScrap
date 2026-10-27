@@ -50,6 +50,7 @@ private:
     QPointer<QGraphicsScene> mCoverScene;
     QPointer<UBGraphicsSvgItem> mShadeDrag;
     QPointer<UBGraphicsSvgItem> mLockedPress;
+    QPointer<UBGraphicsSvgItem> mCloseShade;
     QByteArray mShadeBefore;
     int mShadeEdge = -1;
     UBMainWindow *mWindow;

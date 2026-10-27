@@ -2054,6 +2054,14 @@ void UBGraphicsScene::addItem(QGraphicsItem* item)
 {
     UBCoreGraphicsScene::addItem(item);
 
+    // Old lessons may persist a cover's ordinary object z-value. Normalize
+    // both the visible and stored levels before selection can restore it.
+    if(auto cover=dynamic_cast<UBGraphicsSvgItem*>(item);cover&&cover->isLessonCover()){
+        cover->setFlag(QGraphicsItem::ItemSendsGeometryChanges,true);
+        cover->setData(UBGraphicsItemData::itemLayerType,int(itemLayerType::ToolItem));
+        UBGraphicsItem::assignZValue(cover,2000000.0);
+    }
+
     // Ink and highlights occupy separate bands above PDF/image objects. Infer
     // old document strokes from their alpha, so reopened lessons behave alike.
     if (auto strokes = dynamic_cast<UBGraphicsStrokesGroup*>(item))

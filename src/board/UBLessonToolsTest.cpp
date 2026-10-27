@@ -94,6 +94,9 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     auto draw=window->findChild<QAction*>("lessonDrawCover");
     auto shadeAction=window->findChild<QAction*>("lessonScreenShade");
     if(!cover||!bar||!draw||!shadeAction||window->findChild<QAction*>("actionLessonCovers"))return fail("Single Cover toolbar unavailable");
+    if(bar->actions().size()!=3||bar->actions().at(0)!=draw||bar->actions().at(1)!=shadeAction||bar->actions().at(2)->objectName()!="lessonCoverClose")return fail("Cover tray must contain only Draw cover, Screen shade and Close");
+    auto shapePanel=window->findChild<QWidget*>("compactShapePanel");if(!shapePanel)return fail("Shape panel missing");
+    for(auto label:shapePanel->findChildren<QLabel*>())if(QStringList{"Shapes","2D","3D"}.contains(label->text()))return fail("Redundant Shapes tray label remains");
     cover->trigger();QApplication::processEvents();
     if(bar->isHidden()||!draw->isChecked())return fail("Cover did not default to Draw cover");
     auto view=board->controlView();auto viewport=view->viewport();
@@ -110,6 +113,21 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     if(!drawn||qAbs(drawn->sceneBoundingRect().width()-300)>5||qAbs(drawn->sceneBoundingRect().height()-200)>5)return fail("Dragged cover has incorrect dimensions");
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Double click did not reveal the cover");
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double click did not conceal the cover again");
+    const auto originalCover=drawn->fileData();
+    auto localRect=[](UBGraphicsSvgItem *item){QDomDocument doc;doc.setContent(item->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();return QRectF(r.attribute("x").toDouble(),r.attribute("y").toDouble(),r.attribute("width").toDouble(),r.attribute("height").toDouble());};
+    const auto bounds=localRect(drawn);const auto grip=drawn->mapToScene(QPointF(bounds.center().x(),bounds.top()+3));
+    send(QEvent::MouseButtonPress,grip);send(QEvent::MouseMove,grip+QPointF(0,60));send(QEvent::MouseButtonRelease,grip+QPointF(0,60));
+    const auto rolled=localRect(drawn);
+    if(qAbs(rolled.bottom()-bounds.bottom())>1||qAbs(rolled.top()-bounds.top()-60)>4)return fail("Cover top grip did not reveal with the bottom fixed");
+    UBApplication::undoStack->undo();if(drawn->fileData()!=originalCover)return fail("Cover roll undo failed");
+    // Tablet packets use the same reveal path as mouse input.
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    QPointingDevice device("Cover test pen",71,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
+    auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF pos=view->mapFromScene(point);const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&device,pos,viewport->mapToGlobal(pos.toPoint()),up?0.:.7,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
+    pen(QEvent::TabletPress,grip);pen(QEvent::TabletMove,grip+QPointF(0,45));pen(QEvent::TabletRelease,grip+QPointF(0,45));
+    if(qAbs(localRect(drawn).bottom()-bounds.bottom())>1||qAbs(localRect(drawn).top()-bounds.top()-45)>4)return fail("Stylus cover reveal failed");
+    UBApplication::undoStack->undo();
+#endif
     auto lock=window->findChild<QAction*>("lessonCoverLock");
     scene->clearSelection();drawn->setSelected(true);if(!lock||!lock->isEnabled())return fail("Cover position lock unavailable");
     write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","lock and drag cover"}});
@@ -155,7 +173,19 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Saved shade page could not be reopened");bool persisted=false;
     for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData()==saved)persisted=svg->Delegate()->isLocked();
     if(!persisted)return fail("Shade geometry did not survive page reload");
-    cover->trigger();
+    // The shade's own close control must work even while writing, and be undoable.
+    const auto shadeData=shade->fileData();QDomDocument closeDoc;closeDoc.setContent(shadeData);auto circle=closeDoc.elementsByTagName("circle").at(0).toElement();
+    if(circle.isNull())return fail("Screen shade circular close button missing");
+    const auto closePoint=shade->mapToScene(QPointF(circle.attribute("cx").toDouble(),circle.attribute("cy").toDouble()));
+    const auto inkCount=scene->items().size();window->actionPen->trigger();
+    send(QEvent::MouseButtonPress,closePoint);send(QEvent::MouseButtonRelease,closePoint);
+    if(shade->scene()||drawn->scene()!=scene.get())return fail("Shade close removed the wrong content or failed");
+    UBApplication::undoStack->undo();if(shade->scene()!=scene.get()||shade->fileData()!=shadeData||scene->items().size()!=inkCount)return fail("Shade deletion undo did not restore only the shade");
+    window->actionSelector->trigger();
+    // The moved controls are usable within Customize Toolbar.
+    bool customizeChecked=false;
+    QTimer::singleShot(0,qApp,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto panel=dialog->findChild<QWidget*>("workspaceCoverControls");if(panel){int count=0;for(auto b:panel->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->property("coverControl").toBool())++count;customizeChecked=count==7;}dialog->reject();});
+    window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!customizeChecked)return fail("Customize Toolbar is missing the seven cover controls");
     return true;
 }
 
@@ -352,6 +382,12 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         auto text=scene->addText("Version one",QPointF(-250,-200));auto cover=tools->addCover();auto second=tools->addCover();if(!cover||!second){done(false,"Cover creation failed");return;}cover->setPos(-180,-80);cover->setScale(1);cover->setTransform(QTransform());second->setPos(180,100);second->setScale(.5);second->setRotation(15);tools->setCoverRevealed(second,true);
         dc->setStylusTool(UBStylusTool::Pen);dc->setColorIndex(0);scene->inputDevicePress(QPointF(-80,0));scene->inputDeviceMove(QPointF(80,0));scene->inputDeviceRelease();dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
         auto render=[scene]{QImage im(800,600,QImage::Format_ARGB32_Premultiplied);im.fill(Qt::white);QPainter p(&im);scene->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));p.end();return im;};
+        // Simulate old/ordinary object-layer assignment, followed by selection and deselection.
+        UBGraphicsItem::assignZValue(cover,-900000.);cover->setSelected(true);cover->setSelected(false);
+        if(cover->zValue()<1500000||cover->data(UBGraphicsItemData::ItemOwnZValue).toDouble()!=cover->zValue()){done(false,"Cover visible and persisted layers diverged");return;}
+        dc->setStylusTool(UBStylusTool::Pen);scene->inputDevicePress(QPointF(-80,20));scene->inputDeviceMove(QPointF(80,20));
+        auto wet=render();if(wet.pixelColor(400,320)!=QColor("#334155")){done(false,"Writing in progress appeared over the cover");return;}
+        scene->inputDeviceRelease();dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
         auto covered=render();covered.save(output.filePath("cover-hidden.png"));if(covered.pixelColor(400,300)!=QColor("#334155")){done(false,"Cover did not conceal existing ink");return;}
         const auto before=cover->fileData();tools->setCoverRevealed(cover,true);if(!tools->isCoverRevealed(cover)){done(false,"Cover reveal failed");return;}auto revealed=render();revealed.save(output.filePath("cover-revealed.png"));if(revealed.pixelColor(400,300).lightness()>80){done(false,"Revealing cover did not expose handwriting");return;}
         UBApplication::undoStack->undo();if(cover->fileData()!=before){done(false,"Cover undo failed");return;}UBApplication::undoStack->redo();if(!tools->isCoverRevealed(cover)){done(false,"Cover redo failed");return;}

@@ -406,6 +406,14 @@ void UBTeachingTools::customize()
     auto available=new QListWidget;available->setObjectName("workspaceAvailableTools");available->setSelectionMode(QAbstractItemView::ExtendedSelection);available->setIconSize(QSize(26,26));available->setSpacing(4);toolLayout->addWidget(available,1);
     auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
     auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out. Eraser: double-click or double-tap to switch to / from Erase All."));note->setWordWrap(true);toolLayout->addWidget(note);
+    auto covers=new QWidget;covers->setObjectName("workspaceCoverControls");auto coversLayout=new QVBoxLayout(covers);tabs->addTab(covers,tr("Covers"));
+    auto coverHint=new QLabel(tr("Reveal, conceal and adjust covers on the current page. Select a cover before using selected-cover controls."));coverHint->setWordWrap(true);coversLayout->addWidget(coverHint);
+    for(const auto &id:{"lessonCoverSelectedReveal","lessonCoverSelectedHide","lessonCoverAllReveal","lessonCoverAllHide","lessonCoverLock","lessonResetReveals","lessonCoverColour"}){
+        if(auto action=mWindow->findChild<QAction*>(id)){
+            auto button=new QToolButton(covers);button->setDefaultAction(action);button->setToolButtonStyle(Qt::ToolButtonTextOnly);button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);coversLayout->addWidget(button);
+        }
+    }
+    coversLayout->addStretch();
     auto appearance=new QWidget;auto appearanceLayout=new QVBoxLayout(appearance);appearanceLayout->setSpacing(18);tabs->addTab(appearance,tr("Layout && appearance"));
     auto touch=new QCheckBox(tr("Touch-friendly controls — larger buttons and shade handles"));touch->setObjectName("lessonTouchFriendly");touch->setChecked(settings->value("Teaching/TouchFriendly",false).toBool());appearanceLayout->addWidget(touch);
     auto labels=new QCheckBox(tr("Show labels on the bottom toolbar"));labels->setObjectName("workspaceToolLabels");labels->setChecked(settings->value("Teaching/ToolLabels",true).toBool());appearanceLayout->addWidget(labels);
@@ -640,7 +648,6 @@ void UBTeachingTools::createShapeToolbar()
     mShapeBar->setStyleSheet("QToolBar {spacing:4px;padding:4px;} QToolButton {height:32px;min-width:30px;padding:2px;} QComboBox {min-height:28px;}");
     mWindow->addToolBarBreak(Qt::TopToolBarArea);mWindow->addToolBar(Qt::TopToolBarArea,mShapeBar);
     auto panel=new QWidget(mShapeBar);panel->setObjectName("compactShapePanel");auto rows=new QVBoxLayout(panel);rows->setContentsMargins(5,5,5,5);rows->setSpacing(5);
-    auto titleRow=new QHBoxLayout;auto title=new QLabel(tr("Shapes"),panel);title->setStyleSheet("font-weight:600;");titleRow->addWidget(title);titleRow->addStretch();rows->addLayout(titleRow);
     auto shapes=new QGridLayout;shapes->setSpacing(4);rows->addLayout(shapes);
     auto appearance=new QHBoxLayout;appearance->setSpacing(5);rows->addLayout(appearance);
     auto finish=new QHBoxLayout;rows->addLayout(finish);
@@ -649,13 +656,12 @@ void UBTeachingTools::createShapeToolbar()
     auto group=new QActionGroup(this);group->setExclusive(true);
     const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond"),tr("Pentagon"),tr("Parallelogram"),tr("Regular polygon"),tr("Cylinder"),tr("Rectangular prism"),tr("Square-based pyramid"),tr("Cone"),tr("Sphere"),tr("Triangular prism")};
     const QList<int> order={0,4,3,5,8,9,10,11,12,13,14,15};
-    shapes->addWidget(new QLabel(tr("2D"),panel),0,0);shapes->addWidget(new QLabel(tr("3D"),panel),2,0);
     for(int i=0;i<names.size();++i) {
         QPixmap pix(36,30);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#273b3b"),1.4));painter.setBrush(Qt::NoBrush);
         auto paths=UBShapeGeometry::paths(i,(i==9||i==14)?QRectF(7,4,22,22):QRectF(4,4,28,22),mPolygonSides->value());painter.drawPath(paths.visible);painter.drawPath(paths.marker);auto pen=painter.pen();pen.setStyle(Qt::DashLine);painter.setPen(pen);painter.drawPath(paths.hidden);painter.end();
         auto action=new QAction(QIcon(pix),names[i],mShapeBar);
         int slot=order.indexOf(i);
-        if(slot>=0){auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setAccessibleName(names[i]);choice->setFixedSize(48,38);choice->setIconSize(QSize(36,30));shapes->addWidget(choice,slot<6?1:3,slot%6);}
+        if(slot>=0){auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setAccessibleName(names[i]);choice->setFixedSize(48,38);choice->setIconSize(QSize(36,30));shapes->addWidget(choice,slot/6,slot%6);}
         action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
         connect(action,&QAction::triggered,this,[this,i]{armShape(i);});
     }
@@ -688,7 +694,7 @@ void UBTeachingTools::createShapeToolbar()
     for(int i=0;i<3;++i){const double width=QList<double>{1.,3.,8.}[i];auto button=new QToolButton(panel);button->setObjectName(QString("compactShapeWidth%1").arg(i));button->setToolTip(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);button->setCheckable(true);widthGroup->addButton(button);button->setFixedSize(42,36);
         QPixmap pix(30,18);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setPen(QPen(QColor("#273b3b"),QList<double>{1.,3.,6.}[i]));painter.drawLine(3,9,27,9);painter.end();button->setIcon(QIcon(pix));button->setIconSize(QSize(30,18));appearance->addWidget(button);
         connect(button,&QToolButton::clicked,this,[this,width]{mShapeWidth->setCurrentIndex(mShapeWidth->findData(width));});auto sync=[this,button,width]{button->setChecked(qFuzzyCompare(mShapeWidth->currentData().toDouble(),width));};connect(mShapeWidth,QOverload<int>::of(&QComboBox::currentIndexChanged),button,[sync](int){sync();});sync();}
-    auto close=new QToolButton(panel);close->setIcon(UBPaperInk::toolIcon("close"));close->setIconSize(QSize(22,22));close->setToolTip(tr("Close shape controls"));close->setFixedSize(36,36);titleRow->addWidget(close);connect(close,&QToolButton::clicked,this,[this]{mShapes->setChecked(false);shapeDialog();});
+    auto close=new QToolButton(panel);close->setIcon(UBPaperInk::toolIcon("close"));close->setIconSize(QSize(22,22));close->setToolTip(tr("Close shape controls"));close->setFixedSize(36,36);shapes->addWidget(close,0,6,2,1,Qt::AlignTop);connect(close,&QToolButton::clicked,this,[this]{mShapes->setChecked(false);shapeDialog();});
     auto attach=[this]{cancelShapeDrag();mShapeDrawing=false;QObject::disconnect(mShapeSelectionConnection);if(auto scene=UBApplication::boardController->activeScene())mShapeSelectionConnection=connect(scene.get(),&QGraphicsScene::selectionChanged,this,&UBTeachingTools::syncShapeSelection);syncShapeSelection();};
     connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,attach);attach();
     connect(UBApplication::undoStack,&QUndoStack::indexChanged,this,[this](int){syncShapeSelection();});

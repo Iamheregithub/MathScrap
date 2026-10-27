@@ -374,7 +374,8 @@ void UBGraphicsSvgItem::initTeachingHandles()
     if (isLessonCover()) {
         setData(UBGraphicsItemData::itemLayerType, int(itemLayerType::ToolItem));
         Delegate()->setUBFlags(Delegate()->ubflags() & ~UBGraphicsFlags(GF_RESPECT_RATIO));
-        setZValue(2000000.0);
+        setData(UBGraphicsItemData::ItemCanBeSetAsBackground, false);
+        UBGraphicsItem::assignZValue(this,2000000.0);
         return;
     }
     if (!isTeachingShape()) return;
