@@ -741,15 +741,15 @@ bool checkShapeThenFunctions(QString *error)
 #endif
             QTabletEvent e(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&e);
         };
-        auto waitForRelease=[&](int before){
+        auto waitForRelease=[&](int before,bool required=true){
             if(!native)return;
             QElapsedTimer deadline;deadline.start();while(probe.releases<=before&&deadline.elapsed()<1500)settle(20);
-            if(probe.releases<=before)injectionError="Native pen release was not delivered";
+            if(required&&probe.releases<=before)injectionError="Native pen release was not delivered";
             // Let zero-delay UI actions and floating-tray layout finish too.
             settle(30);
         };
         auto tap=[&](QPoint global){
-            if(native){const int before=probe.releases;packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(250);waitForRelease(before);}
+            if(native){const int before=probe.releases;packet(QEvent::TabletPress,global);QTimer::singleShot(35,window,[&,global]{packet(QEvent::TabletRelease,global);});settle(250);waitForRelease(before,false);}
             else {packet(QEvent::TabletPress,global);packet(QEvent::TabletRelease,global);QApplication::processEvents();}
         };
         const auto mode=native?QString("Windows pen"):QString("Qt tablet");
@@ -780,10 +780,13 @@ bool checkShapeThenFunctions(QString *error)
         auto choice=menu->findChild<QAction*>("insertFormula-pythagoras");if(!choice)return fail("Pythagorean action missing");bool selected=false,visible=false;
         auto connection=QObject::connect(choice,&QAction::triggered,window,[&]{selected=true;});
         QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[]{if(auto p=QApplication::activePopupWidget())p->close();});guard.start(2500);
-        QTimer menuReady;menuReady.setInterval(20);QObject::connect(&menuReady,&QTimer::timeout,window,[&]{if(menu->isVisible()){visible=true;menuReady.stop();tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));}});menuReady.start();
-        tap(functions->mapToGlobal(functions->rect().center()));
-        QElapsedTimer menuDeadline;menuDeadline.start();while(!selected&&guard.isActive()&&menuDeadline.elapsed()<2600)settle(20);
-        menuReady.stop();guard.stop();QObject::disconnect(connection);
+        // Complete the opener gesture before injecting a second gesture into
+        // the popup. Qt can internally forward popup releases, so UI success
+        // is asserted by the chosen action and resulting object below.
+        tap(functions->mapToGlobal(functions->rect().center()));guard.start(2500);
+        QElapsedTimer menuDeadline;menuDeadline.start();while(!menu->isVisible()&&guard.isActive()&&menuDeadline.elapsed()<1500)settle(20);
+        visible=menu->isVisible();if(visible)tap(menu->mapToGlobal(menu->actionGeometry(choice).center()));settle(30);
+        guard.stop();QObject::disconnect(connection);
         int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
         if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
         UBGraphicsSvgItem *formula=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))formula=svg;
@@ -813,7 +816,7 @@ bool checkShapeThenFunctions(QString *error)
                 auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();const auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<3)return fail("Shape colour swatches missing");
                 auto swatch=swatches[2];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
                 QTimer guard;guard.setSingleShot(true);QObject::connect(&guard,&QTimer::timeout,window,[&]{palette->close();});guard.start(2500);
-                QTimer swatchReady;swatchReady.setInterval(20);QObject::connect(&swatchReady,&QTimer::timeout,window,[&]{if(palette->isVisible()){swatchReady.stop();tap(swatch->mapToGlobal(swatch->rect().center()));}});swatchReady.start();tap(button->mapToGlobal(button->rect().center()));QElapsedTimer paletteDeadline;paletteDeadline.start();while(!clicked&&guard.isActive()&&paletteDeadline.elapsed()<2600)settle(20);swatchReady.stop();guard.stop();QObject::disconnect(c);
+                tap(button->mapToGlobal(button->rect().center()));guard.start(2500);QElapsedTimer paletteDeadline;paletteDeadline.start();while(!palette->isVisible()&&guard.isActive()&&paletteDeadline.elapsed()<1500)settle(20);if(palette->isVisible())tap(swatch->mapToGlobal(swatch->rect().center()));settle(30);guard.stop();QObject::disconnect(c);
                 QDomDocument styled;styled.setContent(target->fileData());const auto attribute=name.endsWith("Border")?"stroke":"fill";
                 if(!clicked||palette->isVisible()||QColor(styled.elementsByTagName("g").at(0).toElement().attribute(attribute))!=QColor(swatch->toolTip()))return fail("Native pen cannot apply "+name+" swatch");
             }
