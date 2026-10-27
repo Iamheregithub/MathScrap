@@ -163,11 +163,15 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
         if(qAbs(restored.elementsByTagName("rect").at(0).toElement().attribute(dimension).toDouble()-(edge<2?w:h))>4)return fail("Shade edge did not conceal again");
     }
     write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","reset reveals"}});
+    tools->setCoverRevealed(shade,true);
+    send(QEvent::MouseButtonPress,grip);send(QEvent::MouseMove,grip+QPointF(0,45));send(QEvent::MouseButtonRelease,grip+QPointF(0,45));
+    const auto rolledBeforeReset=localRect(drawn);
+    if(qAbs(rolledBeforeReset.top()-45)>4)return fail("Cover did not roll before reset");
     const auto home=shade->pos();shade->setPos(home+QPointF(50,25));
     tools->setCoverRevealed(drawn,true);tools->setCoverRevealed(shade,true);
     auto reset=window->findChild<QAction*>("lessonResetReveals");if(!reset)return fail("Reset reveals unavailable");
-    reset->trigger();if(tools->isCoverRevealed(drawn)||tools->isCoverRevealed(shade)||shade->pos()!=home||!shade->Delegate()->isLocked())return fail("Reset did not conceal covers and restore the locked shade");
-    UBApplication::undoStack->undo();if(!tools->isCoverRevealed(drawn)||!tools->isCoverRevealed(shade)||shade->pos()!=home+QPointF(50,25))return fail("Reset reveals undo failed");
+    reset->trigger();if(tools->isCoverRevealed(drawn)||tools->isCoverRevealed(shade)||shade->pos()!=home||!shade->Delegate()->isLocked()||qAbs(localRect(drawn).top())>1)return fail("Reset did not conceal covers and restore the locked shade");
+    UBApplication::undoStack->undo();if(!tools->isCoverRevealed(drawn)||!tools->isCoverRevealed(shade)||shade->pos()!=home+QPointF(50,25)||localRect(drawn)!=rolledBeforeReset)return fail("Reset reveals undo failed");
     UBApplication::undoStack->redo();
     const auto saved=shade->fileData();UBSvgSubsetAdaptor::persistScene(document,scene,0);
     auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Saved shade page could not be reopened");bool persisted=false;

@@ -244,7 +244,7 @@ void UBLessonTools::resetReveals()
     auto scene=UBApplication::boardController->activeScene();if(!scene)return;
     UBApplication::undoStack->beginMacro(tr("Reset reveals"));
     for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
-        if(!svg->fileData().contains("data-screen-shade")){setCoverRevealed(svg,false);continue;}
+        const bool shade=svg->fileData().contains("data-screen-shade");
         CoverState after(svg);QDomDocument doc;doc.setContent(after.svg);auto root=doc.documentElement();
         auto rect=doc.elementsByTagName("rect").at(0).toElement();rect.setAttribute("x","0");rect.setAttribute("y","0");
         rect.setAttribute("width",root.attribute("width"));rect.setAttribute("height",root.attribute("height"));
@@ -253,8 +253,8 @@ void UBLessonTools::resetReveals()
         while(!metadata.firstChild().isNull())metadata.removeChild(metadata.firstChild());metadata.appendChild(doc.createTextNode("covered"));
         updateShadeHandles(doc);after.svg=doc.toByteArray();
         if(root.hasAttribute("data-shade-home-x"))after.position=QPointF(root.attribute("data-shade-home-x").toDouble(),root.attribute("data-shade-home-y").toDouble());
-        after.transform=QTransform();after.scale=1;after.rotation=0;
-        UBApplication::undoStack->push(new CoverStateUndo(svg,after,tr("Reset screen shade")));
+        if(shade){after.transform=QTransform();after.scale=1;after.rotation=0;}
+        UBApplication::undoStack->push(new CoverStateUndo(svg,after,tr("Reset cover reveal")));
     }
     UBApplication::undoStack->endMacro();
 }
