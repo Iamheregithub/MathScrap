@@ -761,7 +761,12 @@ bool checkShapeThenFunctions(QString *error)
         packet(QEvent::TabletPress,a);
         if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(a+b)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,b);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,b);});settle(350);}
         else{packet(QEvent::TabletMove,b);packet(QEvent::TabletRelease,b);QApplication::processEvents();}
-        int triangles=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())++triangles;
+        // Synthetic pointer injection is asynchronous. A busy runner may still
+        // be dispatching the release after the nominal 350ms interval. Wait
+        // for the completed object, not a preview, without relaxing assertions.
+        auto shapeCount=[&]{int count=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())++count;return count;};
+        if(native){QElapsedTimer deadline;deadline.start();while(shapeCount()==0&&deadline.elapsed()<1500)settle(20);}
+        const int triangles=shapeCount();
         if(triangles!=1)return fail(QString("Triangle was not inserted (count %1)").arg(triangles));
         // No intervening tools, colour menus, or programmatic popup reset.
         auto choice=menu->findChild<QAction*>("insertFormula-pythagoras");if(!choice)return fail("Pythagorean action missing");bool selected=false,visible=false;
@@ -788,7 +793,9 @@ bool checkShapeThenFunctions(QString *error)
             if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));
             tap(triangle->mapToGlobal(triangle->rect().center()));
             const auto start=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),end=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
+            const int beforeCount=shapeCount();
             packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(350);
+            QElapsedTimer deadline;deadline.start();while(shapeCount()==beforeCount&&deadline.elapsed()<1500)settle(20);
             UBGraphicsSvgItem *target=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())target=svg;
             if(!target)return fail("Cannot create another triangle after inserting a formula");
             if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));

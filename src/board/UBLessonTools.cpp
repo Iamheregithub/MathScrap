@@ -165,6 +165,11 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
 {
     auto board=UBApplication::boardController;if(!board||!board->controlView())return false;
     auto view=board->controlView();
+    if(event->type()==QEvent::Move||event->type()==QEvent::Resize||event->type()==QEvent::Show||event->type()==QEvent::Hide){
+        if(auto panel=qobject_cast<QWidget*>(watched);panel&&QStringList{"paperDock","paperPenPanel","lessonCoverToolbar","lessonShapeToolbar","paperPages"}.contains(panel->objectName())){
+            QTimer::singleShot(0,this,[]{if(auto scene=UBApplication::boardController->activeScene())for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover())svg->refreshCoverControls();});
+        }
+    }
     if(event->type()==QEvent::KeyPress&&static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape&&(mDrawingCover||mShadeDrag||mMoveCover||mButtonCover||mLockedPress)){
         cancelCoverDrag();mDrawingCover=false;mDrawCover->setChecked(false);view->viewport()->unsetCursor();return true;
     }
@@ -190,7 +195,10 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
         if(release){auto target=mButtonCover;const auto role=mButtonRole;mButtonCover.clear();
             if(target&&target->scene()==scene&&target->coverControlRect(role).contains(position)){
                 if(role=="close")target->Delegate()->remove(false);
-                else target->setCoverLocked(!target->Delegate()->isLocked());
+                else{
+                    const bool unlock=target->Delegate()->isLocked();target->setCoverLocked(!unlock);
+                    if(unlock){mWindow->actionSelector->trigger();scene->clearSelection();target->setSelected(true);scene->updateSelectionFrame();}
+                }
             }
         }
         event->accept();return true;

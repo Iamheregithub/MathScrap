@@ -118,7 +118,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     const auto movedGrip=controlPoint(drawn,"grip");
     if(qAbs(view->mapFromScene(movedGrip).x()-view->mapFromScene(drawn->mapToScene(QPointF(localRect(drawn).center().x(),localRect(drawn).top()))).x())>2)return fail("Grip is not centred on the visible top edge");
     drag(movedGrip,movedGrip-QPointF(0,60));
-    tap(drawn,"lock");if(drawn->Delegate()->isLocked())return fail("Circular lock button did not unlock");
+    window->actionPen->trigger();tap(drawn,"lock");if(drawn->Delegate()->isLocked()||UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Circular lock button did not unlock into an immediately movable state");
     const auto body=drawn->mapToScene(localRect(drawn).center());drag(body,body+QPointF(35,25));
     if(QLineF(drawn->pos(),fixed+QPointF(35,25)).length()>3)return fail("Unlocked cover did not move");
     tap(drawn,"lock");if(!drawn->Delegate()->isLocked())return fail("Circular lock button did not relock");
@@ -160,6 +160,10 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,10000));
     shade->refreshCoverControls();auto close=shade->coverControlRect("close");
     if(close.width()<44||close.height()<44||!QRectF(viewport->rect()).contains(close))return fail("Pulled-down shade close button became inaccessible");
+    if(auto dock=window->findChild<QWidget*>("paperDock");dock&&dock->isVisible()){
+        const QRectF dockRect(QPointF(viewport->mapFromGlobal(dock->mapToGlobal(QPoint(0,0)))),QSizeF(dock->size()));
+        if(close.intersects(dockRect)||shade->coverControlRect("grip").intersects(dockRect))return fail("Shade controls are hidden behind the pen toolbar");
+    }
     const auto viewportTransform=view->transform();view->scale(.5,.5);shade->refreshCoverControls();
     if(shade->coverControlRect("close").width()<44)return fail("Shade close button shrank with zoom");view->setTransform(viewportTransform);shade->refreshCoverControls();
     view->viewport()->update();QApplication::processEvents();

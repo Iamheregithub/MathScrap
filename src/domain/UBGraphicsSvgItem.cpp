@@ -516,6 +516,34 @@ void UBGraphicsSvgItem::refreshCoverControls(){
         const int margin=grip?14:26;
         p.setX(qBound(double(vp.left()+26),p.x(),double(qMax(vp.left()+26,vp.right()-26))));
         p.setY(qBound(double(vp.top()+margin),p.y(),double(qMax(vp.top()+margin,vp.bottom()-margin))));
+        const QSizeF half=grip?QSizeF(24,12):QSizeF(24,24);
+        // Floating pen/tool trays are QWidget overlays above the canvas. Keep
+        // the interactive targets out from underneath them, especially at the
+        // bottom of a fully pulled-down shade.
+        for(int pass=0;pass<3;++pass)for(auto panel:view->findChildren<QWidget*>()){
+            if(!panel->isVisible()||!QStringList{"paperDock","paperPenPanel","lessonCoverToolbar","lessonShapeToolbar","paperPages"}.contains(panel->objectName()))continue;
+            const QRectF blocked(QPointF(view->viewport()->mapFromGlobal(panel->mapToGlobal(QPoint(0,0)))),QSizeF(panel->size()));
+            if(!QRectF(p-QPointF(half.width(),half.height()),QSizeF(2*half.width(),2*half.height())).intersects(blocked))continue;
+            if(panel->objectName()=="paperPages")p.setX(qMin(double(vp.right()-26),blocked.right()+half.width()+4));
+            else{
+                const double above=blocked.top()-half.height()-4;
+                p.setY(above>=vp.top()+margin?above:qMin(double(vp.bottom()-margin),blocked.bottom()+half.height()+4));
+            }
+        }
+        if(!grip){
+            const auto other=coverControlRect("grip").adjusted(-4,-4,4,4);
+            if(QRectF(p-QPointF(24,24),QSizeF(48,48)).intersects(other)){
+                const QList<QPointF> choices={QPointF(other.left()-28,p.y()),QPointF(other.right()+28,p.y()),QPointF(p.x(),other.top()-28),QPointF(p.x(),other.bottom()+28)};
+                for(const auto &candidate:choices){
+                    const QRectF target(candidate-QPointF(24,24),QSizeF(48,48));if(!QRectF(vp).contains(target)||target.intersects(other))continue;
+                    bool blocked=false;
+                    for(auto panel:view->findChildren<QWidget*>())if(panel->isVisible()&&QStringList{"paperDock","paperPenPanel","lessonCoverToolbar","lessonShapeToolbar","paperPages"}.contains(panel->objectName())){
+                        const QRectF area(QPointF(view->viewport()->mapFromGlobal(panel->mapToGlobal(QPoint(0,0)))),QSizeF(panel->size()));if(target.intersects(area)){blocked=true;break;}
+                    }
+                    if(!blocked){p=candidate;break;}
+                }
+            }
+        }
         control->setPos(mapFromScene(view->mapToScene(p.toPoint())));
         control->setToolTip(grip?QObject::tr("Drag down to reveal; drag up to cover"):
             isScreenShade()?QObject::tr("Close screen shade"):
