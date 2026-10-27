@@ -338,10 +338,13 @@ private:
     QPointer<UBGraphicsSvgItem> mItem;
     QByteArray mBefore, mAfter;
 };
+// Item data slots 0..9 belong to UBGraphicsItemData (in particular 1 is
+// ItemLocked). Recursive delegate locking must not overwrite a control role.
+constexpr int CoverControlRoleData = 0x4d534301;
 class CoverControl : public QGraphicsObject {
 public:
     CoverControl(UBGraphicsSvgItem *cover,const QString &role):QGraphicsObject(cover),mCover(cover),mRole(role){
-        setData(0,"cover-control");setData(1,role);
+        setData(CoverControlRoleData,role);
         setData(UBGraphicsItemData::ItemLayerType,UBItemLayerType::Control);
         setFlag(QGraphicsItem::ItemIgnoresTransformations);setAcceptedMouseButtons(Qt::NoButton);
         setZValue(30);setCursor(role=="grip"?Qt::SizeVerCursor:Qt::PointingHandCursor);
@@ -495,7 +498,7 @@ void UBGraphicsSvgItem::setCoverLocked(bool locked){
 QRectF UBGraphicsSvgItem::coverControlRect(const QString &role) const{
     if(!UBApplication::boardController||!UBApplication::boardController->controlView())return {};
     auto view=UBApplication::boardController->controlView();
-    for(auto control:mCoverControls)if(control->data(1).toString()==role)return control->deviceTransform(view->viewportTransform()).mapRect(control->boundingRect());
+    for(auto control:mCoverControls)if(control->data(CoverControlRoleData).toString()==role)return control->deviceTransform(view->viewportTransform()).mapRect(control->boundingRect());
     return {};
 }
 void UBGraphicsSvgItem::refreshCoverControls(){
@@ -509,7 +512,7 @@ void UBGraphicsSvgItem::refreshCoverControls(){
     const QPointF top=screen(QPointF(visible.center().x(),visible.top()));
     const QPointF right=screen(visible.topRight());
     for(auto control:mCoverControls){
-        const bool grip=control->data(1).toString()=="grip";
+        const bool grip=control->data(CoverControlRoleData).toString()=="grip";
         QPointF p=grip?top+QPointF(0,8):right+QPointF(-26,26);
         // Keep a full-size button reachable when only a thin strip remains.
         if(!grip&&qAbs(p.x()-top.x())<56)p.setX(right.x()+26);
