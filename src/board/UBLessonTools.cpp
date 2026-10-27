@@ -246,6 +246,9 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
         event->accept();return true;
     }
     if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return false;
+    // Shapes and Functions reuse the selection engine internally. Their canvas
+    // gestures remain drawing gestures; only the real Select tool moves covers.
+    if(!mWindow->actionSelector->isChecked())return false;
     if(type==QEvent::MouseButtonDblClick){
         for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()&&coverContainsOpaquePoint(svg,point)){event->accept();return true;}
     }
