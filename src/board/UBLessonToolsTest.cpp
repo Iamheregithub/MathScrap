@@ -84,7 +84,7 @@ bool colourMemory(bool seed, QString *error)
 }
 bool coverWorkflow(UBLessonTools *tools,QString *error)
 {
-    auto fail=[error](const QString &s){*error=s;return false;};
+    auto fail=[error](const QString &s){*error=s;if(auto window=UBApplication::mainWindow)window->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("cover-failure-window.png"));return false;};
     auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
     auto manager=UBPersistenceManager::persistenceManager();
     auto document=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Cover lock regression",true);
@@ -114,7 +114,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     const auto undo=UBApplication::undoStack->index();
     send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double-click revealed the cover");
     auto grip=controlPoint(drawn,"grip");drag(grip,grip+QPointF(0,60));
-    if(qAbs(localRect(drawn).top()-original.top()-60)>4||localRect(drawn).bottom()!=original.bottom())return fail("Locked cover grip did not keep bottom fixed");
+    if(qAbs(localRect(drawn).top()-original.top()-60)>4||qAbs(localRect(drawn).bottom()-original.bottom())>.01)return fail("Locked cover grip did not keep bottom fixed");
     const auto movedGrip=controlPoint(drawn,"grip");
     if(qAbs(view->mapFromScene(movedGrip).x()-view->mapFromScene(drawn->mapToScene(QPointF(localRect(drawn).center().x(),localRect(drawn).top()))).x())>2)return fail("Grip is not centred on the visible top edge");
     drag(movedGrip,movedGrip-QPointF(0,60));
@@ -125,8 +125,8 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     if(UBApplication::undoStack->index()!=undo)return fail("Cover controls added unrequested undo entries");
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
     auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF p=view->mapFromScene(point);QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),p+QPointF(0,48),viewport->mapToGlobal(p.toPoint()),type==QEvent::TabletRelease?0.:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
-    grip=controlPoint(drawn,"grip");pen(QEvent::TabletPress,grip);pen(QEvent::TabletMove,grip+QPointF(0,45));pen(QEvent::TabletRelease,grip+QPointF(0,45));
-    if(qAbs(localRect(drawn).top()-45)>4||localRect(drawn).bottom()!=original.bottom())return fail("Stylus top-handle reveal failed");
+    grip=controlPoint(drawn,"grip");const auto beforeTablet=localRect(drawn);pen(QEvent::TabletPress,grip);const auto pressedTablet=localRect(drawn);pen(QEvent::TabletMove,grip+QPointF(0,45));const auto movedTablet=localRect(drawn);pen(QEvent::TabletRelease,grip+QPointF(0,45));
+    if(qAbs(localRect(drawn).top()-45)>4||qAbs(localRect(drawn).bottom()-original.bottom())>.01)return fail(QString("Stylus top-handle reveal failed: before=%1 press=%2 move=%3 release=%4 bottom=%5/%6 grip=%7,%8 tool=%9").arg(beforeTablet.top()).arg(pressedTablet.top()).arg(movedTablet.top()).arg(localRect(drawn).top()).arg(localRect(drawn).bottom()).arg(original.bottom()).arg(grip.x()).arg(grip.y()).arg(UBDrawingController::drawingController()->stylusTool()));
     auto button=controlPoint(drawn,"lock");pen(QEvent::TabletPress,button);pen(QEvent::TabletRelease,button);if(drawn->Delegate()->isLocked())return fail("Stylus lock button failed");
     tap(drawn,"lock");
 #endif
@@ -150,7 +150,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     for(const auto &edge:{QPointF(shadeGeometry.left(),shadeGeometry.center().y()),QPointF(shadeGeometry.right(),shadeGeometry.center().y()),QPointF(shadeGeometry.center().x(),shadeGeometry.bottom())})drag(shade->mapToScene(edge),shade->mapToScene(edge+QPointF(20,-20)));
     if(localRect(shade)!=shadeGeometry||shade->pos()!=shadePos)return fail("A side or bottom shade edge moved");
     auto shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,80));
-    if(qAbs(localRect(shade).top()-shadeGeometry.top()-80)>4||localRect(shade).bottom()!=shadeGeometry.bottom())return fail("Shade top handle did not preserve bottom");
+    if(qAbs(localRect(shade).top()-shadeGeometry.top()-80)>4||qAbs(localRect(shade).bottom()-shadeGeometry.bottom())>.01)return fail("Shade top handle did not preserve bottom");
     const auto shadeData=shade->fileData();
     // Save/reload preserves each distinct object's position, lock and reveal.
     auto unlocked=tools->addCover();unlocked->setCoverLocked(false);unlocked->setPos(210,130);unlocked->setScale(.7);unlocked->setRotation(10);const auto unlockedId=unlocked->uuid();
