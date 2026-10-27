@@ -790,6 +790,7 @@ bool checkShapeThenFunctions(QString *error)
             packet(QEvent::TabletPress,start);QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,(start+end)/2);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletMove,end);});QTimer::singleShot(105,window,[&]{packet(QEvent::TabletRelease,end);});settle(350);
             UBGraphicsSvgItem *target=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())target=svg;
             if(!target)return fail("Cannot create another triangle after inserting a formula");
+            if(!bar->isVisible())tap(shapes->mapToGlobal(shapes->rect().center()));
             for(const auto &name:{QString("lessonShapeBorder"),QString("lessonShapeFill")}){
                 auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();const auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<3)return fail("Shape colour swatches missing");
                 auto swatch=swatches[2];bool clicked=false;auto c=QObject::connect(swatch,&QToolButton::clicked,window,[&]{clicked=true;});
@@ -831,10 +832,11 @@ bool checkTabletMenus(QString *error)
     if(!triangle||bar->height()>300||bar->width()>560){*error="Grouped shape controls are missing or oversized";return false;}
     tap(triangle->mapToGlobal(triangle->rect().center()));if(!triangle->isChecked()){*error="Stylus cannot select a shape directly";return false;}
     auto drawShape=[&]() -> UBGraphicsSvgItem* {
+        if(!bar->isVisible())shapes->trigger();
         tap(triangle->mapToGlobal(triangle->rect().center()));
         const auto a=viewport->mapToGlobal(view->mapFromScene(QPointF(-130,-80))),b=viewport->mapToGlobal(view->mapFromScene(QPointF(130,70)));
         packet(QEvent::TabletPress,a,Qt::LeftButton,Qt::LeftButton);packet(QEvent::TabletMove,b,Qt::NoButton,Qt::LeftButton);packet(QEvent::TabletRelease,b,Qt::LeftButton,Qt::NoButton);hover(b);QApplication::processEvents();
-        for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())return svg;
+        for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()){if(!bar->isVisible())shapes->trigger();return svg;}
         return nullptr;
     };
     auto drawn=drawShape();if(!drawn){*error="Stylus cannot draw the first shape before changing its appearance";return false;}
@@ -1030,7 +1032,7 @@ bool checkShapeToolbar(QString *error)
         send(tablet?QEvent::TabletPress:QEvent::MouseButtonPress,a,Qt::LeftButton,Qt::LeftButton);
         send(tablet?QEvent::TabletMove:QEvent::MouseMove,b,Qt::NoButton,Qt::LeftButton);
         send(tablet?QEvent::TabletRelease:QEvent::MouseButtonRelease,b,Qt::LeftButton,Qt::NoButton);
-        if(QLineF(before,shape->pos()).length()<5)return fail("Inserted shape cannot be dragged immediately by its body");
+        if(QLineF(before,shape->pos()).length()<5)return fail(QString("Inserted shape %1 cannot be dragged immediately by its body; tablet=%2 selected=%3 tool=%4 start=%5,%6 end=%7,%8").arg(type).arg(tablet).arg(shape->isSelected()).arg(UBDrawingController::drawingController()->stylusTool()).arg(a.x()).arg(a.y()).arg(b.x()).arg(b.y()));
         UBApplication::undoStack->undo();if(QLineF(before,shape->pos()).length()>.1)return fail("Shape movement undo failed");UBApplication::undoStack->redo();
     }
     for(int type:{0,4,3,8}){
@@ -1076,6 +1078,7 @@ bool checkShapeToolbar(QString *error)
     auto loaded=UBSvgSubsetAdaptor::loadScene(doc,1);bool found=false;
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
     if(!found)return fail("Styled shape did not survive fresh reload");
+    if(!bar->isVisible())action->trigger();
     QApplication::processEvents();
     if(auto paper=window->findChild<UBPaperInk*>()){paper->sync();QEventLoop settle;QTimer::singleShot(60,&settle,&QEventLoop::quit);settle.exec();}
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));

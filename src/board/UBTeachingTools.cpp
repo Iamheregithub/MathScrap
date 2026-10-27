@@ -333,7 +333,6 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
                         item->setPos(rect.topLeft() - QPointF(12,12));
                         mShapeDrawing = false; view->viewport()->unsetCursor();
                         finishShapeTool(); mWindow->actionSelector->trigger(); scene->clearSelection(); item->setSelected(true); scene->updateSelectionFrame();
-                        mShapeBar->show(); // Keep appearance controls available; Select owns the pointer now.
                     }
                 }
             }
