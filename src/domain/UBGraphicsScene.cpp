@@ -1592,6 +1592,7 @@ void UBGraphicsScene::clearContent(clearCase pCase)
                 break;
             }
 
+            if(auto cover=dynamic_cast<UBGraphicsSvgItem*>(item);cover&&cover->isLessonCover())shouldDelete=false;
             if(shouldDelete) {
                 if (itemGroup) {
                     itemGroup->removeFromGroup(item);
@@ -2058,6 +2059,7 @@ void UBGraphicsScene::addItem(QGraphicsItem* item)
     // both the visible and stored levels before selection can restore it.
     if(auto cover=dynamic_cast<UBGraphicsSvgItem*>(item);cover&&cover->isLessonCover()){
         cover->setFlag(QGraphicsItem::ItemSendsGeometryChanges,true);
+        if(cover->isScreenShade()){cover->Delegate()->setLocked(true);cover->setFlag(QGraphicsItem::ItemIsMovable,false);}
         cover->setData(UBGraphicsItemData::itemLayerType,int(itemLayerType::ToolItem));
         UBGraphicsItem::assignZValue(cover,2000000.0);
     }

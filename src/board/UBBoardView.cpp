@@ -977,7 +977,8 @@ void UBBoardView::moveRubberedItems(QPointF movingVector)
                 || item->type() == UBGraphicsStrokesGroup::Type
                 || item->type() == UBGraphicsGroupContainerItem::Type)
         {
-            item->setPos(item->pos()+movingVector);
+            auto cover=dynamic_cast<UBGraphicsSvgItem*>(item);
+            if(!cover||!cover->isLessonCover()||(!cover->isScreenShade()&&!cover->Delegate()->isLocked()))item->setPos(item->pos()+movingVector);
         }
     }
 

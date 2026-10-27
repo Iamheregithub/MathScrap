@@ -261,6 +261,8 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     qApp->installEventFilter(this);
     applyLayout();
     new UBPaperInk(mWindow);
+    // Cover buttons and reveal grips take precedence over shape drawing.
+    if(auto lesson=mWindow->findChild<UBLessonTools*>()){qApp->removeEventFilter(lesson);qApp->installEventFilter(lesson);}
 }
 
 bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
@@ -407,8 +409,8 @@ void UBTeachingTools::customize()
     auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
     auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out. Eraser: double-click or double-tap to switch to / from Erase All."));note->setWordWrap(true);toolLayout->addWidget(note);
     auto covers=new QWidget;covers->setObjectName("workspaceCoverControls");auto coversLayout=new QVBoxLayout(covers);tabs->addTab(covers,tr("Covers"));
-    auto coverHint=new QLabel(tr("Reveal, conceal and adjust covers on the current page. Select a cover before using selected-cover controls."));coverHint->setWordWrap(true);coversLayout->addWidget(coverHint);
-    for(const auto &id:{"lessonCoverSelectedReveal","lessonCoverSelectedHide","lessonCoverAllReveal","lessonCoverAllHide","lessonCoverLock","lessonResetReveals","lessonCoverColour"}){
+    auto coverHint=new QLabel(tr("Choose the default cover colour. Select a cover first to change its colour too."));coverHint->setWordWrap(true);coversLayout->addWidget(coverHint);
+    for(const auto &id:{"lessonCoverColour"}){
         if(auto action=mWindow->findChild<QAction*>(id)){
             auto button=new QToolButton(covers);button->setDefaultAction(action);button->setToolButtonStyle(Qt::ToolButtonTextOnly);button->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Preferred);coversLayout->addWidget(button);
         }

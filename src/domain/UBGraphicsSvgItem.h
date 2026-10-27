@@ -56,6 +56,10 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
         QByteArray fileData() const;
         bool isTeachingShape() const;
         bool isLessonCover() const;
+        bool isScreenShade() const;
+        void setCoverLocked(bool locked);
+        void refreshCoverControls();
+        QRectF coverControlRect(const QString &role) const;
         void setTeachingSvg(const QByteArray &data);
         void commitTeachingSvg(const QByteArray &before);
         void refreshTeachingHandles();
@@ -101,6 +105,8 @@ class UBGraphicsSvgItem: public QGraphicsSvgItem, public UBItem, public UBGraphi
 
         void initTeachingHandles();
         QList<QGraphicsItem*> mTeachingHandles;
+        QList<QGraphicsItem*> mCoverControls;
+        bool mCoverPlacementReady = false;
         bool mTeachingDetached = false;
         int mQuadraticPressedButton = -1;
         QPointer<QGraphicsProxyWidget> mFormulaProxy;

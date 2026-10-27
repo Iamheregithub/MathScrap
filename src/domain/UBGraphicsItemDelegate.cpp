@@ -32,6 +32,7 @@
 #include <QDrag>
 
 #include "UBGraphicsItemDelegate.h"
+#include "UBGraphicsSvgItem.h"
 #include "UBGraphicsMediaItemDelegate.h"
 #include "UBGraphicsDelegateFrame.h"
 #include "UBGraphicsScene.h"
@@ -634,7 +635,10 @@ void UBGraphicsItemDelegate::lock(bool locked)
 
 void UBGraphicsItemDelegate::setLockedRecurs(const QVariant &pLock, QGraphicsItem *pItem)
 {
-    pItem->setData(UBGraphicsItemData::ItemLocked, pLock);
+    const auto cover=dynamic_cast<UBGraphicsSvgItem*>(pItem);
+    const bool locked=pLock.toBool()||(cover&&cover->isScreenShade());
+    pItem->setData(UBGraphicsItemData::ItemLocked,locked);
+    if(cover&&cover->isLessonCover()){cover->setFlag(QGraphicsItem::ItemIsMovable,!locked);cover->refreshCoverControls();}
     foreach (QGraphicsItem *insideItem, pItem->childItems())
     {
         setLockedRecurs(pLock, insideItem);
@@ -865,6 +869,7 @@ void UBGraphicsItemDelegate::setLocked(bool pLocked)
     Q_ASSERT(mDelegated);
 
     if (mDelegated) {
+        if(auto cover=dynamic_cast<UBGraphicsSvgItem*>(mDelegated);cover&&cover->isScreenShade())pLocked=true;
         mDelegated->setData(UBGraphicsItemData::ItemLocked, QVariant(pLocked));
     }
 }

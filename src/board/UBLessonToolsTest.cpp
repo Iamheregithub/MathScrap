@@ -87,109 +87,88 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     auto fail=[error](const QString &s){*error=s;return false;};
     auto window=UBApplication::mainWindow;auto board=UBApplication::boardController;
     auto manager=UBPersistenceManager::persistenceManager();
-    auto document=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Cover toolbar regression",true);
+    auto document=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Cover lock regression",true);
     board->setActiveDocumentScene(document,0);auto scene=board->activeScene();
     auto cover=window->findChild<QAction*>("actionLessonCover");
     auto bar=window->findChild<QToolBar*>("lessonCoverToolbar");
     auto draw=window->findChild<QAction*>("lessonDrawCover");
     auto shadeAction=window->findChild<QAction*>("lessonScreenShade");
-    if(!cover||!bar||!draw||!shadeAction||window->findChild<QAction*>("actionLessonCovers"))return fail("Single Cover toolbar unavailable");
-    if(bar->actions().size()!=3||bar->actions().at(0)!=draw||bar->actions().at(1)!=shadeAction||bar->actions().at(2)->objectName()!="lessonCoverClose")return fail("Cover tray must contain only Draw cover, Screen shade and Close");
-    auto shapePanel=window->findChild<QWidget*>("compactShapePanel");if(!shapePanel)return fail("Shape panel missing");
-    for(auto label:shapePanel->findChildren<QLabel*>())if(QStringList{"Shapes","2D","3D"}.contains(label->text()))return fail("Redundant Shapes tray label remains");
+    if(!cover||!bar||!draw||!shadeAction||bar->actions().size()!=3)return fail("Cover tray is not the three approved controls");
+    for(const auto &id:{"actionLessonReveal","lessonCoverSelectedReveal","lessonCoverSelectedHide","lessonCoverAllReveal","lessonCoverAllHide","lessonCoverLock","lessonResetReveals"})if(window->findChild<QAction*>(id))return fail("Removed cover command is still registered");
     cover->trigger();QApplication::processEvents();
     if(bar->isHidden()||!draw->isChecked())return fail("Cover did not default to Draw cover");
     auto view=board->controlView();auto viewport=view->viewport();
     auto send=[&](QEvent::Type type,QPointF point){
-        const QPointF p=view->mapFromScene(point);
-        const auto button=type==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton;
-        const auto buttons=type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton;
-        QMouseEvent event(type,p,viewport->mapToGlobal(p.toPoint()),button,buttons,Qt::NoModifier);
-        QApplication::sendEvent(viewport,&event);
+        const QPointF p=view->mapFromScene(point);QMouseEvent event(type,p,viewport->mapToGlobal(p.toPoint()),type==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton,type==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,Qt::NoModifier);QApplication::sendEvent(viewport,&event);
     };
-    send(QEvent::MouseButtonPress,QPointF(-150,-100));send(QEvent::MouseMove,QPointF(150,100));send(QEvent::MouseButtonRelease,QPointF(150,100));
-    UBGraphicsSvgItem *drawn=nullptr;
-    for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover())drawn=svg;
-    if(!drawn||qAbs(drawn->sceneBoundingRect().width()-300)>5||qAbs(drawn->sceneBoundingRect().height()-200)>5)return fail("Dragged cover has incorrect dimensions");
-    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Double click did not reveal the cover");
-    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double click did not conceal the cover again");
-    const auto originalCover=drawn->fileData();
+    auto drag=[&](const QPointF &from,const QPointF &to){send(QEvent::MouseButtonPress,from);send(QEvent::MouseMove,to);send(QEvent::MouseButtonRelease,to);};
     auto localRect=[](UBGraphicsSvgItem *item){QDomDocument doc;doc.setContent(item->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();return QRectF(r.attribute("x").toDouble(),r.attribute("y").toDouble(),r.attribute("width").toDouble(),r.attribute("height").toDouble());};
-    const auto bounds=localRect(drawn);const auto grip=drawn->mapToScene(QPointF(bounds.center().x(),bounds.top()+3));
-    send(QEvent::MouseButtonPress,grip);send(QEvent::MouseMove,grip+QPointF(0,60));send(QEvent::MouseButtonRelease,grip+QPointF(0,60));
-    const auto rolled=localRect(drawn);
-    if(qAbs(rolled.bottom()-bounds.bottom())>1||qAbs(rolled.top()-bounds.top()-60)>4)return fail("Cover top grip did not reveal with the bottom fixed");
-    UBApplication::undoStack->undo();if(drawn->fileData()!=originalCover)return fail("Cover roll undo failed");
-    // Tablet packets use the same reveal path as mouse input.
+    auto controlPoint=[&](UBGraphicsSvgItem *item,const QString &role){item->refreshCoverControls();return view->mapToScene(item->coverControlRect(role).center().toPoint());};
+    auto tap=[&](UBGraphicsSvgItem *item,const QString &role){const auto point=controlPoint(item,role);send(QEvent::MouseButtonPress,point);send(QEvent::MouseButtonRelease,point);};
+    drag(QPointF(-150,-100),QPointF(150,100));
+    UBGraphicsSvgItem *drawn=nullptr;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover())drawn=svg;
+    if(!drawn||!drawn->Delegate()->isLocked()||drawn->flags().testFlag(QGraphicsItem::ItemIsMovable))return fail("Newly drawn cover did not start locked");
+    const auto original=localRect(drawn);const auto fixed=drawn->pos();const auto transform=drawn->transform();
+    drag(QPointF(0,0),QPointF(40,30));drawn->setPos(fixed+QPointF(10,20));drawn->setScale(2);drawn->setRotation(30);drawn->setTransform(QTransform().scale(2,1));
+    if(drawn->pos()!=fixed||drawn->scale()!=1||drawn->rotation()!=0||drawn->transform()!=transform)return fail("Locked cover moved, stretched or rotated");
+    const auto undo=UBApplication::undoStack->index();
+    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(tools->isCoverRevealed(drawn))return fail("Double-click revealed the cover");
+    auto grip=controlPoint(drawn,"grip");drag(grip,grip+QPointF(0,60));
+    if(qAbs(localRect(drawn).top()-original.top()-60)>4||localRect(drawn).bottom()!=original.bottom())return fail("Locked cover grip did not keep bottom fixed");
+    const auto movedGrip=controlPoint(drawn,"grip");
+    if(qAbs(view->mapFromScene(movedGrip).x()-view->mapFromScene(drawn->mapToScene(QPointF(localRect(drawn).center().x(),localRect(drawn).top()))).x())>2)return fail("Grip is not centred on the visible top edge");
+    drag(movedGrip,movedGrip-QPointF(0,60));
+    tap(drawn,"lock");if(drawn->Delegate()->isLocked())return fail("Circular lock button did not unlock");
+    const auto body=drawn->mapToScene(localRect(drawn).center());drag(body,body+QPointF(35,25));
+    if(QLineF(drawn->pos(),fixed+QPointF(35,25)).length()>3)return fail("Unlocked cover did not move");
+    tap(drawn,"lock");if(!drawn->Delegate()->isLocked())return fail("Circular lock button did not relock");
+    if(UBApplication::undoStack->index()!=undo)return fail("Cover controls added unrequested undo entries");
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
-    QPointingDevice device("Cover test pen",71,QInputDevice::DeviceType::Stylus,QPointingDevice::PointerType::Pen,QInputDevice::Capability::Position|QInputDevice::Capability::Pressure,1,1);
-    auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF pos=view->mapFromScene(point);const bool up=type==QEvent::TabletRelease;QTabletEvent event(type,&device,pos,viewport->mapToGlobal(pos.toPoint()),up?0.:.7,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,up?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
-    pen(QEvent::TabletPress,grip);pen(QEvent::TabletMove,grip+QPointF(0,45));pen(QEvent::TabletRelease,grip+QPointF(0,45));
-    if(qAbs(localRect(drawn).bottom()-bounds.bottom())>1||qAbs(localRect(drawn).top()-bounds.top()-45)>4)return fail("Stylus cover reveal failed");
-    UBApplication::undoStack->undo();
+    auto pen=[&](QEvent::Type type,const QPointF &point){const QPointF p=view->mapFromScene(point);QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),p,viewport->mapToGlobal(p.toPoint()),type==QEvent::TabletRelease?0.:.8,0,0,0,0,0,Qt::NoModifier,type==QEvent::TabletMove?Qt::NoButton:Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(viewport,&event);};
+    grip=controlPoint(drawn,"grip");pen(QEvent::TabletPress,grip);pen(QEvent::TabletMove,grip+QPointF(0,45));pen(QEvent::TabletRelease,grip+QPointF(0,45));
+    if(qAbs(localRect(drawn).top()-45)>4||localRect(drawn).bottom()!=original.bottom())return fail("Stylus top-handle reveal failed");
+    auto button=controlPoint(drawn,"lock");pen(QEvent::TabletPress,button);pen(QEvent::TabletRelease,button);if(drawn->Delegate()->isLocked())return fail("Stylus lock button failed");
+    tap(drawn,"lock");
 #endif
-    auto lock=window->findChild<QAction*>("lessonCoverLock");
-    scene->clearSelection();drawn->setSelected(true);if(!lock||!lock->isEnabled())return fail("Cover position lock unavailable");
-    write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","lock and drag cover"}});
-    lock->trigger();if(!drawn->Delegate()->isLocked())return fail("Cover did not lock");
-    const auto fixed=drawn->pos();send(QEvent::MouseButtonPress,QPointF(0,0));send(QEvent::MouseMove,QPointF(40,30));send(QEvent::MouseButtonRelease,QPointF(40,30));
-    if(drawn->pos()!=fixed)return fail("Locked cover moved during a drag");
-    send(QEvent::MouseButtonDblClick,QPointF(0,0));if(!tools->isCoverRevealed(drawn))return fail("Locked cover could not reveal");
-    tools->setCoverRevealed(drawn,false);
-    scene->clearSelection();drawn->setSelected(true);lock->trigger();if(drawn->Delegate()->isLocked())return fail("Cover did not unlock");
-    UBApplication::undoStack->undo();if(!drawn->Delegate()->isLocked())return fail("Cover lock undo failed");
-    draw->trigger();send(QEvent::MouseButtonPress,QPointF(-200,-200));
-    QKeyEvent escape(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);QApplication::sendEvent(viewport,&escape);
-    if(draw->isChecked())return fail("Escape did not cancel cover drawing");
-    shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;
-    for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade"))shade=svg;
-    if(!shade)return fail("Screen shade was not created");
-    lock->trigger();if(!shade->Delegate()->isLocked())return fail("Shade position did not lock");
-    // Drag each edge inward and back. This checks that opposite edges stay fixed.
-    for(int edge=0;edge<4;++edge){
-        QDomDocument doc;doc.setContent(shade->fileData());auto r=doc.elementsByTagName("rect").at(0).toElement();
-        const double x=r.attribute("x").toDouble(),y=r.attribute("y").toDouble(),w=r.attribute("width").toDouble(),h=r.attribute("height").toDouble();
-        QPointF a(edge<2?(edge==0?x:x+w):x+w/2,edge>=2?(edge==2?y:y+h):y+h/2);
-        const QPointF delta=edge<2?QPointF(edge==0?60:-60,0):QPointF(0,edge==2?60:-60);
-        auto before=shade->fileData();send(QEvent::MouseButtonPress,shade->mapToScene(a));send(QEvent::MouseMove,shade->mapToScene(a+delta));send(QEvent::MouseButtonRelease,shade->mapToScene(a+delta));
-        if(shade->fileData()==before)return fail(QString("Shade edge %1 did not drag").arg(edge));
-        QDomDocument changed;changed.setContent(shade->fileData());auto cr=changed.elementsByTagName("rect").at(0).toElement();
-        const auto dimension=edge<2?"width":"height";const double expected=(edge<2?w:h)-60;
-        if(qAbs(cr.attribute(dimension).toDouble()-expected)>4)return fail("Shade edge drag changed the wrong extent");
-        UBApplication::undoStack->undo();if(shade->fileData()!=before)return fail("Shade drag undo failed");
-        UBApplication::undoStack->redo();
-        send(QEvent::MouseButtonPress,shade->mapToScene(a+delta));send(QEvent::MouseMove,shade->mapToScene(a));send(QEvent::MouseButtonRelease,shade->mapToScene(a));
-        QDomDocument restored;restored.setContent(shade->fileData());
-        if(qAbs(restored.elementsByTagName("rect").at(0).toElement().attribute(dimension).toDouble()-(edge<2?w:h))>4)return fail("Shade edge did not conceal again");
+    // A shape-drawing mode must not capture an on-cover button press.
+    const auto beforeShape=drawn->Delegate()->isLocked();window->findChild<QAction*>("lessonShape0")->trigger();tap(drawn,"lock");
+    if(drawn->Delegate()->isLocked()==beforeShape)return fail("Shape tool swallowed cover lock button");window->actionSelector->trigger();drawn->setCoverLocked(true);
+    const auto coverData=drawn->fileData();const auto coverPos=drawn->pos();
+    shadeAction->trigger();UBGraphicsSvgItem *shade=nullptr;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isScreenShade())shade=svg;
+    if(!shade||!shade->Delegate()->isLocked())return fail("Screen shade did not start fixed");
+    const auto shadePos=shade->pos();const auto shadeGeometry=localRect(shade);
+    const auto shadeBody=shade->mapToScene(shadeGeometry.center());drag(shadeBody,shadeBody+QPointF(60,30));
+    shade->Delegate()->setLocked(false);shade->setPos(shadePos+QPointF(20,20));shade->setScale(2);shade->setRotation(15);
+    if(shade->pos()!=shadePos||!shade->Delegate()->isLocked()||shade->scale()!=1||shade->rotation()!=0)return fail("Screen shade could move, resize or unlock");
+    // No side/bottom edge should resize or move a shade.
+    for(const auto &edge:{QPointF(shadeGeometry.left(),shadeGeometry.center().y()),QPointF(shadeGeometry.right(),shadeGeometry.center().y()),QPointF(shadeGeometry.center().x(),shadeGeometry.bottom())})drag(shade->mapToScene(edge),shade->mapToScene(edge+QPointF(20,-20)));
+    if(localRect(shade)!=shadeGeometry||shade->pos()!=shadePos)return fail("A side or bottom shade edge moved");
+    auto shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,80));
+    if(qAbs(localRect(shade).top()-shadeGeometry.top()-80)>4||localRect(shade).bottom()!=shadeGeometry.bottom())return fail("Shade top handle did not preserve bottom");
+    const auto shadeData=shade->fileData();
+    // Save/reload preserves each distinct object's position, lock and reveal.
+    auto unlocked=tools->addCover();unlocked->setCoverLocked(false);unlocked->setPos(210,130);unlocked->setScale(.7);unlocked->setRotation(10);const auto unlockedId=unlocked->uuid();
+    UBSvgSubsetAdaptor::persistScene(document,scene,0);auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Cover lesson did not reopen");
+    bool foundCover=false,foundShade=false,foundUnlocked=false;
+    for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+        if(svg->fileData()==coverData&&svg->pos()==coverPos&&svg->Delegate()->isLocked())foundCover=true;
+        if(svg->fileData()==shadeData&&svg->pos()==shadePos&&svg->Delegate()->isLocked())foundShade=true;
+        if(svg->uuid()==unlockedId&&!svg->Delegate()->isLocked()&&QLineF(svg->pos(),unlocked->pos()).length()<.1&&qAbs(svg->sceneTransform().m11()-unlocked->sceneTransform().m11())<.01&&qAbs(svg->sceneTransform().m12()-unlocked->sceneTransform().m12())<.01)foundUnlocked=true;
     }
-    write(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT"),{{"phase","reset reveals"}});
-    tools->setCoverRevealed(shade,true);
-    send(QEvent::MouseButtonPress,grip);send(QEvent::MouseMove,grip+QPointF(0,45));send(QEvent::MouseButtonRelease,grip+QPointF(0,45));
-    const auto rolledBeforeReset=localRect(drawn);
-    if(qAbs(rolledBeforeReset.top()-45)>4)return fail("Cover did not roll before reset");
-    const auto home=shade->pos();shade->setPos(home+QPointF(50,25));
-    tools->setCoverRevealed(drawn,true);tools->setCoverRevealed(shade,true);
-    auto reset=window->findChild<QAction*>("lessonResetReveals");if(!reset)return fail("Reset reveals unavailable");
-    reset->trigger();if(tools->isCoverRevealed(drawn)||tools->isCoverRevealed(shade)||shade->pos()!=home||!shade->Delegate()->isLocked()||qAbs(localRect(drawn).top())>1)return fail("Reset did not conceal covers and restore the locked shade");
-    UBApplication::undoStack->undo();if(!tools->isCoverRevealed(drawn)||!tools->isCoverRevealed(shade)||shade->pos()!=home+QPointF(50,25)||localRect(drawn)!=rolledBeforeReset)return fail("Reset reveals undo failed");
-    UBApplication::undoStack->redo();
-    const auto saved=shade->fileData();UBSvgSubsetAdaptor::persistScene(document,scene,0);
-    auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Saved shade page could not be reopened");bool persisted=false;
-    for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData()==saved)persisted=svg->Delegate()->isLocked();
-    if(!persisted)return fail("Shade geometry did not survive page reload");
-    // The shade's own close control must work even while writing, and be undoable.
-    const auto shadeData=shade->fileData();QDomDocument closeDoc;closeDoc.setContent(shadeData);auto circle=closeDoc.elementsByTagName("circle").at(0).toElement();
-    if(circle.isNull())return fail("Screen shade circular close button missing");
-    const auto closePoint=shade->mapToScene(QPointF(circle.attribute("cx").toDouble(),circle.attribute("cy").toDouble()));
-    window->actionPen->trigger();const auto inkCount=scene->items().size();
-    send(QEvent::MouseButtonPress,closePoint);send(QEvent::MouseButtonRelease,closePoint);
-    if(shade->scene()||drawn->scene()!=scene)return fail("Shade close removed the wrong content or failed");
-    UBApplication::undoStack->undo();if(shade->scene()!=scene||shade->fileData()!=shadeData||scene->items().size()!=inkCount)return fail("Shade deletion undo did not restore only the shade");
+    if(!foundCover||!foundShade||!foundUnlocked)return fail("Position, lock, size or reveal state changed on reopen");
+    // The close target stays full-size and on-screen at near-total reveal and zoom.
+    shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,10000));
+    shade->refreshCoverControls();auto close=shade->coverControlRect("close");
+    if(close.width()<44||close.height()<44||!QRectF(viewport->rect()).contains(close))return fail("Pulled-down shade close button became inaccessible");
+    const auto viewportTransform=view->transform();view->scale(.5,.5);shade->refreshCoverControls();
+    if(shade->coverControlRect("close").width()<44)return fail("Shade close button shrank with zoom");view->setTransform(viewportTransform);shade->refreshCoverControls();
+    view->viewport()->update();QApplication::processEvents();
+    window->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("cover-controls-window.png"));
+    window->actionPen->trigger();const auto closeUndo=UBApplication::undoStack->index();tap(shade,"close");
+    if(shade->scene()||drawn->scene()!=scene||unlocked->scene()!=scene||UBApplication::undoStack->index()!=closeUndo)return fail("Shade close removed other content or added undo support");
     window->actionSelector->trigger();
-    // The moved controls are usable within Customize Toolbar.
-    bool customizeChecked=false;
-    QTimer::singleShot(0,qApp,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto panel=dialog->findChild<QWidget*>("workspaceCoverControls");if(panel){int count=0;for(auto b:panel->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->property("coverControl").toBool())++count;customizeChecked=count==7;}dialog->reject();});
-    window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!customizeChecked)return fail("Customize Toolbar is missing the seven cover controls");
+    bool customizeChecked=false;QTimer::singleShot(0,qApp,[&]{auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget());if(!dialog)return;auto panel=dialog->findChild<QWidget*>("workspaceCoverControls");if(panel){auto buttons=panel->findChildren<QToolButton*>();customizeChecked=buttons.size()==1&&buttons.first()->defaultAction()->objectName()=="lessonCoverColour";}dialog->reject();});
+    window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!customizeChecked)return fail("Customize Toolbar contains options other than Cover colour");
     return true;
 }
 
@@ -383,7 +362,7 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         report["coverToolbarChecked"]=true;report["penToolbarCustomizationChecked"]=true;
         auto dc=UBDrawingController::drawingController();
         auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Lesson tools regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setBackground(false,plain);scene->setNominalSize(800,600);
-        auto text=scene->addText("Version one",QPointF(-250,-200));auto cover=tools->addCover();auto second=tools->addCover();if(!cover||!second){done(false,"Cover creation failed");return;}cover->setPos(-180,-80);cover->setScale(1);cover->setTransform(QTransform());second->setPos(180,100);second->setScale(.5);second->setRotation(15);tools->setCoverRevealed(second,true);
+        auto text=scene->addText("Version one",QPointF(-250,-200));auto cover=tools->addCover();auto second=tools->addCover();if(!cover||!second){done(false,"Cover creation failed");return;}cover->setCoverLocked(false);cover->setPos(-180,-80);cover->setScale(1);cover->setTransform(QTransform());second->setCoverLocked(false);second->setPos(180,100);second->setScale(.5);second->setRotation(15);tools->setCoverRevealed(second,true);
         dc->setStylusTool(UBStylusTool::Pen);dc->setColorIndex(0);scene->inputDevicePress(QPointF(-80,0));scene->inputDeviceMove(QPointF(80,0));scene->inputDeviceRelease();dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
         auto render=[scene]{QImage im(800,600,QImage::Format_ARGB32_Premultiplied);im.fill(Qt::white);QPainter p(&im);scene->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));p.end();return im;};
         // Simulate old/ordinary object-layer assignment, followed by selection and deselection.
@@ -394,7 +373,6 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         scene->inputDeviceRelease();dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
         auto covered=render();covered.save(output.filePath("cover-hidden.png"));if(covered.pixelColor(400,300)!=QColor("#334155")){done(false,"Cover did not conceal existing ink");return;}
         const auto before=cover->fileData();tools->setCoverRevealed(cover,true);if(!tools->isCoverRevealed(cover)){done(false,"Cover reveal failed");return;}auto revealed=render();revealed.save(output.filePath("cover-revealed.png"));if(revealed.pixelColor(400,300).lightness()>80){done(false,"Revealing cover did not expose handwriting");return;}
-        UBApplication::undoStack->undo();if(cover->fileData()!=before){done(false,"Cover undo failed");return;}UBApplication::undoStack->redo();if(!tools->isCoverRevealed(cover)){done(false,"Cover redo failed");return;}
         if(!history->checkpoint(true,&error)){done(false,error);return;}const QString id=doc->uuid().toString(QUuid::WithoutBraces);auto versions=history->versions(id);QString first;for(const auto &v:versions)if(v.toObject().value("file").toString().startsWith("versions/")){first=v.toObject().value("file").toString();break;}if(first.isEmpty()){done(false,"Initial saved version missing");return;}
         text->setPlainText("Version two");scene->setModified(true);if(!history->checkpoint(true,&error)){done(false,error);return;}const int count=history->versions(id).size();if(count<3){done(false,"Second saved version missing");return;}if(!history->checkpoint(true,&error)||history->versions(id).size()!=count){done(false,"Unchanged lesson created redundant versions");return;}
         auto fresh=UBSvgSubsetAdaptor::loadScene(doc,0);int covers=0,reveals=0;for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){++covers;if(tools->isCoverRevealed(svg))++reveals;if(svg->zValue()<=1000000){done(false,"Reopened cover lost its layer");return;}}if(covers!=2||reveals!=2){done(false,"Cover state did not persist across page reload");return;}
@@ -402,7 +380,7 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         // A damaged history blob must fail safely without changing the live lesson.
         const auto manifest=read(history->rootPath()+"/"+id+"/"+first);const auto entry=manifest.value("files").toArray().first().toObject();const QString blob=history->rootPath()+"/"+id+"/blobs/"+entry.value("sha256").toString();QFile file(blob);if(!file.open(QIODevice::ReadOnly)){done(false,"History blob missing");return;}const auto bytes=file.readAll();file.close();if(!file.open(QIODevice::WriteOnly|QIODevice::Truncate)){done(false,"Cannot prepare damaged history test");return;}file.write("damaged");file.close();auto rejected=history->restoreCopy(id,first,&error);file.open(QIODevice::WriteOnly|QIODevice::Truncate);file.write(bytes);file.close();if(rejected||!sceneText(UBSvgSubsetAdaptor::loadScene(doc,0)).contains("Version two")){done(false,"Damaged history was not rejected safely");return;}
         report["lessonId"]=id;report["lessonPath"]=doc->persistencePath();report["versions"]=count;report["historyRoot"]=history->rootPath();write(output.filePath("lesson-tools-state.json"),report);
-        done(true,"Per-colour Pen/Highlighter/Solid Line/Dashed Line thickness, toolbar synchronization, palette editing/background/alpha handling, cover occlusion/reveal/undo/reload, history deduplication, separate-copy restore and damaged-blob rejection passed");return;
+        done(true,"Per-colour Pen/Highlighter/Solid Line/Dashed Line thickness, toolbar synchronization, palette editing/background/alpha handling, cover occlusion/reveal/lock/reload, history deduplication, separate-copy restore and damaged-blob rejection passed");return;
     }
     if(!colourMemory(false,&error)){done(false,"Thickness did not survive restart: "+error);return;}
     report["colourWidthMemoryChecked"]=true;

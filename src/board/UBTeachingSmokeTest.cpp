@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingSmokeTest.h"
+#include "UBLessonTools.h"
 #include "UBPaperInk.h"
 #include "UBMathFormulaTest.h"
 #include <QtWidgets>
@@ -926,17 +927,24 @@ bool checkEraseAll(QString *error)
     auto shape=scene->addSvg(QUrl(),QPointF(0,100),svg);scene->clearSelection();
     auto render=[scene]{QImage image(800,600,QImage::Format_ARGB32_Premultiplied);image.fill(Qt::white);QPainter p(&image);const auto context=scene->renderingContext();scene->setRenderingContext(UBGraphicsScene::NonScreen);scene->render(&p,QRectF(0,0,800,600),QRectF(-400,-300,800,600));scene->setRenderingContext(context);return image;};
     auto strokes=[scene]{int count=0;for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)++count;return count;};
+    auto covers=window->findChild<UBLessonTools*>();if(!covers)return fail("Cover tools missing from Erase All check");
+    auto protectedCover=covers->addCover();protectedCover->setCoverLocked(false);protectedCover->setPos(220,130);protectedCover->setScale(.35);protectedCover->setCoverLocked(true);
+    const QByteArray shadeSvg="<svg xmlns='http://www.w3.org/2000/svg' width='60' height='50' data-screen-shade='true'><metadata id='lessonboard-cover'>covered</metadata><rect x='0' y='20' width='60' height='30' fill='#334155'/></svg>";
+    auto protectedShade=scene->addSvg(QUrl(),QPointF(250,-180),shadeSvg);protectedShade->setCoverLocked(true);scene->clearSelection();
+    const auto coverData=protectedCover->fileData(),shadeData=protectedShade->fileData();const auto coverPos=protectedCover->pos(),shadePos=protectedShade->pos();
+    auto overlaysPreserved=[&]{return protectedCover->scene()==scene&&protectedShade->scene()==scene&&protectedCover->fileData()==coverData&&protectedShade->fileData()==shadeData&&protectedCover->pos()==coverPos&&protectedShade->pos()==shadePos&&protectedCover->Delegate()->isLocked()&&protectedShade->Delegate()->isLocked();};
     const auto before=render();const int strokeCount=strokes(),undo=UBApplication::undoStack->index();
     if(strokeCount<2)return fail("Erase All fixture did not create ink and highlighting");
     tap();tap();settle(QApplication::doubleClickInterval()+80);
     if(eraser->text()!=QObject::tr("Erase All")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Stylus double-tap to Erase All modified the page");
     tap();settle(QApplication::doubleClickInterval()+80);const auto after=render();
-    if(strokes()!=0||shape->scene()!=scene||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
+    if(!overlaysPreserved()||strokes()!=0||shape->scene()!=scene||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
     UBApplication::undoStack->undo();if(render()!=before||strokes()!=strokeCount)return fail("Erase All Undo did not restore handwriting and highlighting");
     UBApplication::undoStack->redo();if(render()!=after||strokes()!=0)return fail("Erase All Redo did not restore cleared result");
     UBApplication::undoStack->undo();const int restoredUndo=UBApplication::undoStack->index();
     tap();tap();settle(QApplication::doubleClickInterval()+80);
     if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=restoredUndo||dc->stylusTool()!=UBStylusTool::Eraser)return fail("Stylus double-tap back to Eraser cleared ink or failed to select Eraser");
+    board->clearScene();if(!overlaysPreserved())return fail("Clear Page removed or changed a cover or screen shade");
     window->actionPen->trigger();window->setProperty("eraseAllChecked",true);return true;
 }
 

@@ -123,10 +123,17 @@ QByteArray UBGraphicsSvgItem::fileData() const
 
 QVariant UBGraphicsSvgItem::itemChange(GraphicsItemChange change, const QVariant &value)
 {
+    if(isLessonCover()&&mCoverPlacementReady&&(isScreenShade()||Delegate()->isLocked())){
+        if(change==ItemPositionChange)return pos();
+        if(change==ItemTransformChange)return transform();
+        if(change==ItemScaleChange)return scale();
+        if(change==ItemRotationChange)return rotation();
+    }
     QVariant newValue = Delegate()->itemChange(change, value);
     if (change == QGraphicsItem::ItemZValueChange && isLessonCover()) newValue = 2000000.0;
     auto result = QGraphicsSvgItem::itemChange(change, newValue);
     if (change == QGraphicsItem::ItemSelectedHasChanged) refreshTeachingHandles();
+    if(isLessonCover()&&(change==ItemPositionHasChanged||change==ItemTransformHasChanged||change==ItemScaleHasChanged||change==ItemRotationHasChanged))refreshCoverControls();
     return result;
 }
 
@@ -202,6 +209,11 @@ void UBGraphicsSvgItem::paint(QPainter *painter, const QStyleOptionGraphicsItem 
     if (isTeachingShape()) {
         QSvgRenderer uniform(fileData());
         uniform.render(painter, boundingRect());
+    } else if(isLessonCover()&&mFileData.contains("data-cover-controls")){
+        QDomDocument doc;doc.setContent(mFileData);auto root=doc.documentElement();
+        for(auto n=root.firstChildElement();!n.isNull();){auto next=n.nextSiblingElement();
+            if(n.attribute("id")=="shade-close"||(n.tagName()=="path"&&n.attribute("stroke")=="#475569"))root.removeChild(n);n=next;}
+        QSvgRenderer body(doc.toByteArray());body.render(painter,boundingRect());
     } else QGraphicsSvgItem::paint(painter, &styleOption, widget);
     if(isTeachingShape()||isLessonCover()||mFileData.contains("mathscrap-formula")) {
         // A light outline conveys selection without obscuring the diagram.
@@ -326,6 +338,35 @@ private:
     QPointer<UBGraphicsSvgItem> mItem;
     QByteArray mBefore, mAfter;
 };
+class CoverControl : public QGraphicsObject {
+public:
+    CoverControl(UBGraphicsSvgItem *cover,const QString &role):QGraphicsObject(cover),mCover(cover),mRole(role){
+        setData(0,"cover-control");setData(1,role);
+        setData(UBGraphicsItemData::ItemLayerType,UBItemLayerType::Control);
+        setFlag(QGraphicsItem::ItemIgnoresTransformations);setAcceptedMouseButtons(Qt::NoButton);
+        setZValue(30);setCursor(role=="grip"?Qt::SizeVerCursor:Qt::PointingHandCursor);
+    }
+    QRectF boundingRect() const override{return mRole=="grip"?QRectF(-24,-12,48,24):QRectF(-24,-24,48,48);}
+    void paint(QPainter *p,const QStyleOptionGraphicsItem *,QWidget *widget) override{
+        // Controls belong to the interactive board, never PDFs/thumbnails.
+        auto scene=mCover->scene();if(!scene||scene->renderingContext()!=UBGraphicsScene::Screen||!widget)return;
+        p->save();p->setRenderHint(QPainter::Antialiasing);p->setPen(QPen(QColor("#475569"),1.5));p->setBrush(QColor("#fffdf7"));
+        if(mRole=="grip"){
+            p->drawRoundedRect(QRectF(-23,-10,46,20),8,8);p->setPen(QPen(QColor("#475569"),2,Qt::SolidLine,Qt::RoundCap));
+            p->drawLine(QPointF(-12,-2),QPointF(12,-2));p->drawLine(QPointF(-12,3),QPointF(12,3));
+        }else{
+            p->drawEllipse(QRectF(-22,-22,44,44));p->setPen(QPen(QColor("#334155"),2.5,Qt::SolidLine,Qt::RoundCap,Qt::RoundJoin));p->setBrush(Qt::NoBrush);
+            if(mRole=="close"){p->drawLine(QPointF(-6,-6),QPointF(6,6));p->drawLine(QPointF(-6,6),QPointF(6,-6));}
+            else{
+                p->drawRoundedRect(QRectF(-8,-2,16,13),2,2);QPainterPath shackle;
+                if(mCover->Delegate()->isLocked()){shackle.moveTo(-5,-2);shackle.lineTo(-5,-7);shackle.cubicTo(-5,-15,5,-15,5,-7);shackle.lineTo(5,-2);}
+                else{shackle.moveTo(-5,-2);shackle.lineTo(-5,-7);shackle.cubicTo(-5,-15,6,-15,6,-7);}
+                p->drawPath(shackle);p->drawLine(QPointF(0,3),QPointF(0,6));
+            }
+        }p->restore();
+    }
+private:UBGraphicsSvgItem *mCover;QString mRole;
+};
 class TeachingVertexHandle : public QGraphicsEllipseItem {
 public:
     TeachingVertexHandle(UBGraphicsSvgItem *item, int index)
@@ -376,6 +417,11 @@ void UBGraphicsSvgItem::initTeachingHandles()
         Delegate()->setUBFlags(Delegate()->ubflags() & ~UBGraphicsFlags(GF_RESPECT_RATIO));
         setData(UBGraphicsItemData::ItemCanBeSetAsBackground, false);
         UBGraphicsItem::assignZValue(this,2000000.0);
+        mCoverControls<<new CoverControl(this,"grip")<<new CoverControl(this,isScreenShade()?"close":"lock");
+        if(isScreenShade())Delegate()->setLocked(true);
+        if(UBApplication::boardController){
+            QObject::connect(UBApplication::boardController,&UBBoardController::controlViewportChanged,this,[this]{refreshCoverControls();});
+        }
         return;
     }
     if (!isTeachingShape()) return;
@@ -395,6 +441,7 @@ void UBGraphicsSvgItem::initTeachingHandles()
 
 void UBGraphicsSvgItem::refreshTeachingHandles()
 {
+    if(isLessonCover()){refreshCoverControls();return;}
     const auto points = trianglePoints(mFileData);
     const bool visible = isSelected() && UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector;
     for (int i = 0; i < mTeachingHandles.size(); ++i) {
@@ -432,6 +479,49 @@ void UBGraphicsSvgItem::commitTeachingSvg(const QByteArray &before)
 {
     if (before != mFileData && UBApplication::undoStack)
         UBApplication::undoStack->push(new TeachingSvgUndo(this, before, mFileData));
+}
+
+bool UBGraphicsSvgItem::isScreenShade() const{return isLessonCover()&&mFileData.contains("data-screen-shade");}
+void UBGraphicsSvgItem::setCoverLocked(bool locked){
+    if(!isLessonCover())return;
+    locked=locked||isScreenShade();
+    Delegate()->setLocked(locked);
+    setFlag(QGraphicsItem::ItemIsMovable,!locked);
+    mCoverPlacementReady=true;
+    if(Delegate()->controlsExist())Delegate()->lock(locked);
+    refreshCoverControls();
+    if(scene())scene()->setModified(true);
+}
+QRectF UBGraphicsSvgItem::coverControlRect(const QString &role) const{
+    if(!UBApplication::boardController||!UBApplication::boardController->controlView())return {};
+    auto view=UBApplication::boardController->controlView();
+    for(auto control:mCoverControls)if(control->data(1).toString()==role)return control->deviceTransform(view->viewportTransform()).mapRect(control->boundingRect());
+    return {};
+}
+void UBGraphicsSvgItem::refreshCoverControls(){
+    if(!isLessonCover()||mCoverControls.isEmpty()||!scene()||!UBApplication::boardController)return;
+    auto view=UBApplication::boardController->controlView();if(!view)return;
+    QDomDocument doc;doc.setContent(mFileData);auto rect=doc.elementsByTagName("rect").at(0).toElement();
+    QRectF visible(rect.attribute("x").toDouble(),rect.attribute("y").toDouble(),rect.attribute("width").toDouble(),rect.attribute("height").toDouble());
+    if(doc.elementsByTagName("metadata").at(0).toElement().text()=="revealed")visible.setTop(qMax(visible.top(),visible.bottom()-8));
+    const auto vp=view->viewport()->rect();
+    auto screen=[&](const QPointF &p){return QPointF(view->mapFromScene(mapToScene(p)));};
+    const QPointF top=screen(QPointF(visible.center().x(),visible.top()));
+    const QPointF right=screen(visible.topRight());
+    for(auto control:mCoverControls){
+        const bool grip=control->data(1).toString()=="grip";
+        QPointF p=grip?top+QPointF(0,8):right+QPointF(-26,26);
+        // Keep a full-size button reachable when only a thin strip remains.
+        if(!grip&&qAbs(p.x()-top.x())<56)p.setX(right.x()+26);
+        const int margin=grip?14:26;
+        p.setX(qBound(double(vp.left()+26),p.x(),double(qMax(vp.left()+26,vp.right()-26))));
+        p.setY(qBound(double(vp.top()+margin),p.y(),double(qMax(vp.top()+margin,vp.bottom()-margin))));
+        control->setPos(mapFromScene(view->mapToScene(p.toPoint())));
+        control->setToolTip(grip?QObject::tr("Drag down to reveal; drag up to cover"):
+            isScreenShade()?QObject::tr("Close screen shade"):
+            Delegate()->isLocked()?QObject::tr("Locked — tap to unlock cover"):QObject::tr("Unlocked — tap to lock cover"));
+        control->update();
+    }
 }
 
 bool UBGraphicsSvgItem::isLessonCover() const

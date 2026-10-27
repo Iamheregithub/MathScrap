@@ -34,12 +34,6 @@ private:
     void armCover();
     void cancelCoverDrag();
     UBGraphicsSvgItem *createCover(const QRectF &rect, bool shade);
-    void revealCovers(bool selected, bool revealed);
-    void manageCovers();
-    void syncCoverLock();
-    void resetReveals();
-    QAction *mLockCover = nullptr;
-    QMetaObject::Connection mCoverSelectionConnection;
     QToolBar *mCoverBar = nullptr;
     QAction *mCoverAction = nullptr;
     QAction *mDrawCover = nullptr;
@@ -50,9 +44,12 @@ private:
     QPointer<QGraphicsScene> mCoverScene;
     QPointer<UBGraphicsSvgItem> mShadeDrag;
     QPointer<UBGraphicsSvgItem> mLockedPress;
-    QPointer<UBGraphicsSvgItem> mCloseShade;
     QByteArray mShadeBefore;
-    int mShadeEdge = -1;
+    QPointF mShadeStart;
+    QPointer<UBGraphicsSvgItem> mButtonCover;
+    QString mButtonRole;
+    QPointer<UBGraphicsSvgItem> mMoveCover;
+    QPointF mMoveStart,mMoveOriginal;
     UBMainWindow *mWindow;
     UBLessonHistory *mHistory;
 };
