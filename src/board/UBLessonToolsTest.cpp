@@ -144,6 +144,7 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Pen||UBApplication::undoStack->index()!=toolbarUndo)return fail("Full-page shade swallowed a stylus toolbar tap");window->actionSelector->trigger();
 #endif
     const auto shadeBody=shade->mapToScene(shadeGeometry.center());drag(shadeBody,shadeBody+QPointF(60,30));
+    if(drawn->fileData()!=coverData||!drawn->Delegate()->isLocked())return fail("Opaque shade allowed interaction with a hidden cover underneath");
     shade->Delegate()->setLocked(false);shade->setPos(shadePos+QPointF(20,20));shade->setScale(2);shade->setRotation(15);
     if(shade->pos()!=shadePos||!shade->Delegate()->isLocked()||shade->scale()!=1||shade->rotation()!=0)return fail("Screen shade could move, resize or unlock");
     // No side/bottom edge should resize or move a shade.

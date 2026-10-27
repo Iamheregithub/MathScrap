@@ -17,6 +17,15 @@
 #include "domain/UBGraphicsScene.h"
 #include "domain/UBGraphicsSvgItem.h"
 #include "document/UBDocumentProxy.h"
+namespace {
+bool coverContainsOpaquePoint(UBGraphicsSvgItem *cover,const QPointF &point)
+{
+    QDomDocument doc;doc.setContent(cover->fileData());
+    if(doc.elementsByTagName("metadata").at(0).toElement().text()=="revealed")return false;
+    const auto r=doc.elementsByTagName("rect").at(0).toElement();if(r.attribute("fill")=="none")return false;
+    return QRectF(r.attribute("x").toDouble(),r.attribute("y").toDouble(),r.attribute("width").toDouble(),r.attribute("height").toDouble()).contains(cover->mapFromScene(point));
+}
+}
 UBLessonTools::UBLessonTools(UBMainWindow *window):QObject(window),mWindow(window) {
     setObjectName("lessonTools");mHistory=new UBLessonHistory(this);
     auto add=[this](const QString &name,const QString &label,const QIcon &icon){auto a=new QAction(icon,label,mWindow);a->setObjectName(name);mWindow->boardToolBar->insertAction(mWindow->actionBoard,a);mWindow->addAction(a);return a;};
@@ -211,6 +220,9 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
             mShadeDrag=svg;mShadeBefore=svg->fileData();mShadeStart=svg->mapFromScene(point);
             scene->clearSelection();break;
         }
+        // Children of an older cover are painted below a newer opaque cover.
+        // Their invisible controls must not receive a click through that cover.
+        if(coverContainsOpaquePoint(svg,point))break;
     }
     if(mShadeDrag){
         QDomDocument doc;doc.setContent(mShadeBefore);auto rect=doc.elementsByTagName("rect").at(0).toElement();
@@ -235,14 +247,14 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     }
     if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return false;
     if(type==QEvent::MouseButtonDblClick){
-        for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){event->accept();return true;}
+        for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()&&coverContainsOpaquePoint(svg,point)){event->accept();return true;}
     }
     if(mMoveCover){
         mMoveCover->setPos(mMoveOriginal+point-mMoveStart);
         if(release){mMoveCover->refreshCoverControls();mMoveCover.clear();}
         event->accept();return true;
     }
-    if(press)for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+    if(press)for(auto item:scene->items(point))if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()&&coverContainsOpaquePoint(svg,point)){
         scene->clearSelection();svg->setSelected(true);scene->updateSelectionFrame();
         if(svg->isScreenShade()||svg->Delegate()->isLocked())mLockedPress=svg;
         else{mMoveCover=svg;mMoveStart=point;mMoveOriginal=svg->pos();}
