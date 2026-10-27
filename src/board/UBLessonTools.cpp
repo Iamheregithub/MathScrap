@@ -304,7 +304,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
     }else{auto e=static_cast<QMouseEvent*>(event);if(type!=QEvent::MouseMove&&e->button()!=Qt::LeftButton)return false;position=e->pos();}
     auto scene=board->activeScene();if(!scene)return false;auto point=view->mapToScene(position.toPoint());
     if(mCloseShade){
-        if(release){auto target=mCloseShade;mCloseShade.clear();if(target&&target->scene()==scene.get())target->Delegate()->remove();}
+        if(release){auto target=mCloseShade;mCloseShade.clear();if(target&&target->scene()==scene)target->Delegate()->remove();}
         event->accept();return true;
     }
     if(press)for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade")){

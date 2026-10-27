@@ -177,10 +177,10 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     const auto shadeData=shade->fileData();QDomDocument closeDoc;closeDoc.setContent(shadeData);auto circle=closeDoc.elementsByTagName("circle").at(0).toElement();
     if(circle.isNull())return fail("Screen shade circular close button missing");
     const auto closePoint=shade->mapToScene(QPointF(circle.attribute("cx").toDouble(),circle.attribute("cy").toDouble()));
-    const auto inkCount=scene->items().size();window->actionPen->trigger();
+    window->actionPen->trigger();const auto inkCount=scene->items().size();
     send(QEvent::MouseButtonPress,closePoint);send(QEvent::MouseButtonRelease,closePoint);
-    if(shade->scene()||drawn->scene()!=scene.get())return fail("Shade close removed the wrong content or failed");
-    UBApplication::undoStack->undo();if(shade->scene()!=scene.get()||shade->fileData()!=shadeData||scene->items().size()!=inkCount)return fail("Shade deletion undo did not restore only the shade");
+    if(shade->scene()||drawn->scene()!=scene)return fail("Shade close removed the wrong content or failed");
+    UBApplication::undoStack->undo();if(shade->scene()!=scene||shade->fileData()!=shadeData||scene->items().size()!=inkCount)return fail("Shade deletion undo did not restore only the shade");
     window->actionSelector->trigger();
     // The moved controls are usable within Customize Toolbar.
     bool customizeChecked=false;
