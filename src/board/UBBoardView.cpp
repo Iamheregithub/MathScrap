@@ -569,8 +569,13 @@ Here we determines cases when items should to get mouse press event at pressing 
         if (currentTool == UBStylusTool::Play)
             return false;
         return true;
-    case UBGraphicsPixmapItem::Type:
     case UBGraphicsSvgItem::Type:
+        if(currentTool==UBStylusTool::Selector) {
+            auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);
+            if(svg&&(svg->isTeachingShape()||svg->isLessonCover()||svg->fileData().contains("mathscrap-formula")))return false;
+        }
+        Q_FALLTHROUGH();
+    case UBGraphicsPixmapItem::Type:
         if (currentTool == UBStylusTool::Play)
             return true;
         if (item->isSelected())
@@ -636,6 +641,11 @@ bool UBBoardView::itemShouldReceiveSuspendedMousePressEvent(QGraphicsItem *item)
 
     UBStylusTool::Enum currentTool = (UBStylusTool::Enum)UBDrawingController::drawingController()->stylusTool();
 
+    if(currentTool==UBStylusTool::Selector) {
+        if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&(svg->isTeachingShape()||svg->isLessonCover()||svg->fileData().contains("mathscrap-formula")))
+            return false; // Body selection/movement is handled by the board.
+    }
+
     switch(item->type())
     {
     case UBGraphicsPixmapItem::Type:
@@ -698,6 +708,11 @@ bool UBBoardView::itemShouldBeMoved(QGraphicsItem *item)
         Q_FALLTHROUGH();
 
     case UBGraphicsSvgItem::Type:
+        if(currentTool==UBStylusTool::Selector) {
+            auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);
+            if(svg&&(svg->isTeachingShape()||svg->isLessonCover()||svg->fileData().contains("mathscrap-formula")))return true;
+        }
+        Q_FALLTHROUGH();
     case UBGraphicsPixmapItem::Type:
         if (currentTool == UBStylusTool::Play || !item->isSelected())
             return true;
@@ -1112,7 +1127,9 @@ void UBBoardView::mousePressEvent (QMouseEvent *event)
         return;
     }
 
-    setMultiselection(event->modifiers() & Qt::ControlModifier);
+    // Ctrl + Shift belongs to shape constraints; Ctrl alone keeps the
+    // existing additive-selection gesture. Otherwise frame presses are lost.
+    setMultiselection((event->modifiers() & Qt::ControlModifier) && !(event->modifiers() & Qt::ShiftModifier));
 
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
     QPointF eventPosition = event->position();

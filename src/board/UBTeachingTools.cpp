@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "UBTeachingTools.h"
+#include "domain/UBShapeGeometry.h"
 #include "UBPaperInk.h"
 #include "UBLessonTools.h"
 #include <QtWidgets>
@@ -73,13 +74,20 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         mWindow->teachingTabs()->setCurrentIndex(0);auto board=UBApplication::boardController;auto scene=board->activeScene();if(!scene)return;
         UBMathFormula::State state;state.kind=kind;
         auto item=scene->addSvg(QUrl(),board->controlView()->mapToScene(board->controlView()->viewport()->rect().center()),UBMathFormula::render(state));
-        item->fitFormulaInView();mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);
+        item->fitFormulaInView();mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);scene->updateSelectionFrame();
         if(auto inputs=item->formulaInputWidget())if(auto field=inputs->findChild<QLineEdit*>("formulaValue0"))field->setFocus();
     };
     auto quadratic=add("actionTeachingQuadratic",tr("Quadratic formula"),":/images/teaching/functions.svg");
     connect(quadratic,&QAction::triggered,this,[insertFormula]{insertFormula("quadratic");});
     auto functions=add("actionTeachingFunctions",tr("Functions"),":/images/teaching/functions.svg");
     auto formulaMenu=new QMenu(mWindow);formulaMenu->setObjectName("mathscrapFunctionsMenu");functions->setMenu(formulaMenu);
+    functions->setCheckable(true);functions->setProperty("ungrouped",true);
+    connect(formulaMenu,&QMenu::aboutToShow,this,[this,functions]{
+        mWindow->actionSelector->trigger();
+        if(auto cover=mWindow->findChild<QAction*>("actionLessonCover");cover&&cover->isChecked())cover->trigger();
+        functions->setChecked(true);
+    });
+    connect(formulaMenu,&QMenu::aboutToHide,this,[functions]{functions->setChecked(false);});
     auto calculator=formulaMenu->addAction(tr("Function Calculator"));
     calculator->setObjectName("insertFunctionCalculator");
     connect(calculator,&QAction::triggered,this,[this]{
@@ -106,7 +114,7 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
         const qreal scale=qMin(qreal(1),qMin(view->viewport()->width()*.85/(680*view->transform().m11()),
                                                         view->viewport()->height()*.80/(660*view->transform().m22())));
         item->setScale(scale);item->setPos(centre-QPointF(340,330)*scale);
-        mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);item->setFocus();
+        mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);scene->updateSelectionFrame();item->setFocus();
     });
     formulaMenu->addSeparator();
     for(const auto &kind:UBMathFormula::kinds()){
@@ -238,6 +246,17 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     toolbar->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(toolbar, &QWidget::customContextMenuRequested, this, [this] { customize(); });
     createShapeToolbar();
+    // Context tools reuse the board's selection engine, but own the visible
+    // active-tool state. Apply this to the real actions so every toolbar agrees.
+    auto syncSelector=[this]{
+        bool context=false;
+        for(const auto &id:{"actionTeachingShapes","actionLessonCover","actionTeachingFunctions"})
+            if(auto action=mWindow->findChild<QAction*>(id))context |= action->isChecked();
+        if(UBDrawingController::drawingController()->stylusTool()==UBStylusTool::Selector)
+            mWindow->actionSelector->setChecked(!context);
+    };
+    for(const auto &id:{"actionTeachingShapes","actionLessonCover","actionTeachingFunctions"})
+        if(auto action=mWindow->findChild<QAction*>(id))connect(action,&QAction::toggled,this,[syncSelector](bool){syncSelector();});
     if(auto lesson=mWindow->findChild<UBLessonTools*>())lesson->applyTouchMode();
     qApp->installEventFilter(this);
     applyLayout();
@@ -251,7 +270,7 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
     auto view = mShapeDrawing ? board->controlView() : nullptr;
     if (mShapeDrawing && event->type() == QEvent::KeyPress
         && static_cast<QKeyEvent*>(event)->key() == Qt::Key_Escape) {
-        cancelShapeDrag(); mShapeDrawing = false; view->viewport()->unsetCursor(); return true;
+        finishShapeTool(); mWindow->actionSelector->trigger(); return true;
     }
     if (mShapeDrawing && (watched == view->viewport() || (watched == view && (event->type()==QEvent::TabletPress || event->type()==QEvent::TabletMove || event->type()==QEvent::TabletRelease))) && mWindow->teachingTabs()->currentIndex() == 0) {
         const auto type = event->type();
@@ -259,10 +278,12 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
         const bool mouse = type == QEvent::MouseButtonPress || type == QEvent::MouseMove || type == QEvent::MouseButtonRelease;
         if (tablet || mouse) {
             QPointF position;
+            Qt::KeyboardModifiers modifiers;
             bool press = type == QEvent::TabletPress || type == QEvent::MouseButtonPress;
             bool release = type == QEvent::TabletRelease || type == QEvent::MouseButtonRelease;
             if (tablet) {
                 auto e = static_cast<QTabletEvent*>(event);
+                modifiers=e->modifiers();
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
                 position = e->position();
 #else
@@ -270,6 +291,7 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
 #endif
             } else {
                 auto e = static_cast<QMouseEvent*>(event);
+                modifiers=e->modifiers();
                 if ((press || release) && e->button() != Qt::LeftButton) return false;
                 position = e->pos();
             }
@@ -280,26 +302,25 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
                 cancelShapeDrag(); mShapeTarget.clear(); scene->clearSelection();
                 mShapeScene = scene.get(); mShapeStart = point; mShapeDragging = true;
                 mShapePreview = new QGraphicsPathItem;
+                auto face=new QGraphicsPathItem(mShapePreview);face->setData(0,"face");face->setZValue(-1);
+                auto hidden=new QGraphicsPathItem(mShapePreview);hidden->setData(0,"hidden");
                 mShapePreview->setZValue(1900000);
                 // Transient previews are owned here, outside OpenBoard's
                 // deferred document-item deletion registry and item counts.
                 scene->QGraphicsScene::addItem(mShapePreview);
             }
             if (mShapeDragging && mShapeScene == scene.get()) {
-                QPointF end = point;
-                if (mShapeType == 1 || mShapeType == 2) {
-                    const auto delta = point - mShapeStart;
-                    const double size = qMax(qAbs(delta.x()), qAbs(delta.y()));
-                    end = mShapeStart + QPointF(delta.x() < 0 ? -size : size, delta.y() < 0 ? -size : size);
-                }
-                const QRectF rect = QRectF(mShapeStart, end).normalized();
-                mShapePreview->setPath(shapePath(rect));
-                QPen pen(mNoBorder ? Qt::transparent : mShapeBorder, mShapeWidth->currentData().toDouble());
+                const QRectF rect=UBShapeGeometry::drawRect(mShapeStart,point,mShapeType,mPolygonSides->value(),modifiers);
+                const auto paths=UBShapeGeometry::paths(mShapeType,rect,mPolygonSides->value());
+                mShapePreview->setPath(paths.visible+paths.marker);
+                QPen pen(mShapeBorder,mShapeWidth->currentData().toDouble());
                 pen.setJoinStyle(Qt::RoundJoin);
-                if (mShapeStyle->currentIndex() == 1) pen.setDashPattern({4,3});
                 mShapePreview->setPen(pen);
-                auto fill = mShapeFill; fill.setAlphaF(mShapeOpacity->value()/100.0);
-                mShapePreview->setBrush(mNoFill ? QBrush(Qt::NoBrush) : QBrush(fill));
+                mShapePreview->setBrush(Qt::NoBrush);
+                for(auto child:mShapePreview->childItems())if(auto path=dynamic_cast<QGraphicsPathItem*>(child)) {
+                    if(child->data(0)=="face"){path->setPath(paths.face);path->setPen(Qt::NoPen);path->setBrush(mNoFill?QBrush(Qt::NoBrush):QBrush(mShapeFill));}
+                    else {path->setPath(paths.hidden);auto dash=pen;dash.setDashPattern({4,3});path->setPen(dash);path->setBrush(Qt::NoBrush);}
+                }
                 if (release) {
                     const auto svg = shapeSvg(rect);
                     cancelShapeDrag();
@@ -311,7 +332,8 @@ bool UBTeachingTools::eventFilter(QObject *watched, QEvent *event)
                         item->setScale(1); item->setTransform(QTransform());
                         item->setPos(rect.topLeft() - QPointF(12,12));
                         mShapeDrawing = false; view->viewport()->unsetCursor();
-                        mWindow->actionSelector->trigger(); scene->clearSelection(); item->setSelected(true);
+                        finishShapeTool(); mWindow->actionSelector->trigger(); scene->clearSelection(); item->setSelected(true); scene->updateSelectionFrame();
+                        mShapeBar->show(); // Keep appearance controls available; Select owns the pointer now.
                     }
                 }
             }
@@ -498,49 +520,34 @@ void UBTeachingTools::writeGraph(bool replace)
         });
 }
 
-QPainterPath UBTeachingTools::shapePath(const QRectF &r) const
-{
-    QPainterPath p;
-    if (mShapeType <= 1) p.addRect(r);
-    else if (mShapeType == 2 || mShapeType == 4) p.addEllipse(r);
-    else {
-        QPolygonF vertices;
-        if (mShapeType == 3) vertices << QPointF(r.center().x(),r.top()) << r.bottomRight() << r.bottomLeft();
-        else if (mShapeType == 5) vertices << r.topLeft() << r.bottomRight() << r.bottomLeft();
-        else if(mShapeType==7)vertices << QPointF(r.center().x(),r.top()) << QPointF(r.right(),r.top()+r.height()*.382)
-                        << QPointF(r.left()+r.width()*.809,r.bottom()) << QPointF(r.left()+r.width()*.191,r.bottom()) << QPointF(r.left(),r.top()+r.height()*.382);
-        else vertices << QPointF(r.center().x(),r.top()) << QPointF(r.right(),r.center().y())
-                      << QPointF(r.center().x(),r.bottom()) << QPointF(r.left(),r.center().y());
-        p.addPolygon(vertices); p.closeSubpath();
-    }
-    return p;
-}
-
 QByteArray UBTeachingTools::shapeSvg(const QRectF &r) const
 {
-    const double w=r.width(), h=r.height();
-    QString element;
-    if (mShapeType <= 1) element=QString("<rect x='12' y='12' width='%1' height='%2'/>").arg(w).arg(h);
-    else if (mShapeType == 2) element=QString("<circle cx='%1' cy='%2' r='%3'/>").arg(12+w/2).arg(12+h/2).arg(w/2);
-    else if (mShapeType == 4) element=QString("<ellipse cx='%1' cy='%2' rx='%3' ry='%4'/>").arg(12+w/2).arg(12+h/2).arg(w/2).arg(h/2);
-    else {
-        const auto polygon=shapePath(QRectF(12,12,w,h)).toFillPolygon();
-        QStringList points;
-        // toFillPolygon closes the path; omit its duplicated last vertex so
-        // triangles keep exactly three independently draggable handles.
-        for(int i=0;i<polygon.size()-1;++i) points << QString("%1,%2").arg(polygon[i].x()).arg(polygon[i].y());
-        element=QString("<polygon points='%1'/>").arg(points.join(' '));
-    }
-    return QString("<svg xmlns='http://www.w3.org/2000/svg' width='%1' height='%2' viewBox='0 0 %1 %2'><metadata id='teaching-shape'>%3</metadata><g stroke='%4' fill='%5' stroke-width='%6' stroke-linejoin='round' fill-opacity='%7' stroke-dasharray='%8'>%9</g></svg>")
-        .arg(w+24).arg(h+24).arg(mShapeType).arg(mNoBorder?"none":mShapeBorder.name(),mNoFill?"none":mShapeFill.name())
-        .arg(mShapeWidth->currentData().toDouble()).arg(mShapeOpacity->value()/100.0)
-        .arg(mShapeStyle->currentIndex()==1?QString("%1 %2").arg(mShapeWidth->currentData().toDouble()*4).arg(mShapeWidth->currentData().toDouble()*3):"none",element).toUtf8();
+    return QString("<svg xmlns='http://www.w3.org/2000/svg' width='%1' height='%2' viewBox='0 0 %1 %2' data-shape-sides='%3'><metadata id='teaching-shape'>%4</metadata><g stroke='%5' fill='%6' stroke-width='%7' stroke-linejoin='round' fill-opacity='1' stroke-dasharray='none'>%8</g></svg>")
+        .arg(r.width()+24).arg(r.height()+24).arg(mPolygonSides->value()).arg(mShapeType)
+        .arg(mShapeBorder.name(),mNoFill?"none":mShapeFill.name()).arg(mShapeWidth->currentData().toDouble())
+        .arg(UBShapeGeometry::elements(mShapeType,QRectF(12,12,r.width(),r.height()),mPolygonSides->value())).toUtf8();
+}
+
+void UBTeachingTools::finishShapeTool()
+{
+    cancelShapeDrag();mShapeDrawing=false;mShapes->setChecked(false);mShapeBar->hide();
+    UBApplication::boardController->controlView()->viewport()->unsetCursor();
 }
 
 void UBTeachingTools::cancelShapeDrag()
 {
     if (mShapePreview && mShapeScene) { mShapeScene->removeItem(mShapePreview); delete mShapePreview; }
     mShapePreview=nullptr; mShapeDragging=false; mShapeScene.clear();
+}
+
+void UBTeachingTools::updateShapeControls()
+{
+    const int type=mShapeType;
+    mPolygonControls->setVisible(type==UBShapeGeometry::RegularPolygon);
+    mShapeHint->setVisible(type==0||type==4||type==3||type==8);
+    mShapeHint->setText(type==3?tr("Ctrl + Shift: equilateral triangle"):type==8?tr("Ctrl + Shift: rhombus"):type==4?tr("Ctrl + Shift: circle"):tr("Ctrl + Shift: square"));
+    const int choice=type==1?0:type==2?4:type==6||type==7?9:type;
+    mShapeChoices[choice]->setChecked(true);
 }
 
 void UBTeachingTools::armShape(int type)
@@ -551,6 +558,7 @@ void UBTeachingTools::armShape(int type)
     mWindow->actionSelector->trigger();
     if(auto scene=UBApplication::boardController->activeScene()) scene->clearSelection();
     mShapeType=type; mShapeChoices[type]->setChecked(true); mShapeDrawing=true;
+    updateShapeControls();
     UBApplication::boardController->controlView()->viewport()->setCursor(Qt::CrossCursor);
     mShapeBar->show(); mShapes->setChecked(true); applyShapeStyle();
 }
@@ -558,11 +566,11 @@ void UBTeachingTools::armShape(int type)
 void UBTeachingTools::shapeDialog()
 {
     if (!mShapes->isChecked()) {
-        cancelShapeDrag(); mShapeDrawing=false; mShapeBar->hide();
+        finishShapeTool();
         UBApplication::boardController->controlView()->viewport()->unsetCursor(); return;
     }
     if(auto cover=mWindow->findChild<QAction*>("actionLessonCover");cover&&cover->isChecked())cover->trigger();
-    mWindow->teachingTabs()->setCurrentIndex(0); mWindow->actionSelector->trigger(); mShapeBar->show(); syncShapeSelection();
+    mWindow->teachingTabs()->setCurrentIndex(0); mWindow->actionSelector->trigger(); mShapeBar->show(); mShapes->setChecked(true); syncShapeSelection();
     if (!mShapeTarget) armShape(mShapeType);
 }
 
@@ -580,16 +588,16 @@ void UBTeachingTools::syncShapeSelection()
     const auto g=groups.at(0).toElement();
     mSyncingShape=true;
     auto metadata=doc.elementsByTagName("metadata");
-    if(!metadata.isEmpty())mShapeType=qBound(0,metadata.at(0).toElement().text().toInt(),7);
-    mShapeChoices[mShapeType]->setChecked(true);
+    if(!metadata.isEmpty())mShapeType=qBound(0,metadata.at(0).toElement().text().toInt(),15);
+    mPolygonSides->setValue(qBound(3,doc.documentElement().attribute("data-shape-sides","5").toInt(),20));
+    updateShapeControls();
     mNoBorder=g.attribute("stroke")=="none"; if(!mNoBorder)mShapeBorder=QColor(g.attribute("stroke"));
     mNoFill=g.attribute("fill","none")=="none"; if(!mNoFill)mShapeFill=QColor(g.attribute("fill"));
     const double width=g.attribute("stroke-width","3").toDouble();
     int index=mShapeWidth->findData(width);
     if(index<0) {mShapeWidth->addItem(QString::number(width),width);index=mShapeWidth->count()-1;}
     mShapeWidth->setCurrentIndex(index);
-    mShapeStyle->setCurrentIndex(g.attribute("stroke-dasharray","none")!="none"?1:0);
-    mShapeOpacity->setValue(qRound(g.attribute("fill-opacity","1").toDouble()*100));
+
     applyShapeStyle(); mSyncingShape=false;
 }
 
@@ -600,15 +608,16 @@ void UBTeachingTools::applyShapeStyle()
     if(mSyncingShape)return;
     auto settings=UBSettings::settings();settings->setValue("Teaching/ShapeBorder",mShapeBorder);settings->setValue("Teaching/ShapeFill",mShapeFill);
     settings->setValue("Teaching/ShapeNoBorder",mNoBorder);settings->setValue("Teaching/ShapeNoFill",mNoFill);
-    settings->setValue("Teaching/ShapeWidth",mShapeWidth->currentData());settings->setValue("Teaching/ShapeDashed",mShapeStyle->currentIndex()==1);
-    settings->setValue("Teaching/ShapeOpacity",mShapeOpacity->value());settings->setValue("Teaching/ShapeType",mShapeType);
+    settings->setValue("Teaching/ShapeWidth",mShapeWidth->currentData());
+    settings->setValue("Teaching/ShapeType",mShapeType);
+    settings->setValue("Teaching/PolygonSides",mPolygonSides->value());
     if(!mShapeTarget || mShapeTarget->scene()!=UBApplication::boardController->activeScene())return;
     const auto before=mShapeTarget->fileData(); QDomDocument doc;doc.setContent(before);
     auto groups=doc.elementsByTagName("g");if(groups.isEmpty())return;auto g=groups.at(0).toElement();
-    g.setAttribute("stroke",mNoBorder?"none":mShapeBorder.name());g.setAttribute("fill",mNoFill?"none":mShapeFill.name());
+    g.setAttribute("stroke",mShapeBorder.name());g.setAttribute("fill",mNoFill?"none":mShapeFill.name());
     g.setAttribute("stroke-width",QString::number(mShapeWidth->currentData().toDouble()));
-    g.setAttribute("fill-opacity",QString::number(mShapeOpacity->value()/100.0));
-    g.setAttribute("stroke-dasharray",mShapeStyle->currentIndex()==1?QString("%1 %2").arg(mShapeWidth->currentData().toDouble()*4).arg(mShapeWidth->currentData().toDouble()*3):"none");
+    g.setAttribute("fill-opacity","1");
+    g.setAttribute("stroke-dasharray","none");
     // Selection synchronization must not rewrite SVGs or add undo commands.
     QDomDocument old;old.setContent(before);
     const auto oldGroup=old.elementsByTagName("g").at(0).toElement();
@@ -624,32 +633,39 @@ void UBTeachingTools::createShapeToolbar()
     auto settings=UBSettings::settings();
     mShapeBorder=settings->value("Teaching/ShapeBorder",QColor(Qt::black)).value<QColor>();
     mShapeFill=settings->value("Teaching/ShapeFill",QColor("#ffdd00")).value<QColor>();
-    mNoBorder=settings->value("Teaching/ShapeNoBorder",false).toBool();mNoFill=settings->value("Teaching/ShapeNoFill",true).toBool();
-    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),7);if(mShapeType==6)mShapeType=7;
+    mNoBorder=false;mNoFill=settings->value("Teaching/ShapeNoFill",true).toBool();
+    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),15);if(mShapeType==1)mShapeType=0;if(mShapeType==2)mShapeType=4;if(mShapeType==6||mShapeType==7)mShapeType=9;
     mShapeBar=new QToolBar(tr("Shape controls"),mWindow);mShapeBar->setObjectName("lessonShapeToolbar");
     mShapeBar->setMovable(false);mShapeBar->setFloatable(false);mShapeBar->setIconSize(QSize(26,26));
     mShapeBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     mShapeBar->setStyleSheet("QToolBar {spacing:4px;padding:4px;} QToolButton {height:32px;min-width:30px;padding:2px;} QComboBox {min-height:28px;}");
     mWindow->addToolBarBreak(Qt::TopToolBarArea);mWindow->addToolBar(Qt::TopToolBarArea,mShapeBar);
     auto panel=new QWidget(mShapeBar);panel->setObjectName("compactShapePanel");auto rows=new QVBoxLayout(panel);rows->setContentsMargins(5,5,5,5);rows->setSpacing(5);
-    auto shapes=new QHBoxLayout;auto appearance=new QHBoxLayout;auto finish=new QHBoxLayout;
-    for(auto row:{shapes,appearance,finish}){row->setSpacing(5);rows->addLayout(row);}
+    auto titleRow=new QHBoxLayout;auto title=new QLabel(tr("Shapes"),panel);title->setStyleSheet("font-weight:600;");titleRow->addWidget(title);titleRow->addStretch();rows->addLayout(titleRow);
+    auto shapes=new QGridLayout;shapes->setSpacing(4);rows->addLayout(shapes);
+    auto appearance=new QHBoxLayout;appearance->setSpacing(5);rows->addLayout(appearance);
+    auto finish=new QHBoxLayout;rows->addLayout(finish);
+    mPolygonSides=new QSpinBox(panel);mPolygonSides->setObjectName("lessonPolygonSides");mPolygonSides->setRange(3,20);mPolygonSides->setValue(qBound(3,settings->value("Teaching/PolygonSides",5).toInt(),20));
     mShapeBar->addWidget(panel);
     auto group=new QActionGroup(this);group->setExclusive(true);
-    const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond"),tr("Pentagon")};
+    const QStringList names={tr("Rectangle"),tr("Square"),tr("Circle"),tr("Triangle"),tr("Ellipse"),tr("Right triangle"),tr("Diamond"),tr("Pentagon"),tr("Parallelogram"),tr("Regular polygon"),tr("Cylinder"),tr("Rectangular prism"),tr("Square-based pyramid"),tr("Cone"),tr("Sphere"),tr("Triangular prism")};
+    const QList<int> order={0,4,3,5,8,9,10,11,12,13,14,15};
+    shapes->addWidget(new QLabel(tr("2D"),panel),0,0);shapes->addWidget(new QLabel(tr("3D"),panel),2,0);
     for(int i=0;i<names.size();++i) {
-        mShapeType=i;QPixmap pix(30,30);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#273b3b"),1.65));painter.setBrush(Qt::NoBrush);painter.drawPath(shapePath(QRectF(4,i==0?8:4,22,i==0?14:22)));painter.end();
+        QPixmap pix(36,30);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setRenderHint(QPainter::Antialiasing);painter.setPen(QPen(QColor("#273b3b"),1.4));painter.setBrush(Qt::NoBrush);
+        auto paths=UBShapeGeometry::paths(i,(i==9||i==14)?QRectF(7,4,22,22):QRectF(4,4,28,22),mPolygonSides->value());painter.drawPath(paths.visible);painter.drawPath(paths.marker);auto pen=painter.pen();pen.setStyle(Qt::DashLine);painter.setPen(pen);painter.drawPath(paths.hidden);painter.end();
         auto action=new QAction(QIcon(pix),names[i],mShapeBar);
-        // Keep the legacy diamond ID for existing lessons, but replace its tray slot.
-        if(i!=6){auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setFixedSize(42,40);choice->setIconSize(QSize(26,26));shapes->addWidget(choice);}action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
+        int slot=order.indexOf(i);
+        if(slot>=0){auto choice=new QToolButton(panel);choice->setDefaultAction(action);choice->setToolTip(names[i]);choice->setAccessibleName(names[i]);choice->setFixedSize(48,38);choice->setIconSize(QSize(36,30));shapes->addWidget(choice,slot<6?1:3,slot%6);}
+        action->setObjectName(QString("lessonShape%1").arg(i));action->setCheckable(true);group->addAction(action);mShapeChoices<<action;
         connect(action,&QAction::triggered,this,[this,i]{armShape(i);});
     }
-    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),7);if(mShapeType==6)mShapeType=7;mShapeChoices[mShapeType]->setChecked(true);
+    mShapeType=qBound(0,settings->value("Teaching/ShapeType",0).toInt(),15);if(mShapeType==1)mShapeType=0;if(mShapeType==2)mShapeType=4;if(mShapeType==6||mShapeType==7)mShapeType=9;mShapeChoices[mShapeType]->setChecked(true);
     auto colourButton=[&](const QString &text,bool border) {
         auto button=new QToolButton;button->setText(text);button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);button->setPopupMode(QToolButton::InstantPopup);
         button->setObjectName(border?"lessonShapeBorder":"lessonShapeFill");auto menu=new QMenu(button);button->setMenu(menu);
-        auto none=menu->addAction(border?tr("No border"):tr("No fill"));none->setObjectName(border?"lessonShapeNoBorder":"lessonShapeNoFill");
-        connect(none,&QAction::triggered,this,[this,border]{if(border)mNoBorder=true;else mNoFill=true;applyShapeStyle();});
+        if(!border){auto none=menu->addAction(tr("No fill"));none->setObjectName("lessonShapeNoFill");
+        connect(none,&QAction::triggered,this,[this]{mNoFill=true;applyShapeStyle();});}
         auto panel=new QWidget;auto grid=new QGridLayout(panel);grid->setContentsMargins(5,5,5,5);
         const auto colours=UBSettings::settings()->penColors(false);
         for(int i=0;i<colours.size();++i){auto b=new QToolButton;const auto c=colours[i];b->setFixedSize(30,28);b->setStyleSheet(QString("QToolButton {background:%1;border:1px solid #777;}").arg(c.name()));b->setToolTip(c.name());grid->addWidget(b,i/5,i%5);connect(b,&QToolButton::clicked,this,[this,border,c,menu]{if(border){mNoBorder=false;mShapeBorder=c;}else{mNoFill=false;mShapeFill=c;}applyShapeStyle();menu->close();});}
@@ -661,24 +677,24 @@ void UBTeachingTools::createShapeToolbar()
     appearance->addWidget(new QLabel(tr("Width")));mShapeWidth=new QComboBox(panel);mShapeWidth->setObjectName("lessonShapeWidth");
     for(double w:{1.,2.,3.,5.,8.,12.})mShapeWidth->addItem(QString::number(w),w);
     mShapeWidth->setCurrentIndex(qMax(0,mShapeWidth->findData(settings->value("Teaching/ShapeWidth",3.).toDouble())));mShapeWidth->hide();
-    mShapeStyle=new QComboBox(panel);mShapeStyle->setObjectName("lessonShapeBorderStyle");mShapeStyle->addItems({tr("Solid"),tr("Dashed")});mShapeStyle->setCurrentIndex(settings->value("Teaching/ShapeDashed",false).toBool()?1:0);mShapeStyle->hide();
-    finish->addWidget(new QLabel(tr("Fill opacity")));mShapeOpacity=new QSlider(Qt::Horizontal);mShapeOpacity->setObjectName("lessonShapeOpacity");mShapeOpacity->setRange(0,100);mShapeOpacity->setValue(settings->value("Teaching/ShapeOpacity",100).toInt());mShapeOpacity->setFixedWidth(110);finish->addWidget(mShapeOpacity);
-    auto value=new QLabel(QString::number(mShapeOpacity->value())+"%");value->setMinimumWidth(36);finish->addWidget(value);
-    connect(mShapeOpacity,&QSlider::valueChanged,this,[this,value](int v){value->setText(QString::number(v)+"%");if(!mShapeOpacity->isSliderDown())applyShapeStyle();});
-    connect(mShapeOpacity,&QSlider::sliderReleased,this,&UBTeachingTools::applyShapeStyle);
+    mPolygonControls=new QWidget(panel);auto polygonRow=new QHBoxLayout(mPolygonControls);polygonRow->setContentsMargins(0,0,0,0);polygonRow->addWidget(new QLabel(tr("Sides")));polygonRow->addWidget(mPolygonSides);finish->addWidget(mPolygonControls);mPolygonControls->setVisible(mShapeType==9);
+    mShapeHint=new QLabel(panel);mShapeHint->setStyleSheet("font-size:11px;color:#56625b;");finish->addWidget(mShapeHint);finish->addStretch();
+    connect(mPolygonSides,QOverload<int>::of(&QSpinBox::valueChanged),this,[this]{
+        if(mSyncingShape)return;
+        if(mShapeTarget&&mShapeType==9){auto before=mShapeTarget->fileData();auto bounds=mShapeTarget->boundingRect().adjusted(12,12,-12,-12);mShapeTarget->setTeachingSvg(shapeSvg(bounds));mShapeTarget->commitTeachingSvg(before);}
+        applyShapeStyle();
+    });
     connect(mShapeWidth,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{applyShapeStyle();});
-    connect(mShapeStyle,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this]{applyShapeStyle();});
     auto widthGroup=new QButtonGroup(panel);widthGroup->setExclusive(true);
-    auto styleGroup=new QButtonGroup(panel);styleGroup->setExclusive(true);
     for(int i=0;i<3;++i){const double width=QList<double>{1.,3.,8.}[i];auto button=new QToolButton(panel);button->setObjectName(QString("compactShapeWidth%1").arg(i));button->setToolTip(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);button->setCheckable(true);widthGroup->addButton(button);button->setFixedSize(42,36);
         QPixmap pix(30,18);pix.fill(Qt::transparent);QPainter painter(&pix);painter.setPen(QPen(QColor("#273b3b"),QList<double>{1.,3.,6.}[i]));painter.drawLine(3,9,27,9);painter.end();button->setIcon(QIcon(pix));button->setIconSize(QSize(30,18));appearance->addWidget(button);
         connect(button,&QToolButton::clicked,this,[this,width]{mShapeWidth->setCurrentIndex(mShapeWidth->findData(width));});auto sync=[this,button,width]{button->setChecked(qFuzzyCompare(mShapeWidth->currentData().toDouble(),width));};connect(mShapeWidth,QOverload<int>::of(&QComboBox::currentIndexChanged),button,[sync](int){sync();});sync();}
-    for(int i=1;i>=0;--i){auto button=new QToolButton(panel);button->setText(i?tr("Dashed"):tr("Solid"));button->setToolTip(button->text());button->setObjectName(QString("compactShapeStyle%1").arg(i));button->setCheckable(true);styleGroup->addButton(button);button->setFixedSize(64,36);finish->insertWidget(0,button);connect(button,&QToolButton::clicked,this,[this,i]{mShapeStyle->setCurrentIndex(i);});auto sync=[this,button,i]{button->setChecked(mShapeStyle->currentIndex()==i);};connect(mShapeStyle,QOverload<int>::of(&QComboBox::currentIndexChanged),button,[sync](int){sync();});sync();}
-    auto close=new QToolButton(panel);close->setIcon(UBPaperInk::toolIcon("close"));close->setIconSize(QSize(22,22));close->setToolTip(tr("Close shape controls"));close->setFixedSize(36,36);shapes->addWidget(close);connect(close,&QToolButton::clicked,this,[this]{mShapes->setChecked(false);shapeDialog();});
+    auto close=new QToolButton(panel);close->setIcon(UBPaperInk::toolIcon("close"));close->setIconSize(QSize(22,22));close->setToolTip(tr("Close shape controls"));close->setFixedSize(36,36);titleRow->addWidget(close);connect(close,&QToolButton::clicked,this,[this]{mShapes->setChecked(false);shapeDialog();});
     auto attach=[this]{cancelShapeDrag();mShapeDrawing=false;QObject::disconnect(mShapeSelectionConnection);if(auto scene=UBApplication::boardController->activeScene())mShapeSelectionConnection=connect(scene.get(),&QGraphicsScene::selectionChanged,this,&UBTeachingTools::syncShapeSelection);syncShapeSelection();};
     connect(UBApplication::boardController,&UBBoardController::activeSceneChanged,this,attach);attach();
     connect(UBApplication::undoStack,&QUndoStack::indexChanged,this,[this](int){syncShapeSelection();});
-    connect(UBDrawingController::drawingController(),&UBDrawingController::stylusToolChanged,this,[this](int tool,int){if(tool!=UBStylusTool::Selector){cancelShapeDrag();mShapeDrawing=false;UBApplication::boardController->controlView()->viewport()->unsetCursor();mShapeBar->hide();mShapes->setChecked(false);}});
+    connect(UBDrawingController::drawingController(),&UBDrawingController::stylusToolChanged,this,[this](int tool,int){if(tool!=UBStylusTool::Selector)finishShapeTool();});
+    connect(mWindow->actionSelector,&QAction::triggered,this,&UBTeachingTools::finishShapeTool);
     connect(mWindow->teachingTabs(),&QTabWidget::currentChanged,this,[this](int index){if(index!=0){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool visible){if(!visible){cancelShapeDrag();mShapeDrawing=false;mShapeBar->hide();mShapes->setChecked(false);}});
     connect(qApp,&QCoreApplication::aboutToQuit,this,[this] {
@@ -689,7 +705,7 @@ void UBTeachingTools::createShapeToolbar()
         QObject::disconnect(UBApplication::boardController,nullptr,this,nullptr);
         QObject::disconnect(UBDrawingController::drawingController(),nullptr,this,nullptr);
     });
-    mSyncingShape=true;applyShapeStyle();mSyncingShape=false;mShapeBar->hide();
+    updateShapeControls();mSyncingShape=true;applyShapeStyle();mSyncingShape=false;mShapeBar->hide();
 }
 
 void UBTeachingTools::editSelectedGraph()

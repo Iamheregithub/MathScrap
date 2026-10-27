@@ -1,4 +1,6 @@
-HEADERS += src/domain/UBGraphicsScene.h \
+HEADERS += src/domain/UBShapeGeometry.h \
+    src/domain/UBShapeSvg.h \
+    src/domain/UBGraphicsScene.h \
     src/domain/UBWebEngineView.h \
     src/domain/UBGraphicsItemUndoCommand.h \
     src/domain/UBGraphicsTextItemUndoCommand.h \

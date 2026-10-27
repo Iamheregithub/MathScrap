@@ -15,11 +15,11 @@ class QWebEngineView;
 class UBGraphicsSvgItem;
 class QToolBar;
 class QComboBox;
-class QSlider;
+class QSpinBox;
+class QLabel;
 class QToolButton;
 class QGraphicsPathItem;
 class QGraphicsScene;
-class QPainterPath;
 class QRectF;
 class UBTeachingTools : public QObject
 {
@@ -40,14 +40,16 @@ private:
     void applyShapeStyle();
     void cancelShapeDrag();
     void armShape(int type);
+    void finishShapeTool();
+    void updateShapeControls();
     QByteArray shapeSvg(const QRectF &rect) const;
-    QPainterPath shapePath(const QRectF &rect) const;
     QToolBar *mShapeBar = nullptr;
     QAction *mShapes = nullptr;
     QList<QAction*> mShapeChoices;
     QComboBox *mShapeWidth = nullptr;
-    QComboBox *mShapeStyle = nullptr;
-    QSlider *mShapeOpacity = nullptr;
+    QSpinBox *mPolygonSides = nullptr;
+    QWidget *mPolygonControls = nullptr;
+    QLabel *mShapeHint = nullptr;
     QToolButton *mBorderButton = nullptr;
     QToolButton *mFillButton = nullptr;
     QColor mShapeBorder = Qt::black;

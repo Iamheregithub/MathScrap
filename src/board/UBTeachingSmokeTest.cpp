@@ -14,6 +14,9 @@
 #include "gui/UBToolbarButtonGroup.h"
 #include "adaptors/UBSvgSubsetAdaptor.h"
 #include "domain/UBGraphicsItemTransformUndoCommand.h"
+#include "domain/UBGraphicsItemDelegate.h"
+#include "domain/UBGraphicsDelegateFrame.h"
+#include "domain/UBShapeGeometry.h"
 #include "UBBoardController.h"
 #include "UBBoardView.h"
 #include <QDomDocument>
@@ -769,6 +772,15 @@ bool checkShapeThenFunctions(QString *error)
         guard.stop();QObject::disconnect(connection);
         int formulae=0;for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))++formulae;
         if(!selected||formulae!=1||!injectionError.isEmpty())return fail(QString("Functions after triangle: menu=%1 chosen=%2 formulae=%3 Select=%4").arg(visible).arg(selected).arg(formulae).arg(window->actionSelector->isChecked()));
+        UBGraphicsSvgItem *formula=nullptr;for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->fileData().contains("mathscrap-formula"))formula=svg;
+        if(!formula||!formula->Delegate()->frame())return fail("Formula is not genuinely selected after insertion");
+        const auto oldPosition=formula->pos();
+        const auto from=viewport->mapToGlobal(view->mapFromScene(formula->mapToScene(QPointF(10,formula->boundingRect().height()/2))));
+        const auto to=from+QPoint(30,20);
+        packet(QEvent::TabletPress,from);
+        if(native){QTimer::singleShot(35,window,[&]{packet(QEvent::TabletMove,to);});QTimer::singleShot(70,window,[&]{packet(QEvent::TabletRelease,to);});settle(250);}
+        else{packet(QEvent::TabletMove,to);packet(QEvent::TabletRelease,to);QApplication::processEvents();}
+        if(QLineF(oldPosition,formula->pos()).length()<5)return fail("Formula cannot be dragged immediately after insertion");
         if(native&&probe.tablets==0)return fail("Injected input did not reach Qt as pen events");
         if(native){
             // Check the same native pen popup path on the shape's colour controls.
@@ -816,7 +828,7 @@ bool checkTabletMenus(QString *error)
     auto shapes=window->findChild<QAction*>("actionTeachingShapes");shapes->trigger();QApplication::processEvents();
     auto bar=window->findChild<QToolBar*>("lessonShapeToolbar");auto panel=bar->findChild<QWidget*>("compactShapePanel");
     QToolButton *triangle=nullptr;for(auto b:panel->findChildren<QToolButton*>())if(b->defaultAction()&&b->defaultAction()->objectName()=="lessonShape3")triangle=b;
-    if(!triangle||bar->height()>200||bar->width()>560){*error="Compact three-row shape controls are missing or oversized";return false;}
+    if(!triangle||bar->height()>300||bar->width()>560){*error="Grouped shape controls are missing or oversized";return false;}
     tap(triangle->mapToGlobal(triangle->rect().center()));if(!triangle->isChecked()){*error="Stylus cannot select a shape directly";return false;}
     auto drawShape=[&]() -> UBGraphicsSvgItem* {
         tap(triangle->mapToGlobal(triangle->rect().center()));
@@ -826,14 +838,10 @@ bool checkTabletMenus(QString *error)
         return nullptr;
     };
     auto drawn=drawShape();if(!drawn){*error="Stylus cannot draw the first shape before changing its appearance";return false;}
-    auto width=bar->findChild<QToolButton*>("compactShapeWidth1");auto style=bar->findChild<QToolButton*>("compactShapeStyle1");
+    auto width=bar->findChild<QToolButton*>("compactShapeWidth1");
     tap(width->mapToGlobal(width->rect().center()));tap(width->mapToGlobal(width->rect().center()));
-    tap(style->mapToGlobal(style->rect().center()));tap(style->mapToGlobal(style->rect().center()));
-    if(!width->isChecked()||!style->isChecked()){*error="Compact shape preset selection toggled off";return false;}
-    auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto colours=border->menu();bool changed=false;auto none=colours->actions().first();auto c=QObject::connect(none,&QAction::triggered,window,[&]{changed=true;});
-    guard.start(2000);QTimer::singleShot(250,&guard,[&]{if(colours->isVisible())tap(colours->mapToGlobal(colours->actionGeometry(none).center()));});tap(border->mapToGlobal(border->rect().center()));finishPopup();guard.stop();QObject::disconnect(c);
-    if(!changed||colours->isVisible()){*error="Stylus cannot select a shape colour-menu item";return false;}
-    // Exercise actual QWidgetAction colour swatches, not just the plain No border action.
+    if(!width->isChecked()){*error="Compact shape preset selection toggled off";return false;}
+    // Exercise actual QWidgetAction colour swatches with the stylus.
     for(const auto &name:{QString("lessonShapeBorder"),QString("lessonShapeFill")})for(int index:{2,5}){
         auto button=bar->findChild<QToolButton*>(name);auto palette=button->menu();
         auto swatches=palette->findChildren<QToolButton*>();if(swatches.size()<=index){*error="Shape swatches missing";return false;}
@@ -988,15 +996,17 @@ bool checkShapeToolbar(QString *error)
     board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
     auto action=window->findChild<QAction*>("actionTeachingShapes");if(!action)return fail("Shapes action unavailable");action->trigger();QApplication::processEvents();
     auto bar=window->findChild<QToolBar*>("lessonShapeToolbar");if(!bar||!bar->isVisible())return fail("Shapes did not reveal its toolbar");
-    auto width=bar->findChild<QComboBox*>("lessonShapeWidth");auto style=bar->findChild<QComboBox*>("lessonShapeBorderStyle");auto opacity=bar->findChild<QSlider*>("lessonShapeOpacity");
-    if(!width||!style||!opacity)return fail("Shape appearance controls unavailable");
+    auto width=bar->findChild<QComboBox*>("lessonShapeWidth");auto sides=bar->findChild<QSpinBox*>("lessonPolygonSides");
+    if(!width||!sides||bar->findChild<QSlider*>("lessonShapeOpacity")||bar->findChild<QComboBox*>("lessonShapeBorderStyle")||window->findChild<QAction*>("lessonShapeNoBorder"))return fail("Shape controls are missing or retired controls remain");
+    auto selectButton=window->findChild<QToolButton*>("paper-actionSelector");
+    if(selectButton&&selectButton->isChecked())return fail("Shapes and Select are simultaneously highlighted");
     auto view=board->controlView();auto viewport=view->viewport();
-    auto draw=[&](int type,bool tablet=false) -> UBGraphicsSvgItem* {
+    auto draw=[&](int type,bool tablet=false,Qt::KeyboardModifiers modifiers=Qt::NoModifier) -> UBGraphicsSvgItem* {
         auto choice=bar->findChild<QAction*>(QString("lessonShape%1").arg(type));if(!choice)return nullptr;choice->trigger();
         const QPointF start=view->mapFromScene(QPointF(-150,-100)),end=view->mapFromScene(QPointF(150,60));
         auto send=[&](QEvent::Type t,QPointF p,Qt::MouseButton button,Qt::MouseButtons buttons){
-            if(tablet){QTabletEvent e(t,QPointingDevice::primaryPointingDevice(),p,viewport->mapToGlobal(p.toPoint()),.8,0,0,0,0,0,Qt::NoModifier,button,buttons);QApplication::sendEvent(viewport,&e);}
-            else{QMouseEvent e(t,p,viewport->mapToGlobal(p.toPoint()),button,buttons,Qt::NoModifier);QApplication::sendEvent(viewport,&e);}
+            if(tablet){QTabletEvent e(t,QPointingDevice::primaryPointingDevice(),p,viewport->mapToGlobal(p.toPoint()),.8,0,0,0,0,0,modifiers,button,buttons);QApplication::sendEvent(viewport,&e);}
+            else{QMouseEvent e(t,p,viewport->mapToGlobal(p.toPoint()),button,buttons,modifiers);QApplication::sendEvent(viewport,&e);}
         };
         send(tablet?QEvent::TabletPress:QEvent::MouseButtonPress,start,Qt::LeftButton,Qt::LeftButton);
         send(tablet?QEvent::TabletMove:QEvent::MouseMove,end,Qt::NoButton,Qt::LeftButton);
@@ -1004,29 +1014,64 @@ bool checkShapeToolbar(QString *error)
         for(auto item:scene->selectedItems())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape())return svg;
         return nullptr;
     };
-    for(int type=0;type<8;++type){auto shape=draw(type,type==7);if(!shape)return fail(QString("Drag drawing failed for shape %1").arg(type));QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");if(type==6||type==7){const auto points=d.elementsByTagName("polygon").at(0).toElement().attribute("points").split(QRegularExpression("\\s+"),Qt::SkipEmptyParts);if(points.size()!=(type==7?5:4))return fail("Pentagon or legacy diamond geometry changed");}if(type==3||type==5){int handles=0;for(auto h:shape->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(h))++handles;if(handles!=3)return fail("Triangle must have three vertex handles");}}
-    int visibleShapes=0;bool pentagon=false,diamond=false;
-    for(auto b:bar->findChild<QWidget*>("compactShapePanel")->findChildren<QToolButton*>())if(b->defaultAction()){++visibleShapes;pentagon|=b->defaultAction()->objectName()=="lessonShape7";diamond|=b->defaultAction()->objectName()=="lessonShape6";}
-    if(visibleShapes!=7||!pentagon||diamond)return fail("Shapes tray did not replace Diamond with Pentagon");
+    const QList<int> types={0,4,3,5,8,9,10,11,12,13,14,15};
+    for(bool tablet:{false,true})for(int type:types){
+        auto shape=draw(type,tablet);if(!shape)return fail(QString("Drawing failed for shape %1, tablet %2").arg(type).arg(tablet));
+        QDomDocument d;d.setContent(shape->fileData());if(d.elementsByTagName("metadata").at(0).toElement().text().toInt()!=type)return fail("Wrong shape geometry inserted");
+        if(type==5&&!shape->fileData().contains("lessonboard-shape-outline-marker"))return fail("Right-angle marker missing");
+        if(type>=10&&!shape->fileData().contains("lessonboard-shape-outline-hidden"))return fail("Hidden edges missing");
+        if(!shape->Delegate()->frame()||!shape->Delegate()->frame()->isVisible())return fail("Inserted shape selection controls are not ready");
+        if(action->isChecked()||(selectButton&&!selectButton->isChecked()))return fail("Insertion did not switch visibly to Select");
+        const auto before=shape->pos();const auto a=view->mapFromScene(shape->mapToScene(shape->boundingRect().center()));const auto b=a+QPoint(30,20);
+        auto send=[&](QEvent::Type t,QPoint point,Qt::MouseButton button,Qt::MouseButtons buttons){
+            if(tablet){QTabletEvent e(t,QPointingDevice::primaryPointingDevice(),point,viewport->mapToGlobal(point),.8,0,0,0,0,0,Qt::NoModifier,button,buttons);QApplication::sendEvent(viewport,&e);}
+            else{QMouseEvent e(t,point,viewport->mapToGlobal(point),button,buttons,Qt::NoModifier);QApplication::sendEvent(viewport,&e);}
+        };
+        send(tablet?QEvent::TabletPress:QEvent::MouseButtonPress,a,Qt::LeftButton,Qt::LeftButton);
+        send(tablet?QEvent::TabletMove:QEvent::MouseMove,b,Qt::NoButton,Qt::LeftButton);
+        send(tablet?QEvent::TabletRelease:QEvent::MouseButtonRelease,b,Qt::LeftButton,Qt::NoButton);
+        if(QLineF(before,shape->pos()).length()<5)return fail("Inserted shape cannot be dragged immediately by its body");
+        UBApplication::undoStack->undo();if(QLineF(before,shape->pos()).length()>.1)return fail("Shape movement undo failed");UBApplication::undoStack->redo();
+    }
+    for(int type:{0,4,3,8}){
+        auto shape=draw(type,false,Qt::ControlModifier|Qt::ShiftModifier);if(!shape)return fail("Constrained shape drawing failed");
+        auto r=shape->boundingRect().adjusted(12,12,-12,-12);
+        if(qAbs(r.height()/r.width()-UBShapeGeometry::ratio(type))>.01)return fail("Ctrl + Shift shape geometry is wrong");
+    }
+    // Exercise the actual resize handler, including edge grips, after free drawing.
+    for(int type:{0,4,3,8,9})for(bool edge:{false,true}){
+        auto shape=draw(type);auto frame=shape->Delegate()->frame();if(!frame)return fail("Resize frame missing");
+        auto local=edge?QPointF(frame->rect().right()-2,frame->rect().center().y()):frame->rect().bottomRight()-QPointF(2,2);
+        auto start=frame->mapToScene(local),end=start+QPointF(45,25);
+        auto keys=type==9?Qt::NoModifier:Qt::ControlModifier|Qt::ShiftModifier;
+        const auto originalTransform=shape->transform();
+        auto send=[&](QEvent::Type t,QPointF at){auto point=view->mapFromScene(at);QMouseEvent e(t,point,viewport->mapToGlobal(point),t==QEvent::MouseMove?Qt::NoButton:Qt::LeftButton,t==QEvent::MouseButtonRelease?Qt::NoButton:Qt::LeftButton,keys);QApplication::sendEvent(viewport,&e);};
+        send(QEvent::MouseButtonPress,start);send(QEvent::MouseMove,end);send(QEvent::MouseButtonRelease,end);
+        if(shape->transform()==originalTransform)return fail("Resize gesture was not delivered to the shape frame");
+        const auto r=shape->boundingRect().adjusted(12,12,-12,-12);
+        double w=QLineF(shape->mapToScene(r.topLeft()),shape->mapToScene(r.topRight())).length();
+        double h=QLineF(shape->mapToScene(r.topLeft()),shape->mapToScene(r.bottomLeft())).length();
+        if(qAbs(h/w-UBShapeGeometry::ratio(type))>.01)return fail("Shape resize constraint failed");
+    }
+    sides->setValue(3);auto regularTriangle=draw(9);
+    if(!regularTriangle||!regularTriangle->Delegate()->testUBFlags(GF_RESPECT_RATIO))return fail("Three-sided regular polygon lost proportional resizing");
+    for(auto child:regularTriangle->childItems())if(dynamic_cast<QGraphicsEllipseItem*>(child))return fail("Regular polygon must not expose editable triangle vertices");
+    sides->setValue(5);
+    int visibleShapes=0;
+    for(auto b:bar->findChild<QWidget*>("compactShapePanel")->findChildren<QToolButton*>())if(b->defaultAction()){
+        ++visibleShapes;auto id=b->defaultAction()->objectName();if(id=="lessonShape1"||id=="lessonShape2"||id=="lessonShape6"||id=="lessonShape7")return fail("Retired shape remains in tray");
+    }
+    if(visibleShapes!=12)return fail("Expected twelve shape tools");
     auto stylePage=manager->createDocumentSceneAt(doc,1,false);board->setActiveDocumentScene(doc,1);scene=board->activeScene();scene->setNominalSize(800,600);scene->setBackground(false,plain);
     auto target=draw(0);if(!target)return fail("Cannot draw styled rectangle");
-    auto before=target->fileData();width->setCurrentIndex(width->findData(8.));style->setCurrentIndex(1);opacity->setValue(35);
-    window->findChild<QAction*>("lessonShapeNoBorder")->trigger();
-    QDomDocument edited;edited.setContent(target->fileData());auto g=edited.elementsByTagName("g").at(0).toElement();
-    if(g.attribute("stroke")!="none"||g.attribute("stroke-width").toDouble()!=8||g.attribute("fill-opacity").toDouble()!=.35||g.attribute("stroke-dasharray")=="none")return fail("Selected shape appearance did not update");
-    const auto after=target->fileData();UBApplication::undoStack->undo();UBApplication::undoStack->redo();if(target->fileData()!=after)return fail("Shape styling redo failed");
-    // Restore border/fill through the same actual palette button used by teachers.
+    width->setCurrentIndex(width->findData(8.));
     auto border=bar->findChild<QToolButton*>("lessonShapeBorder");auto fill=bar->findChild<QToolButton*>("lessonShapeFill");
     auto borderSwatches=border->menu()->findChildren<QToolButton*>();auto fillSwatches=fill->menu()->findChildren<QToolButton*>();
     if(borderSwatches.size()!=10||fillSwatches.size()!=10)return fail("Border/fill colour palettes unavailable");
-    borderSwatches[0]->click();fillSwatches[4]->click();style->setCurrentIndex(0);width->setCurrentIndex(width->findData(3.));opacity->setValue(50);
-    edited.setContent(target->fileData());g=edited.elementsByTagName("g").at(0).toElement();
-    if(g.attribute("stroke")=="none"||g.attribute("fill")=="none"||g.attribute("fill-opacity").toDouble()!=.5)return fail("Shape colour palettes did not edit selection");
-    QImage fillImage(400,240,QImage::Format_ARGB32_Premultiplied);fillImage.fill(Qt::white);
-    QPainter fillPainter(&fillImage);QSvgRenderer filledSvg(target->fileData());filledSvg.render(&fillPainter,QRectF(0,0,400,240));fillPainter.end();
-    const auto fillColour=QColor(g.attribute("fill"));const auto actualFill=fillImage.pixelColor(200,120);
-    const QColor expectedFill(qRound((255+fillColour.red())/2.),qRound((255+fillColour.green())/2.),qRound((255+fillColour.blue())/2.));
-    if(qAbs(actualFill.red()-expectedFill.red())>2||qAbs(actualFill.green()-expectedFill.green())>2||qAbs(actualFill.blue()-expectedFill.blue())>2)return fail("Fill opacity did not render independently of the border");
+    borderSwatches[0]->click();fillSwatches[4]->click();
+    QDomDocument edited;edited.setContent(target->fileData());auto g=edited.elementsByTagName("g").at(0).toElement();
+    if(g.attribute("stroke")=="none"||g.attribute("fill")=="none"||g.attribute("fill-opacity").toDouble()!=1||g.attribute("stroke-dasharray")!="none"||g.attribute("stroke-width").toDouble()!=8)return fail("Shape styling is not solid and fully opaque");
+    const auto after=target->fileData();UBApplication::undoStack->undo();UBApplication::undoStack->redo();if(target->fileData()!=after)return fail("Shape styling redo failed");
     manager->persistDocumentScene(doc,scene,1,true,true);
     auto loaded=UBSvgSubsetAdaptor::loadScene(doc,1);bool found=false;
     for(auto item:loaded->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item))if(svg->isTeachingShape()&&svg->fileData()==target->fileData())found=true;
@@ -1035,9 +1080,9 @@ bool checkShapeToolbar(QString *error)
     if(auto paper=window->findChild<UBPaperInk*>()){paper->sync();QEventLoop settle;QTimer::singleShot(60,&settle,&QEventLoop::quit);settle.exec();}
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     if(auto dock=window->findChild<QFrame*>("paperDock")){
-        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>200)return fail(QString("Shape panel layout: parent=%1 height=%2 panel=%3,%4,%5,%6 dock=%7,%8,%9,%10")
+        if(bar->parentWidget()!=board->controlView()||bar->geometry().intersects(dock->geometry())||bar->height()>300)return fail(QString("Shape panel layout: parent=%1 height=%2 panel=%3,%4,%5,%6 dock=%7,%8,%9,%10")
             .arg(bar->parentWidget()==board->controlView()).arg(bar->height()).arg(bar->x()).arg(bar->y()).arg(bar->width()).arg(bar->height()).arg(dock->x()).arg(dock->y()).arg(dock->width()).arg(dock->height()));
-    }else if(bar->geometry().top()<window->boardToolBar->geometry().bottom()||bar->height()>65)return fail("Shape controls must occupy a compact row below the main toolbar");
+    }else if(bar->height()>300)return fail("Shape controls are oversized");
     window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("shape-toolbar-window.png"));
     window->actionPen->trigger();if(bar->isVisible())return fail("Pen did not dismiss shape controls");
     action->trigger();if(UBDrawingController::drawingController()->stylusTool()!=UBStylusTool::Selector)return fail("Shapes did not activate selection for an existing shape");auto shapeChoice=bar->findChild<QAction*>("lessonShape0");shapeChoice->trigger();

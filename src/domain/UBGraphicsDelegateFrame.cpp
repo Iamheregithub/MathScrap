@@ -40,6 +40,9 @@
 
 #include "domain/UBGraphicsItemDelegate.h"
 #include "domain/UBGraphicsScene.h"
+#include "domain/UBGraphicsSvgItem.h"
+#include "domain/UBShapeGeometry.h"
+#include <QDomDocument>
 #include "domain/UBResizableGraphicsItem.h"
 
 #include "gui/UBResources.h"
@@ -278,6 +281,7 @@ void UBGraphicsDelegateFrame::initializeTransform()
 
 void UBGraphicsDelegateFrame::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    mConstrainedShapeBefore.clear();
     mDelegate->startUndoStep();
 
     mStartingPoint = event->scenePos();
@@ -570,6 +574,35 @@ void UBGraphicsDelegateFrame::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
         }
     }
 
+    if(mOperationMode==Scaling&&!moving()&&!rotating()&&mRespectRatio) {
+        if(resizingLeft()||resizingRight())mScaleY=mScaleX;
+        else if(resizingTop()||resizingBottom())mScaleX=mScaleY;
+    }
+    if(mOperationMode==Scaling&&!moving()&&!rotating()&&UBShapeGeometry::constrained(event->modifiers())) {
+        if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(delegated());svg&&svg->isTeachingShape()) {
+            QDomDocument doc;doc.setContent(svg->fileData());auto metadata=doc.elementsByTagName("metadata");
+            int type=metadata.isEmpty()?-1:metadata.at(0).toElement().text().toInt();
+            if(type==0||type==4||type==3||type==8) {
+                if(type==3) {
+                    const auto r=svg->boundingRect().adjusted(12,12,-12,-12);
+                    auto node=doc.elementsByTagName("polygon").at(0).toElement();
+                    auto values=node.attribute("points").split(QRegularExpression("[ ,]+"),Qt::SkipEmptyParts);
+                    auto canonical=UBShapeGeometry::polygon(3,r);bool changed=values.size()!=6;
+                    for(int i=0;i<3&&values.size()==6;++i)changed |= QLineF(canonical[i],QPointF(values[2*i].toDouble(),values[2*i+1].toDouble())).length()>.00001;
+                    if(changed){
+                        if(mConstrainedShapeBefore.isEmpty())mConstrainedShapeBefore=svg->fileData();
+                        QStringList points;for(auto v:canonical)points<<QString("%1,%2").arg(v.x()).arg(v.y());
+                        node.setAttribute("points",points.join(' '));svg->setTeachingSvg(doc.toByteArray());
+                    }
+                }
+                const double innerW=delegated()->boundingRect().width()-24;
+                const double innerH=delegated()->boundingRect().height()-24;
+                const auto scales=UBShapeGeometry::constrainResize(type,QSizeF(innerW,innerH),QSizeF(mTotalScaleX,mTotalScaleY),QSizeF(mScaleX,mScaleY),resizingTop()||resizingBottom());
+                mScaleX=scales.width();mScaleY=scales.height();
+            }
+        }
+    }
+
     if (rotating())
     {
         mTranslateX = 0;
@@ -824,7 +857,13 @@ void UBGraphicsDelegateFrame::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     updateResizeCursors();
 
+    const bool geometryChanged=!mConstrainedShapeBefore.isEmpty();
+    if(geometryChanged)UBApplication::undoStack->beginMacro(tr("Constrain triangle"));
     mDelegate->commitUndoStep();
+    if(geometryChanged){
+        if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(delegated()))svg->commitTeachingSvg(mConstrainedShapeBefore);
+        UBApplication::undoStack->endMacro();mConstrainedShapeBefore.clear();
+    }
     mTotalScaleX *= mScaleX;
     mTotalScaleY *= mScaleY;
     mTotalTranslateX += mTranslateX;

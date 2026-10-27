@@ -151,6 +151,7 @@ class UBGraphicsDelegateFrame: public QGraphicsRectItem, public QObject
         bool mMirrorX;
         bool mMirrorY;
         bool mResizing;
+        QByteArray mConstrainedShapeBefore;
         bool mMirroredXAtStart;
         bool mMirroredYAtStart;
         qreal mTitleBarHeight;

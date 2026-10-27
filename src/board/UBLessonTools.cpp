@@ -62,6 +62,9 @@ UBLessonTools::UBLessonTools(UBMainWindow *window):QObject(window),mWindow(windo
     auto add=[this](const QString &name,const QString &label,const QIcon &icon){auto a=new QAction(icon,label,mWindow);a->setObjectName(name);mWindow->boardToolBar->insertAction(mWindow->actionBoard,a);mWindow->addAction(a);return a;};
     auto cover=mCoverAction=add("actionLessonCover",tr("Cover"),QIcon(":/images/teaching/cover.svg"));
     cover->setCheckable(true);cover->setShortcut(QKeySequence("Ctrl+Alt+C"));
+    connect(mWindow->actionSelector,&QAction::triggered,this,[this]{
+        cancelCoverDrag();mDrawingCover=false;mDrawCover->setChecked(false);mCoverBar->hide();mCoverAction->setChecked(false);
+    });
     connect(cover,&QAction::triggered,this,[this](bool checked){
         if(checked){mCoverBar->show();armCover();}
         else{cancelCoverDrag();mDrawingCover=false;mCoverBar->hide();UBApplication::boardController->controlView()->viewport()->unsetCursor();}
@@ -86,7 +89,7 @@ UBLessonTools::UBLessonTools(UBMainWindow *window):QObject(window),mWindow(windo
 }
 UBGraphicsSvgItem *UBLessonTools::addCover(){if(UBApplication::applicationController->displayMode()!=UBApplicationController::Board)UBApplication::applicationController->showBoard();auto board=UBApplication::boardController;auto scene=board->activeScene();if(!scene)return nullptr;
     const QByteArray data="<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"360\" height=\"160\" viewBox=\"0 0 360 160\"><metadata id=\"lessonboard-cover\">covered</metadata><rect x=\"2\" y=\"2\" width=\"356\" height=\"156\" rx=\"4\" fill=\"#334155\" stroke=\"#64748b\" stroke-width=\"2\"/></svg>";
-    auto item=scene->addSvg(QUrl(),board->controlView()->mapToScene(board->controlView()->viewport()->rect().center()),data);if(item){if(mWindow->teachingTabs())mWindow->teachingTabs()->setCurrentIndex(0);mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);item->setZValue(2000000.0);}return item;
+    auto item=scene->addSvg(QUrl(),board->controlView()->mapToScene(board->controlView()->viewport()->rect().center()),data);if(item){if(mWindow->teachingTabs())mWindow->teachingTabs()->setCurrentIndex(0);mWindow->actionSelector->trigger();scene->clearSelection();item->setSelected(true);scene->updateSelectionFrame();item->setZValue(2000000.0);}return item;
 }
 bool UBLessonTools::isCoverRevealed(UBGraphicsSvgItem *cover)const{return cover&&cover->isLessonCover()&&cover->fileData().contains(">revealed</metadata>");}
 void UBLessonTools::setCoverRevealed(UBGraphicsSvgItem *cover,bool revealed)
@@ -122,9 +125,9 @@ void UBLessonTools::createCoverToolbar()
         mWindow->actionSelector->trigger();
         auto board=UBApplication::boardController;auto scene=board->activeScene();if(!scene)return;
         for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->fileData().contains("data-screen-shade")){
-            scene->clearSelection();svg->setSelected(true);setCoverRevealed(svg,false);return;
+            scene->clearSelection();svg->setSelected(true);scene->updateSelectionFrame();setCoverRevealed(svg,false);mCoverBar->show();return;
         }
-        auto view=board->controlView();createCover(view->mapToScene(view->viewport()->rect()).boundingRect(),true);
+        auto view=board->controlView();createCover(view->mapToScene(view->viewport()->rect()).boundingRect(),true);mCoverBar->show();
     });
     mCoverBar->addSeparator();
     for(bool selected:{true,false})for(bool revealed:{true,false}){
@@ -179,7 +182,7 @@ void UBLessonTools::armCover()
 {
     if(auto shapes=mWindow->findChild<QAction*>("actionTeachingShapes");shapes&&shapes->isChecked())shapes->trigger();
     mWindow->teachingTabs()->setCurrentIndex(0);
-    cancelCoverDrag();mWindow->actionSelector->trigger();mDrawingCover=true;mDrawCover->setChecked(true);
+    cancelCoverDrag();mWindow->actionSelector->trigger();mDrawingCover=true;mDrawCover->setChecked(true);mCoverAction->setChecked(true);mCoverBar->show();
     UBApplication::boardController->controlView()->viewport()->setCursor(Qt::CrossCursor);
 }
 
@@ -201,7 +204,7 @@ UBGraphicsSvgItem *UBLessonTools::createCover(const QRectF &rect,bool shade)
     updateShadeHandles(document);
     auto item=scene->addSvg(QUrl(),rect.center(),document.toByteArray());if(!item)return nullptr;
     item->setScale(1);item->setTransform(QTransform());item->setPos(rect.topLeft());item->setZValue(2000000.0);
-    scene->clearSelection();item->setSelected(true);return item;
+    scene->clearSelection();item->setSelected(true);scene->updateSelectionFrame();return item;
 }
 
 void UBLessonTools::revealCovers(bool selected,bool revealed)
@@ -289,7 +292,7 @@ bool UBLessonTools::eventFilter(QObject *watched,QEvent *event)
         if(press){cancelCoverDrag();mCoverStart=point;mCoverScene=scene.get();mCoverPreview=new QGraphicsRectItem;mCoverPreview->setZValue(2000001);mCoverPreview->setPen(QPen(QColor("#64748b"),2));mCoverPreview->setBrush(mCoverColour);scene->QGraphicsScene::addItem(mCoverPreview);}
         if(mCoverPreview&&mCoverScene==scene.get()){
             const auto rect=QRectF(mCoverStart,point).normalized();mCoverPreview->setRect(rect);
-            if(release){cancelCoverDrag();if(rect.width()>=3&&rect.height()>=3){createCover(rect,false);mDrawingCover=false;mDrawCover->setChecked(false);view->viewport()->unsetCursor();}}
+            if(release){cancelCoverDrag();if(rect.width()>=3&&rect.height()>=3){createCover(rect,false);mWindow->actionSelector->trigger();mCoverBar->show();}}
         }
         event->accept();return true;
     }
