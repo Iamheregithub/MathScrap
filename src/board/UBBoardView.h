@@ -209,6 +209,7 @@ private:
     bool mIsDragInProgress;
     bool mFormulaInputMouse = false;
     bool mCalculatorTabletGesture = false;
+    bool mSelectionTabletGesture = false;
     QPointer<UBGraphicsSvgItem> mFormulaRevealItem;
     int mFormulaRevealButton = -1;
     bool mMultipleSelectionIsEnabled;

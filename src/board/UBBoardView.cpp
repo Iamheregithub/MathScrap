@@ -318,11 +318,6 @@ bool UBBoardView::event (QEvent * e)
 
 void UBBoardView::tabletEvent (QTabletEvent * event)
 {
-    if (!mUseHighResTabletEvent) {
-        event->setAccepted (false);
-        return;
-    }
-
     UBDrawingController *dc = UBDrawingController::drawingController ();
 
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
@@ -360,15 +355,21 @@ void UBBoardView::tabletEvent (QTabletEvent * event)
     if(event->type()==QEvent::TabletPress){
         auto hit=scene()?scene()->itemAt(scenePos,QTransform()):nullptr;
         mCalculatorTabletGesture=hit&&hit->data(0).toString()=="mathscrap-function-calculator";
+        mSelectionTabletGesture=dc->stylusTool()==UBStylusTool::Selector;
     }
-    if(mCalculatorTabletGesture){
+    if(mCalculatorTabletGesture||mSelectionTabletGesture){
         const auto mouseType=event->type()==QEvent::TabletPress?QEvent::MouseButtonPress:
                              event->type()==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
         QMouseEvent mouse(mouseType,tabletPos,globalPos,event->button(),event->buttons(),event->modifiers());
         QApplication::sendEvent(viewport(),&mouse);
-        if(event->type()==QEvent::TabletRelease)mCalculatorTabletGesture=false;
+        if(event->type()==QEvent::TabletRelease){mCalculatorTabletGesture=false;mSelectionTabletGesture=false;}
+        // Selection is an explicit, captured gesture. Depending on ignored
+        // tablet packets to become mouse events loses presses on some drivers
+        // and does not work for injected Qt pen events. Accepting here also
+        // prevents the platform from delivering a duplicate mouse gesture.
         event->accept();return;
     }
+    if (!mUseHighResTabletEvent) {event->ignore();return;}
 
     qreal pressure = 1.0;
     currentTool = (UBStylusTool::Enum)dc->stylusTool();
@@ -1722,6 +1723,10 @@ void UBBoardView::mouseReleaseEvent (QMouseEvent *event)
 
 void UBBoardView::forcedTabletRelease ()
 {
+    if(mSelectionTabletGesture){
+        QMouseEvent release(QEvent::MouseButtonRelease,QPointF(-1,-1),Qt::LeftButton,Qt::NoButton,Qt::NoModifier);
+        mouseReleaseEvent(&release);mSelectionTabletGesture=false;
+    }
     if(mCalculatorTabletGesture){
         // Losing pen proximity must cancel a held calculator key, not leave a
         // gesture active for the next tray tap. Release outside the widget.
