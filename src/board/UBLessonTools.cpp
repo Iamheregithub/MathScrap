@@ -43,6 +43,7 @@ void updateShadeHandles(QDomDocument &doc)
 {
     auto root=doc.documentElement();
     const bool shade=root.hasAttribute("data-screen-shade");
+    root.setAttribute("data-cover-controls","true");
     auto rect=doc.elementsByTagName("rect").at(0).toElement();
     const double x=rect.attribute("x").toDouble(),y=rect.attribute("y").toDouble();
     const double w=rect.attribute("width").toDouble(),h=rect.attribute("height").toDouble();
@@ -273,7 +274,9 @@ void UBLessonTools::applyTouchMode()
     for(auto palette:mWindow->findChildren<UBStylusPalette*>()){
         palette->setButtonIconSize(touch?QSize(56,56):QSize(42,42));palette->layout()->invalidate();palette->adjustSize();palette->initPosition();
     }
-    if(auto scene=UBApplication::boardController->activeScene())for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+    if(auto scene=UBApplication::boardController->activeScene())for(auto item:scene->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()&&(svg->fileData().contains("data-screen-shade")||svg->fileData().contains("data-cover-controls"))){
+        // Preserve untouched legacy SVG assets on a simple open/save. They
+        // acquire the new grip on the first explicit reveal or geometry edit.
         QDomDocument doc;doc.setContent(svg->fileData());
         if(doc.documentElement().hasAttribute("data-screen-shade")&&!doc.documentElement().hasAttribute("data-shade-home-x")){doc.documentElement().setAttribute("data-shade-home-x",svg->pos().x());doc.documentElement().setAttribute("data-shade-home-y",svg->pos().y());}
         updateShadeHandles(doc);
