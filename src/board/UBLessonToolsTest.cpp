@@ -155,13 +155,19 @@ bool coverWorkflow(UBLessonTools *tools,QString *error)
     // Save/reload preserves each distinct object's position, lock and reveal.
     auto unlocked=tools->addCover();unlocked->setCoverLocked(false);unlocked->setPos(210,130);unlocked->setScale(.7);unlocked->setRotation(10);const auto unlockedId=unlocked->uuid();
     UBSvgSubsetAdaptor::persistScene(document,scene,0);auto fresh=UBSvgSubsetAdaptor::loadScene(document,0);if(!fresh)return fail("Cover lesson did not reopen");
+    auto state=[](UBGraphicsSvgItem *item){const auto p=item->mapToScene(QPointF(0,0));const auto t=item->sceneTransform();return QJsonObject{{"uuid",item->uuid().toString()},{"svg",QString::fromUtf8(item->fileData())},{"locked",item->Delegate()->isLocked()},{"x",p.x()},{"y",p.y()},{"m11",t.m11()},{"m12",t.m12()},{"m21",t.m21()},{"m22",t.m22()}};};
+    QJsonArray reopened;
     bool foundCover=false,foundShade=false,foundUnlocked=false;
     for(auto item:fresh->items())if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isLessonCover()){
+        reopened.append(state(svg));
         if(svg->fileData()==coverData&&QLineF(svg->mapToScene(QPointF(0,0)),coverPos).length()<.02&&svg->Delegate()->isLocked())foundCover=true;
         if(svg->fileData()==shadeData&&QLineF(svg->mapToScene(QPointF(0,0)),shadeOrigin).length()<.02&&svg->Delegate()->isLocked())foundShade=true;
         if(svg->uuid()==unlockedId&&!svg->Delegate()->isLocked()&&QLineF(svg->mapToScene(QPointF(0,0)),unlocked->mapToScene(QPointF(0,0))).length()<.1&&qAbs(svg->sceneTransform().m11()-unlocked->sceneTransform().m11())<.01&&qAbs(svg->sceneTransform().m12()-unlocked->sceneTransform().m12())<.01)foundUnlocked=true;
     }
-    if(!foundCover||!foundShade||!foundUnlocked)return fail(QString("Position, lock, size or reveal state changed on reopen: locked cover=%1 shade=%2 unlocked cover=%3").arg(foundCover).arg(foundShade).arg(foundUnlocked));
+    if(!foundCover||!foundShade||!foundUnlocked){
+        write(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("cover-state-debug-report.json"),{{"expectedSvg",QString::fromUtf8(coverData)},{"expectedX",coverPos.x()},{"expectedY",coverPos.y()},{"live",state(drawn)},{"reopened",reopened}});
+        return fail(QString("Position, lock, size or reveal state changed on reopen: locked cover=%1 shade=%2 unlocked cover=%3").arg(foundCover).arg(foundShade).arg(foundUnlocked));
+    }
     // The close target stays full-size and on-screen at near-total reveal and zoom.
     shadeGrip=controlPoint(shade,"grip");drag(shadeGrip,shadeGrip+QPointF(0,10000));
     shade->refreshCoverControls();auto close=shade->coverControlRect("close");
