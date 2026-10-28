@@ -135,15 +135,24 @@ bool checkPdfPageSwitch(QString *error)
         UBApplication::applicationController->showDocument();
         bool selected = false;
         QTimer chooser;
+        QElapsedTimer chooserElapsed; chooserElapsed.start();
+        qWarning() << "PDF switch starting Documents import" << attempt;
         QObject::connect(&chooser, &QTimer::timeout, [&] {
-            if (auto dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget())) {
-                selected = true; chooser.stop(); dialog->selectFile(fixture);
-                QMetaObject::invokeMethod(dialog, "accept", Qt::QueuedConnection);
-            }
+            for (auto widget : QApplication::topLevelWidgets())
+                if (auto dialog = qobject_cast<QFileDialog*>(widget); dialog && dialog->isVisible()) {
+                    if (chooserElapsed.elapsed() > 15000) { dialog->reject(); return; }
+                    const QFileInfo target(fixture);
+                    dialog->setDirectory(target.absolutePath());
+                    dialog->selectFile(target.fileName());
+                    if (auto edit = dialog->findChild<QLineEdit*>("fileNameEdit")) edit->setText(target.fileName());
+                    selected = true;
+                    QMetaObject::invokeMethod(dialog, "accept", Qt::DirectConnection);
+                }
         });
         chooser.start(50);
         UBApplication::documentController->importFile();
         chooser.stop();
+        qWarning() << "PDF switch Documents import returned" << attempt;
         if (!selected) return fail("Documents import picker was not exercised");
         UBApplication::applicationController->showBoard();
         const auto doc = board->selectedDocument();
@@ -158,6 +167,9 @@ bool checkPdfPageSwitch(QString *error)
         const qreal zoom = QList<qreal>{1.5,2.5,4.0}[attempt];
         board->zoom(zoom/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
         if (qAbs(board->currentZoom()-zoom)>0.01) return fail("Requested zoom was not applied");
+        // Dispatch the zoom paint now so its asynchronous PDF request exists
+        // before navigation; do not wait for the rendering worker to finish.
+        view->viewport()->repaint();
         const auto countBeforeZoomStroke = board->activeScene()->items().size();
         stroke();
         if (board->activeScene()->items().size() <= countBeforeZoomStroke) return fail("Drawing after zoom did not add ink");
