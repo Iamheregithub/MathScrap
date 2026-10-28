@@ -2,8 +2,36 @@
 // Included in the native smoke-test translation unit's anonymous namespace.
 bool checkPdfPageSwitch(QString *error)
 {
-    const QString fixture = qEnvironmentVariable("TEACHING_PDF_FIXTURE");
     const QDir output = QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
+    QString fixture = qEnvironmentVariable("TEACHING_PDF_FIXTURE");
+    if (qEnvironmentVariable("TEACHING_PDF_SYNTHETIC") == "1") {
+        fixture = output.filePath("synthetic-navigation.pdf");
+        QPdfWriter writer(fixture);
+        writer.setResolution(72);
+        writer.setPageSize(QPageSize(QPageSize::Letter));
+        writer.setPageMargins(QMarginsF());
+        QPainter painter(&writer);
+        for (int page = 1; page <= 3; ++page) {
+            if (page > 1) writer.newPage();
+            painter.fillRect(QRect(0,0,612,792), Qt::white);
+            painter.setPen(Qt::black);
+            painter.setFont(QFont("Arial",18));
+            painter.drawText(QPoint(40,40),QString("GENERATED REGRESSION PAGE %1").arg(page));
+            painter.setFont(QFont("Arial",12));
+            for (int row = 0; row < 26; ++row) {
+                const int y = 70 + row*26;
+                painter.drawText(QPoint(40,y),QString("%1.  y = %2 x^2 + %3 x - %4").arg(row+1).arg(page).arg(row+2).arg(page+row));
+                painter.drawLine(350,y-4,560,y-4);
+                painter.drawEllipse(QPoint(400+(row%5)*20,y-8),5+page,5+page);
+            }
+            // Image content as well as text, independent of any private quiz.
+            QImage image(1200,900,QImage::Format_RGB32);
+            for (int y=0;y<image.height();++y) for(int x=0;x<image.width();++x)
+                image.setPixel(x,y,qRgb((x*page+y)%256,(y*page+x)%256,(x+y*2)%256));
+            painter.drawImage(QRect(400,600,150,110),image);
+        }
+        painter.end();
+    }
     auto board = UBApplication::boardController;
     auto view = board->controlView();
     auto window = UBApplication::mainWindow;

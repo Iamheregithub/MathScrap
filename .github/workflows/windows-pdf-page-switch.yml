@@ -16,15 +16,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: OpenBoard
-      - name: Create ephemeral quiz transport key
-        shell: pwsh
-        run: |
-          ./OpenBoard/release_scripts/teaching/pdf-qa/crypto.ps1 keygen -KeyFile "$env:RUNNER_TEMP/quiz-private.pem" -OutputFile "$env:RUNNER_TEMP/quiz-public.pem"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: quiz-transport-public-key
-          path: ${{ runner.temp }}/quiz-public.pem
-          retention-days: 1
       - uses: actions/checkout@v4
         with:
           repository: OpenBoard-org/OpenBoard-ThirdParty
@@ -57,21 +48,6 @@ jobs:
         with:
           path: OpenBoard/build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
-      - name: Receive encrypted quiz
-        shell: pwsh
-        working-directory: OpenBoard
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $deadline = (Get-Date).AddMinutes(10)
-          do {
-            git fetch origin qa-pdf-page-switch
-            git cat-file -e 'FETCH_HEAD:release_scripts/teaching/pdf-qa/fixture.json' 2>$null
-            if ($LASTEXITCODE -eq 0) { break }
-            Start-Sleep -Seconds 20
-          } while ((Get-Date) -lt $deadline)
-          if ($LASTEXITCODE -ne 0) { throw 'Encrypted fixture was not delivered' }
-          git show 'FETCH_HEAD:release_scripts/teaching/pdf-qa/fixture.json' | Set-Content "$env:RUNNER_TEMP/fixture.json"
-          ./release_scripts/teaching/pdf-qa/crypto.ps1 decrypt -KeyFile "$env:RUNNER_TEMP/quiz-private.pem" -InputFile "$env:RUNNER_TEMP/fixture.json" -OutputFile "$env:RUNNER_TEMP/quiz.pdf"
       - name: Import, draw, zoom, navigate and inspect screen pixels
         shell: pwsh
         run: |
@@ -79,7 +55,7 @@ jobs:
           $dist = (Resolve-Path 'OpenBoard/dist').Path
           $env:TEACHING_SMOKE_REPORT = "$dist/pdf-switch-report.json"
           $env:TEACHING_PDF_SWITCH_ONLY = '1'
-          $env:TEACHING_PDF_FIXTURE = "$env:RUNNER_TEMP/quiz.pdf"
+          $env:TEACHING_PDF_SYNTHETIC = '1'
           $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
           $app = Start-Process "$dist/app/MathScrap.exe" -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory "$dist/app" -PassThru -RedirectStandardOutput "$dist/pdf-switch-stdout.log" -RedirectStandardError "$dist/pdf-switch-stderr.log"
           if (!$app.WaitForExit(330000)) { Stop-Process -Id $app.Id -Force; throw 'PDF test timed out' }
