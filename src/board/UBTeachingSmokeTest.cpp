@@ -50,6 +50,7 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <psapi.h>
 #include <dbghelp.h>
 #include <cstdio>
 #pragma comment(lib, "dbghelp.lib")
@@ -1402,6 +1403,109 @@ bool checkPdfSelection(QString *error)
     return true;
 }
 
+
+// A bounded workload: the same three pages, PDF asset and undo budget every cycle.
+// Samples are taken only after content, history and deferred deletes are cleared.
+bool checkMemoryCycles(QString *error)
+{
+#ifndef Q_OS_WIN
+    *error = "Memory cycling requires Windows";
+    return false;
+#else
+    auto board = UBApplication::boardController;
+    auto manager = UBPersistenceManager::persistenceManager();
+    const auto anchor = board->selectedDocument();
+    const int anchorPage = board->activeSceneIndex();
+    auto doc = manager->createNewDocument(UBPersistenceManager::myDocumentsName,
+                                         "Memory regression fixture", true);
+    if (!doc) { *error = "Cannot create memory fixture"; return false; }
+    const QString path = doc->persistencePath() + "/objects";
+    QDir().mkpath(path);
+    const QUuid uuid = QUuid::createUuid();
+    const QString pdf = path + "/" + uuid.toString() + ".pdf";
+    {
+        QPdfWriter writer(pdf); writer.setResolution(72);
+        QPainter painter(&writer);
+        for (int page = 0; page < 3; ++page) {
+            if (page) writer.newPage();
+            painter.drawText(QPoint(40, 80), QString("Memory fixture page %1").arg(page));
+        }
+    }
+    for (int page = 1; page < 3; ++page) manager->createDocumentSceneAt(doc, page, false);
+    QFile samples(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("memory-samples.jsonl"));
+    if (!samples.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        *error = "Cannot write memory samples"; return false;
+    }
+    auto settle = [] {
+        QElapsedTimer timer; timer.start();
+        while (timer.elapsed() < 500) {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            QThread::msleep(10);
+        }
+    };
+    for (int cycle = 0; cycle < 40; ++cycle) {
+        {
+            UBImportPDF importer;
+            const auto imported = importer.import(uuid, pdf);
+            if (imported.size() != 3) { *error = "Memory fixture PDF import failed"; return false; }
+            for (int page = 0; page < 3; ++page) {
+                board->setActiveDocumentScene(doc, page);
+                auto scene = board->activeScene();
+                importer.placeImportedItemToScene(scene, imported[page]);
+                UBApplication::mainWindow->actionPen->trigger();
+                const int before = UBApplication::undoStack->index();
+                for (int stroke = 0; stroke < 30; ++stroke) {
+                    scene->inputDevicePress(QPointF(-120, stroke * 4));
+                    for (int x = -110; x <= 120; x += 10)
+                        scene->inputDeviceMove(QPointF(x, stroke * 4));
+                    scene->inputDeviceRelease();
+                }
+                if (UBApplication::undoStack->index() <= before) {
+                    *error = "Memory workload did not record ink"; return false;
+                }
+                UBApplication::undoStack->undo(); UBApplication::undoStack->redo();
+                UBApplication::mainWindow->actionEraser->trigger();
+                scene->inputDevicePress(QPointF(0, 0));
+                scene->inputDeviceMove(QPointF(0, 120)); scene->inputDeviceRelease();
+                manager->persistDocumentScene(doc, scene, page, true, true);
+                {
+                    auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
+                    if (!reopened || reopened->items().isEmpty()) {
+                        *error = "Memory workload could not reopen saved page"; return false;
+                    }
+                }
+                scene->clearContent();
+                scene->clearContent(UBGraphicsScene::clearBackground);
+                UBApplication::undoStack->clear();
+                manager->persistDocumentScene(doc, scene, page, true, true);
+                // Return to the anchor; production scene-cache retention remains observable.
+                board->setActiveDocumentScene(anchor, anchorPage);
+                scene.reset();
+                board->setActiveDocumentScene(doc, page, true);
+            }
+        }
+        board->setActiveDocumentScene(anchor, anchorPage);
+        UBApplication::undoStack->clear();
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX counters = {};
+        counters.cb = sizeof(counters);
+        DWORD handles = 0;
+        if (!K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))
+            || !GetProcessHandleCount(GetCurrentProcess(), &handles)) {
+            *error = "Windows memory counters unavailable"; return false;
+        }
+        QJsonObject sample{{"cycle", cycle}, {"pid", int(GetCurrentProcessId())},
+            {"privateBytes", double(counters.PrivateUsage)}, {"workingSetBytes", double(counters.WorkingSetSize)},
+            {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
+            {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
+        samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
+    }
+    // The fixture remains in the isolated CI profile for diagnostics.
+    return true;
+#endif
+}
+
 void finish(bool passed, const QString &detail) {
     const QString path = qEnvironmentVariable("TEACHING_SMOKE_REPORT");
     QFile file(path);
@@ -1440,12 +1544,18 @@ void finish(bool passed, const QString &detail) {
 }
 void scheduleTeachingSmokeTest(QObject *context)
 {
-    QTimer::singleShot(120000, context, [] { finish(false, "Native test timed out"); });
+    QTimer::singleShot(qEnvironmentVariable("TEACHING_MEMORY_ONLY") == "1" ? 480000 : 120000, context, [] { finish(false, "Native test timed out"); });
     QTimer::singleShot(7000, context, [] {
         qWarning("Teaching check: board initialized");
         auto board = UBApplication::boardController;
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
+        }
+        if (qEnvironmentVariable("TEACHING_MEMORY_ONLY") == "1") {
+            QString detail;
+            const bool passed = checkMemoryCycles(&detail);
+            finish(passed, passed ? "Memory workload completed; see memory analysis for growth assessment" : detail);
+            return;
         }
         if (qEnvironmentVariable("TEACHING_EXPLORE_ONLY") == "1") {
             QString detail;

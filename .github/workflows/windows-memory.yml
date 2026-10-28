@@ -1,0 +1,82 @@
+name: Windows memory diagnostics
+on:
+  workflow_dispatch:
+  push:
+    branches: [memory-growth-test]
+permissions:
+  contents: read
+jobs:
+  memory:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: JavaScript security and browser isolation checks
+        working-directory: OpenBoard/tests/teaching
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node security-browser.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Fetch upstream Windows dependencies
+        uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - name: Recovery worker and input responsiveness checks
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-recovery-responsive.ps1
+      - name: Restore native compilation
+        uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-
+            native-${{ env.VCToolsVersion }}-qt683-
+      - name: Build and stage application
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - name: Save native compilation
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: OpenBoard/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Check memory analysis
+        run: python OpenBoard/release_scripts/teaching/test-memory-analysis.py
+      - name: Exercise native memory cycles
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-memory.ps1
+      - name: Upload memory diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-memory-diagnostics
+          path: |
+            OpenBoard/dist/memory-*
+            OpenBoard/dist/app/teaching-crash.log
+          if-no-files-found: warn
+          retention-days: 30

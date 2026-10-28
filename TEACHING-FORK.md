@@ -126,3 +126,30 @@ CodeQL scans both branches and runs weekly. Dependabot security updates propose 
 MathScrap is an independent OpenBoard fork. Its original fork base was OpenBoard commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream: https://github.com/OpenBoard-org/OpenBoard.
 
 Retain the [GPLv3 licence](LICENSE), [COPYRIGHT](COPYRIGHT), and applicable third-party notices when modifying or distributing the application.
+
+## Repeated-cycle Windows memory screen
+
+`release_scripts/teaching/test-memory.ps1` runs 40 cycles in one native process,
+using one fixed three-page PDF lesson. Each cycle imports the PDF, writes 30
+strokes per page, exercises Undo/Redo and erasing, saves and independently
+reopens pages, clears content/background and undo history, and returns to the
+anchor lesson. Five warm-up cycles are excluded. Samples follow 500 ms of
+event processing and deferred-delete delivery; production scene caches are
+not forcibly purged. The fixed fixture remains in the disposable CI profile.
+Run this script only in a disposable Windows account/profile, not a classroom
+installation containing personal lessons.
+
+The analyzer compares first/last five-sample medians and a least-squares trend.
+It flags private-byte growth above 32 MiB AND 0.5 MiB/cycle; handle growth above
+100 AND 2/cycle; GDI or USER object growth above 50 AND 1/cycle. These are initial
+regression-screen budgets, not calibrated leak guarantees. Both conditions
+must hold for a counter. Missing cycles, restarts, workload errors and timeouts
+fail validation separately. Working set is recorded for context. JSONL samples,
+JSON assessment and stdout/stderr logs are uploaded even on failure.
+
+Scope is the main native process, not QtWebEngine child processes, GPU memory,
+GraphDesk interactions or long classroom sessions. Scene-cache and allocator
+retention can trigger investigation without being an allocation leak. A clean
+run does not prove leak freedom. Suspicious growth needs allocation profiling
+on Windows. `windows-memory.yml` runs diagnostics without publishing installers;
+release-workflow integration is kept local pending diagnostic validation.
