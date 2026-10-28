@@ -21,6 +21,15 @@ jobs:
           repository: OpenBoard-org/OpenBoard-ThirdParty
           ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
           path: OpenBoard-ThirdParty
+      - name: Prepare private fixture transfer
+        shell: pwsh
+        run: |
+          ./OpenBoard/release_scripts/teaching/pdf-qa/crypto.ps1 keygen -KeyFile "$env:RUNNER_TEMP/fixture-private.pem" -OutputFile "$env:RUNNER_TEMP/fixture-public.pem"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fixture-transfer-public-key
+          path: ${{ runner.temp }}/fixture-public.pem
+          retention-days: 1
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
@@ -48,6 +57,30 @@ jobs:
         with:
           path: OpenBoard/build
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Receive encrypted uploaded PDF
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = (Get-Date).AddMinutes(20)
+          $received = $false
+          while ((Get-Date) -lt $deadline) {
+            git -C OpenBoard fetch origin qa-pdf-page-switch --quiet
+            $payload = git -C OpenBoard show origin/qa-pdf-page-switch:release_scripts/teaching/pdf-qa/fixture.json 2>$null
+            if ($LASTEXITCODE -eq 0) {
+              try {
+                $envelope = ($payload -join "`n") | ConvertFrom-Json
+                if ($envelope.run_id -eq "$env:GITHUB_RUN_ID") {
+                  $payload | Set-Content "$env:RUNNER_TEMP/fixture.json"
+                  ./OpenBoard/release_scripts/teaching/pdf-qa/crypto.ps1 decrypt -KeyFile "$env:RUNNER_TEMP/fixture-private.pem" -InputFile "$env:RUNNER_TEMP/fixture.json" -OutputFile "$env:RUNNER_TEMP/trial.pdf"
+                  $received = $true
+                  break
+                }
+              } catch { Write-Host "Waiting for matching encrypted fixture" }
+            }
+            Start-Sleep -Seconds 10
+          }
+          Remove-Item "$env:RUNNER_TEMP/fixture-private.pem" -ErrorAction SilentlyContinue
+          if (!$received) { throw 'Uploaded fixture was not received' }
       - name: Import, draw, zoom, navigate and inspect screen pixels
         shell: pwsh
         run: |
@@ -55,7 +88,7 @@ jobs:
           $dist = (Resolve-Path 'OpenBoard/dist').Path
           $env:TEACHING_SMOKE_REPORT = "$dist/pdf-switch-report.json"
           $env:TEACHING_PDF_SWITCH_ONLY = '1'
-          $env:TEACHING_PDF_SYNTHETIC = '1'
+          $env:TEACHING_PDF_FIXTURE = "$env:RUNNER_TEMP/trial.pdf"
           $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
           $app = Start-Process "$dist/app/MathScrap.exe" -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory "$dist/app" -PassThru -RedirectStandardOutput "$dist/pdf-switch-stdout.log" -RedirectStandardError "$dist/pdf-switch-stderr.log"
           if (!$app.WaitForExit(330000)) { Stop-Process -Id $app.Id -Force; throw 'PDF test timed out' }
