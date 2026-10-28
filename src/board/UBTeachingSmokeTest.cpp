@@ -1431,7 +1431,7 @@ bool checkMemoryCycles(QString *error)
             painter.drawText(QPoint(40, 80), QString("Memory fixture page %1").arg(page));
         }
     }
-    for (int page = 1; page < 3; ++page) manager->createDocumentSceneAt(doc, page, false);
+    for (int page = 1; page < 3; ++page) manager->createDocumentSceneAt(doc, page, true);
     QFile samples(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("memory-samples.jsonl"));
     if (!samples.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         *error = "Cannot write memory samples"; return false;
@@ -1453,7 +1453,19 @@ bool checkMemoryCycles(QString *error)
                 board->setActiveDocumentScene(doc, page);
                 auto scene = board->activeScene();
                 importer.placeImportedItemToScene(scene, imported[page]);
-                UBApplication::mainWindow->actionPen->trigger();
+                scene->setURStackEnable(true);
+                auto dc = UBDrawingController::drawingController();
+                dc->setStylusTool(UBStylusTool::Pen);
+                dc->setPenColor(false, QColor(Qt::black), 0);
+                dc->setColorIndex(0);
+                dc->setLineWidthIndex(2);
+                auto strokeCount = [scene] {
+                    int count = 0;
+                    for (auto item : scene->items())
+                        if (dynamic_cast<UBGraphicsStrokesGroup*>(item)) ++count;
+                    return count;
+                };
+                const int inkBefore = strokeCount();
                 const int before = UBApplication::undoStack->index();
                 for (int stroke = 0; stroke < 30; ++stroke) {
                     scene->inputDevicePress(QPointF(-120, stroke * 4));
@@ -1461,10 +1473,16 @@ bool checkMemoryCycles(QString *error)
                         scene->inputDeviceMove(QPointF(x, stroke * 4));
                     scene->inputDeviceRelease();
                 }
-                if (UBApplication::undoStack->index() <= before) {
-                    *error = "Memory workload did not record ink"; return false;
+                const int inkAfter = strokeCount();
+                if (inkAfter != inkBefore + 30 || UBApplication::undoStack->index() <= before) {
+                    *error = QString("Memory workload cycle %1 page %2: strokes %3 -> %4, undo %5 -> %6")
+                        .arg(cycle).arg(page).arg(inkBefore).arg(inkAfter)
+                        .arg(before).arg(UBApplication::undoStack->index()); return false;
                 }
-                UBApplication::undoStack->undo(); UBApplication::undoStack->redo();
+                UBApplication::undoStack->undo();
+                if (strokeCount() != inkAfter - 1) { *error = "Memory workload ink Undo failed"; return false; }
+                UBApplication::undoStack->redo();
+                if (strokeCount() != inkAfter) { *error = "Memory workload ink Redo failed"; return false; }
                 UBApplication::mainWindow->actionEraser->trigger();
                 scene->inputDevicePress(QPointF(0, 0));
                 scene->inputDeviceMove(QPointF(0, 120)); scene->inputDeviceRelease();
