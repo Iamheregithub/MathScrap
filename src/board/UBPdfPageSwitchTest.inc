@@ -131,7 +131,9 @@ bool checkPdfPageSwitch(QString *error)
 
     // Exercise the same Documents import slot and file picker as the UI.
     QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+    std::shared_ptr<UBDocumentProxy> doc;
     for (int attempt = 0; attempt < 3; ++attempt) {
+        if (attempt == 0) {
         UBApplication::applicationController->showDocument();
         bool selected = false;
         QTimer chooser;
@@ -155,10 +157,11 @@ bool checkPdfPageSwitch(QString *error)
         qWarning() << "PDF switch Documents import returned" << attempt;
         if (!selected) return fail("Documents import picker was not exercised");
         auto thumbnails = window->findChild<UBDocumentThumbnailWidget*>("thumbnailWidget");
-        const auto doc = thumbnails && thumbnails->document() ? thumbnails->document()->proxy() : nullptr;
+        doc = thumbnails && thumbnails->document() ? thumbnails->document()->proxy() : nullptr;
         if (!doc || doc->pageCount()!=3) return fail("Documents import did not create three pages");
         UBApplication::documentController->openSelectedItem();
         if (board->selectedDocument()!=doc) return fail("Opening the imported document did not activate it");
+        }
         board->setActiveDocumentScene(doc,0);
         board->zoom(1.0/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
         const QString prefix = QString("pdf-switch-%1").arg(attempt);
@@ -177,8 +180,11 @@ bool checkPdfPageSwitch(QString *error)
         if (board->activeScene()->items().size() <= countBeforeZoomStroke) return fail("Drawing after zoom did not add ink");
         // No wait for the zoom renderer: navigate while its work is outstanding.
         for (int page : {2,3,1,2,3}) {
-            while (board->activeSceneIndex() < page-1) board->nextScene();
-            while (board->activeSceneIndex() > page-1) board->previousScene();
+            for (int step=0;step<3 && board->activeSceneIndex()!=page-1;++step) {
+                if (board->activeSceneIndex() < page-1) board->nextScene();
+                else board->previousScene();
+            }
+            if (board->activeSceneIndex()!=page-1) return fail("Page navigation did not reach its destination");
             if (!visible(page,prefix+QString("-page-%1").arg(page),15000))
                 return fail(QString("PDF page %1 stayed blank or differed after draw/zoom (attempt %2)").arg(page).arg(attempt));
         }
