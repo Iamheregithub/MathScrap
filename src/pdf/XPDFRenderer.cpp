@@ -272,6 +272,8 @@ QImage* XPDFRenderer::createPDFImageUncached(int pageNumber, qreal xscale, qreal
 
 void XPDFRenderer::OnThreadFinished()
 {
+    if (qEnvironmentVariableIsSet("TEACHING_PDF_SWITCH_ONLY"))
+        qWarning() << "PDF worker finished, pending" << m_cacheThread.isJobPending();
     emit signalUpdateParent();
     if (m_cacheThread.isJobPending())
         m_cacheThread.start();
@@ -406,6 +408,8 @@ QImage& XPDFRenderer::createPDFImageCached(int pageNumber, PdfZoomCacheData &cac
             // reallocated when the job is started.
             jobData.cacheData->cachedImage = QImage();
             m_cacheThread.pushJob(jobData);
+            if (qEnvironmentVariableIsSet("TEACHING_PDF_SWITCH_ONLY"))
+                qWarning() << "PDF queued page" << pageNumber << "ratio" << cacheData.ratio << "workerRunning" << m_cacheThread.isRunning();
 
             // Start the job multithreaded. The item will be refreshed when the signal 'finished' is emitted.
             m_cacheThread.start();
@@ -423,6 +427,8 @@ void XPDFRenderer::CacheThread::run()
 
     CacheThread::JobData jobData = m_nextJob.first();
     m_nextJob.pop_front();
+    if (qEnvironmentVariableIsSet("TEACHING_PDF_SWITCH_ONLY"))
+        qWarning() << "PDF worker started page" << jobData.pageNumber << "ratio" << jobData.cacheData->ratio;
     /* qDebug() << "XPDFRenderer::CacheThread starting page" << jobData.pageNumber
              << "ratio" << jobData.cacheData->ratio; */
 
@@ -451,5 +457,7 @@ void XPDFRenderer::CacheThread::run()
              << "ratio" << jobData.cacheData->ratio << "final size is" << jobData.cacheData->cachedImage.size(); */
 
     jobData.cacheData->hasToBeProcessed = false;
+    if (qEnvironmentVariableIsSet("TEACHING_PDF_SWITCH_ONLY"))
+        qWarning() << "PDF worker completed page" << jobData.pageNumber << "ratio" << jobData.cacheData->ratio << "size" << jobData.cacheData->cachedImage.size();
     m_jobMutex.unlock();
 }

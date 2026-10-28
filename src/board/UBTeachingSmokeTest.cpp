@@ -29,6 +29,7 @@
 #include "domain/UBMathFormula.h"
 #include "domain/UBQuadraticFormula.h"
 #include "domain/UBGraphicsStrokesGroup.h"
+#include "domain/UBGraphicsPDFItem.h"
 #include "document/UBDocumentProxy.h"
 #include "document/UBDocument.h"
 #include "document/UBDocumentController.h"
@@ -1260,6 +1261,8 @@ bool checkDocumentThumbnails(QString *error)
     return true;
 }
 
+#include "UBPdfPageSwitchTest.inc"
+
 bool checkPdfSelection(QString *error)
 {
     const QDir output = QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir();
@@ -1440,12 +1443,18 @@ void finish(bool passed, const QString &detail) {
 }
 void scheduleTeachingSmokeTest(QObject *context)
 {
-    QTimer::singleShot(120000, context, [] { finish(false, "Native test timed out"); });
+    QTimer::singleShot(qEnvironmentVariableIsSet("TEACHING_PDF_SWITCH_ONLY") ? 300000 : 120000, context, [] { finish(false, "Native test timed out"); });
     QTimer::singleShot(7000, context, [] {
         qWarning("Teaching check: board initialized");
         auto board = UBApplication::boardController;
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
+        }
+        if (qEnvironmentVariable("TEACHING_PDF_SWITCH_ONLY") == "1") {
+            QString detail;
+            const bool passed = checkPdfPageSwitch(&detail);
+            finish(passed, passed ? "PDF draw/zoom/page-switch screen pixels passed" : detail);
+            return;
         }
         if (qEnvironmentVariable("TEACHING_EXPLORE_ONLY") == "1") {
             QString detail;

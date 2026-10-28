@@ -1,0 +1,105 @@
+name: Windows PDF page-switch regression
+on:
+  push:
+    branches: [qa-pdf-page-switch]
+    paths-ignore: ['release_scripts/teaching/pdf-qa/fixture.json']
+permissions:
+  contents: read
+concurrency:
+  group: pdf-page-switch-qa
+  cancel-in-progress: true
+jobs:
+  pdf-switch:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: OpenBoard
+      - name: Create ephemeral quiz transport key
+        shell: pwsh
+        run: |
+          ./OpenBoard/release_scripts/teaching/pdf-qa/crypto.ps1 keygen -KeyFile "$env:RUNNER_TEMP/quiz-private.pem" -OutputFile "$env:RUNNER_TEMP/quiz-public.pem"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quiz-transport-public-key
+          path: ${{ runner.temp }}/quiz-public.pem
+          retention-days: 1
+      - uses: actions/checkout@v4
+        with:
+          repository: OpenBoard-org/OpenBoard-ThirdParty
+          ref: 85a0ce6cc7660ea5b439d936c8fe8667580cbbb2
+          path: OpenBoard-ThirdParty
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtactiveqt qtmultimedia qtpositioning qtwebchannel qtwebengine'
+          cache: true
+      - uses: actions/cache/restore@v4
+        id: native-cache
+        with:
+          path: OpenBoard/build
+          key: pdf-switch-native-${{ env.VCToolsVersion }}-qt683-${{ github.sha }}
+          restore-keys: |
+            pdf-switch-native-${{ env.VCToolsVersion }}-qt683-
+            native-${{ env.VCToolsVersion }}-qt683-
+            thumbnails-native-${{ env.VCToolsVersion }}-qt683-
+      - name: Build actual Windows application
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
+      - uses: actions/cache/save@v4
+        if: always() && steps.native-cache.outputs.cache-hit != 'true'
+        with:
+          path: OpenBoard/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+      - name: Receive encrypted quiz
+        shell: pwsh
+        working-directory: OpenBoard
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = (Get-Date).AddMinutes(10)
+          do {
+            git fetch origin qa-pdf-page-switch
+            git cat-file -e 'FETCH_HEAD:release_scripts/teaching/pdf-qa/fixture.json' 2>$null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 20
+          } while ((Get-Date) -lt $deadline)
+          if ($LASTEXITCODE -ne 0) { throw 'Encrypted fixture was not delivered' }
+          git show 'FETCH_HEAD:release_scripts/teaching/pdf-qa/fixture.json' | Set-Content "$env:RUNNER_TEMP/fixture.json"
+          ./release_scripts/teaching/pdf-qa/crypto.ps1 decrypt -KeyFile "$env:RUNNER_TEMP/quiz-private.pem" -InputFile "$env:RUNNER_TEMP/fixture.json" -OutputFile "$env:RUNNER_TEMP/quiz.pdf"
+      - name: Import, draw, zoom, navigate and inspect screen pixels
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = (Resolve-Path 'OpenBoard/dist').Path
+          $env:TEACHING_SMOKE_REPORT = "$dist/pdf-switch-report.json"
+          $env:TEACHING_PDF_SWITCH_ONLY = '1'
+          $env:TEACHING_PDF_FIXTURE = "$env:RUNNER_TEMP/quiz.pdf"
+          $env:QTWEBENGINE_CHROMIUM_FLAGS = '--disable-gpu'
+          $app = Start-Process "$dist/app/MathScrap.exe" -ArgumentList @('--teaching-smoke-test','-verbose') -WorkingDirectory "$dist/app" -PassThru -RedirectStandardOutput "$dist/pdf-switch-stdout.log" -RedirectStandardError "$dist/pdf-switch-stderr.log"
+          if (!$app.WaitForExit(330000)) { Stop-Process -Id $app.Id -Force; throw 'PDF test timed out' }
+          if (!(Test-Path $env:TEACHING_SMOKE_REPORT)) { throw 'No native PDF test report' }
+          $report = Get-Content $env:TEACHING_SMOKE_REPORT -Raw | ConvertFrom-Json
+          Write-Host "Native PDF test passed=$($report.passed); $($report.detail)"
+          if ($app.ExitCode -ne 0 -or !$report.passed) { throw 'Native PDF page-switch test failed' }
+      - name: Encrypt screenshots and diagnostics
+        if: always()
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem OpenBoard/dist -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'pdf-switch-*' }
+          if ($files) {
+            Compress-Archive -Path $files.FullName -DestinationPath "$env:RUNNER_TEMP/pdf-diagnostics.zip"
+            ./OpenBoard/release_scripts/teaching/pdf-qa/crypto.ps1 encrypt -KeyFile OpenBoard/release_scripts/teaching/pdf-qa/results-public.pem -InputFile "$env:RUNNER_TEMP/pdf-diagnostics.zip" -OutputFile "$env:RUNNER_TEMP/pdf-diagnostics.encrypted.json"
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: encrypted-pdf-diagnostics
+          path: ${{ runner.temp }}/pdf-diagnostics.encrypted.json
+          if-no-files-found: ignore
+          retention-days: 7
