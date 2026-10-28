@@ -19,8 +19,8 @@ bool checkPdfPageSwitch(QString *error)
             painter.drawText(QPoint(40,40),QString("GENERATED REGRESSION PAGE %1").arg(page));
             painter.setFont(QFont("Arial",12));
             for (int row = 0; row < 26; ++row) {
-                const int y = 70 + row*26;
-                painter.drawText(QPoint(40,y),QString("%1.  y = %2 x^2 + %3 x - %4").arg(row+1).arg(page).arg(row+2).arg(page+row));
+                const int y = 60 + row*26 + page*4;
+                painter.drawText(QPoint(25+page*9,y),QString("%1.  y = %2 x^2 + %3 x - %4").arg(row+1).arg(page).arg(row+2).arg(page+row));
                 painter.drawLine(350,y-4,560,y-4);
                 painter.drawEllipse(QPoint(400+(row%5)*20,y-8),5+page,5+page);
             }
@@ -54,6 +54,7 @@ bool checkPdfPageSwitch(QString *error)
         reference->render(&painter, page, false);
         painter.end();
         references.append(image);
+        image.save(output.filePath(QString("pdf-switch-reference-%1-window.png").arg(page)));
     }
     reference->detach();
 
@@ -64,7 +65,7 @@ bool checkPdfPageSwitch(QString *error)
     };
     auto visible = [&](int page, const QString &tag, int timeoutMs) {
         QElapsedTimer timer; timer.start();
-        int samples = 0, matches = 0;
+        int samples = 0, matches = 0, whiteSamples = 0, whiteMatches = 0;
         QImage screen;
         do {
             QApplication::processEvents(QEventLoop::AllEvents, 25);
@@ -79,7 +80,7 @@ bool checkPdfPageSwitch(QString *error)
             screen = display->grabWindow(0, origin.x(), origin.y(), viewport->width(), viewport->height()).toImage();
             if (screen.isNull()) break;
             screen = screen.scaled(viewport->size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-            samples = matches = 0;
+            samples = matches = whiteSamples = whiteMatches = 0;
             const auto bounds = pdf->boundingRect();
             const auto &expected = references[page - 1];
             // Compare actual on-screen ink pixels with this page's reference,
@@ -90,18 +91,27 @@ bool checkPdfPageSwitch(QString *error)
                     if (!bounds.contains(p)) continue;
                     const int rx = qBound(0, int((p.x()-bounds.left())/bounds.width()*expected.width()), expected.width()-1);
                     const int ry = qBound(0, int((p.y()-bounds.top())/bounds.height()*expected.height()), expected.height()-1);
-                    if (qGray(expected.pixel(rx,ry)) > 100) continue;
                     const QColor actual = screen.pixelColor(x,y);
+                    if (qGray(expected.pixel(rx,ry)) > 245) {
+                        ++whiteSamples;
+                        if (qGray(actual.rgb()) > 200) ++whiteMatches;
+                        continue;
+                    }
+                    if (qGray(expected.pixel(rx,ry)) > 100) continue;
                     if (actual.red() > actual.green() + 70) continue;
                     ++samples;
-                    if (qGray(actual.rgb()) < 165) ++matches;
+                    int darkest = 255;
+                    for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx)
+                        darkest = qMin(darkest,qGray(screen.pixel(x+dx,y+dy)));
+                    if (darkest < 165) ++matches;
                 }
-            if (samples >= 50 && matches * 100 >= samples * 55) break;
+            if (samples >= 50 && matches * 100 >= samples * 55 && whiteSamples >= 100 && whiteMatches*100 >= whiteSamples*80) break;
         } while (timer.elapsed() < timeoutMs);
-        const bool good = samples >= 50 && matches * 100 >= samples * 55;
+        const bool good = samples >= 50 && matches * 100 >= samples * 55 && whiteSamples >= 100 && whiteMatches*100 >= whiteSamples*80;
         screen.save(output.filePath(tag + "-window.png"));
         observations.append(QJsonObject{{"tag",tag},{"page",page},{"elapsedMs",timer.elapsed()},
-            {"referenceInkSamples",samples},{"matchingScreenSamples",matches},{"passed",good}});
+            {"referenceInkSamples",samples},{"matchingScreenSamples",matches},
+            {"whiteSamples",whiteSamples},{"whiteMatches",whiteMatches},{"passed",good}});
         record();
         qWarning() << "PDF switch" << tag << "page" << page << "ms" << timer.elapsed() << "samples" << samples << "matches" << matches;
         return good;
@@ -147,7 +157,10 @@ bool checkPdfPageSwitch(QString *error)
         if (board->activeScene()->items().size() <= countBefore) return fail("Mouse drawing did not add ink");
         const qreal zoom = QList<qreal>{1.5,2.5,4.0}[attempt];
         board->zoom(zoom/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
+        if (qAbs(board->currentZoom()-zoom)>0.01) return fail("Requested zoom was not applied");
+        const auto countBeforeZoomStroke = board->activeScene()->items().size();
         stroke();
+        if (board->activeScene()->items().size() <= countBeforeZoomStroke) return fail("Drawing after zoom did not add ink");
         // No wait for the zoom renderer: navigate while its work is outstanding.
         for (int page : {2,3,1,2,3}) {
             while (board->activeSceneIndex() < page-1) board->nextScene();
