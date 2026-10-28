@@ -154,9 +154,10 @@ bool checkPdfPageSwitch(QString *error)
         chooser.stop();
         qWarning() << "PDF switch Documents import returned" << attempt;
         if (!selected) return fail("Documents import picker was not exercised");
-        UBApplication::applicationController->showBoard();
-        const auto doc = board->selectedDocument();
-        if (!doc || doc->pageCount()!=3) return fail("Documents import did not activate three pages");
+        const auto doc = UBApplication::documentController->selectedDocumentProxy();
+        if (!doc || doc->pageCount()!=3) return fail("Documents import did not create three pages");
+        UBApplication::documentController->openSelectedItem();
+        if (board->selectedDocument()!=doc) return fail("Opening the imported document did not activate it");
         board->setActiveDocumentScene(doc,0);
         board->zoom(1.0/board->currentZoom(),view->mapToScene(view->viewport()->rect().center()));
         const QString prefix = QString("pdf-switch-%1").arg(attempt);
