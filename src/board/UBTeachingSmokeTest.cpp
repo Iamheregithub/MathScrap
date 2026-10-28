@@ -1531,7 +1531,30 @@ bool checkMemoryCycles(QString *error)
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
         samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
     }
-    // The fixture remains in the isolated CI profile for diagnostics.
+    // After the growth measurement, destroy only this run's generated fixture.
+    // Weak probes do not extend scene lifetimes.
+    QList<std::weak_ptr<UBGraphicsScene>> probes;
+    for (int page = 0; page < 3; ++page)
+        probes.append(manager->getDocumentScene(doc, page));
+    const int refsBefore = PDFRenderer::totalReferenceCount();
+    const int renderersBefore = PDFRenderer::liveRendererCount();
+    manager->deleteDocument(doc);
+    settle();
+    int survivingScenes = 0;
+    for (const auto &probe : probes) if (!probe.expired()) ++survivingScenes;
+    PROCESS_MEMORY_COUNTERS_EX after = {};
+    after.cb = sizeof(after);
+    const bool measured = K32GetProcessMemoryInfo(GetCurrentProcess(),
+        reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof(after));
+    QJsonObject teardown{{"survivingFixtureScenes", survivingScenes},
+        {"pdfReferencesBefore", refsBefore}, {"pdfReferencesAfter", PDFRenderer::totalReferenceCount()},
+        {"pdfRenderersBefore", renderersBefore}, {"pdfRenderersAfter", PDFRenderer::liveRendererCount()},
+        {"undoEntries", UBApplication::undoStack->count()}, {"memoryMeasured", measured},
+        {"privateBytesAfter", double(after.PrivateUsage)}};
+    QFile teardownFile(QFileInfo(samples).dir().filePath("memory-teardown-report.json"));
+    if (!teardownFile.open(QIODevice::WriteOnly)) { *error = "Cannot write teardown report"; return false; }
+    teardownFile.write(QJsonDocument(teardown).toJson());
+    qWarning().noquote() << "Memory fixture teardown:" << QJsonDocument(teardown).toJson(QJsonDocument::Compact);
     return true;
 #endif
 }
