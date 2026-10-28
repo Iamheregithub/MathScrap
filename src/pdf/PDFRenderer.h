@@ -60,6 +60,19 @@ class PDFRenderer : public QObject
 
         virtual QString title() const = 0;
 
+        // Inspect existing renderers without creating or retaining a renderer.
+        static int liveRendererCount() {
+            int count = 0;
+            for (const auto &renderer : sRenderers) if (renderer) ++count;
+            return count;
+        }
+        static int totalReferenceCount() {
+            int count = 0;
+            for (const auto &renderer : sRenderers)
+                if (renderer) count += renderer->mRefCount.loadAcquire();
+            return count;
+        }
+
         void attach();
         void detach();
 

@@ -1513,7 +1513,19 @@ bool checkMemoryCycles(QString *error)
             || !GetProcessHandleCount(GetCurrentProcess(), &handles)) {
             *error = "Windows memory counters unavailable"; return false;
         }
-        QJsonObject sample{{"cycle", cycle}, {"pid", int(GetCurrentProcessId())},
+        int tracked = 0, detached = 0, visible = 0;
+        for (int page = 0; page < 3; ++page) {
+            auto cached = manager->getDocumentScene(doc, page);
+            if (cached) {
+                tracked += cached->trackedItemCount();
+                detached += cached->detachedRootCount();
+                visible += cached->items().size();
+            }
+        }
+        QJsonObject sample{{"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
+            {"sceneItems", visible}, {"undoEntries", UBApplication::undoStack->count()},
+            {"pdfRenderers", PDFRenderer::liveRendererCount()},
+            {"pdfReferences", PDFRenderer::totalReferenceCount()}, {"cycle", cycle}, {"pid", int(GetCurrentProcessId())},
             {"privateBytes", double(counters.PrivateUsage)}, {"workingSetBytes", double(counters.WorkingSetSize)},
             {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};

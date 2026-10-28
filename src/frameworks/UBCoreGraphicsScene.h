@@ -49,6 +49,15 @@ class UBCoreGraphicsScene : public QGraphicsScene
         void removeItemFromDeletion(QGraphicsItem* item);
         void addItemToDeletion(QGraphicsItem *item);
 
+        // Read-only diagnostics: removed roots remain owned until scene destruction.
+        int trackedItemCount() const { return mItemsToDelete.size(); }
+        int detachedRootCount() const {
+            int count = 0;
+            for (auto item : mItemsToDelete)
+                if (item && !item->scene() && !item->parentItem()) ++count;
+            return count;
+        }
+
         bool isModified() const
         {
             return mIsModified;
