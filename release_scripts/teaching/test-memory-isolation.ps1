@@ -1,3 +1,4 @@
+param([switch]$SkipTrace)
 $ErrorActionPreference = 'Stop'
 $project = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $results = @()
@@ -10,7 +11,9 @@ foreach ($mode in @('baseline','ink','pdf','save','full')) {
     $results += @{ mode=$mode; failure=$failure; analysis=$analysis }
 }
 $traceFailure = $null
-try { & "$PSScriptRoot/test-memory.ps1" -Mode full -TraceHeap } catch { $traceFailure = $_.Exception.Message }
+if (!$SkipTrace) {
+    try { & "$PSScriptRoot/test-memory.ps1" -Mode full -TraceHeap } catch { $traceFailure = $_.Exception.Message }
+}
 @{ lanes=$results; traceRunFailure=$traceFailure; note='Trace run is instrumented; compare uninstrumented lanes separately. Page switching and its automatic persistence remain common to all lanes.' } |
     ConvertTo-Json -Depth 12 | Set-Content (Join-Path $project 'dist/memory/isolation-report.json')
 $results | ForEach-Object { Write-Host "$($_.mode): $($_.analysis.status) $($_.failure)" }

@@ -98,6 +98,10 @@ void installTeachingCrashDiagnostics() {
 #endif
 }
 
+int teachingLiveStrokeCount();
+qint64 teachingLiveStrokePointCount();
+qint64 teachingLivePolygonCount();
+
 namespace {
 bool checkPreferencesRedesign(QString *error)
 {
@@ -1543,7 +1547,8 @@ bool checkMemoryCycles(QString *error)
                 visible += cached->items().size();
             }
         }
-        QJsonObject sample{{"mode", mode}, {"timestampUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
+        QJsonObject sample{{"liveStrokes", teachingLiveStrokeCount()},
+            {"liveStrokePoints", double(teachingLiveStrokePointCount())}, {"livePolygons", double(teachingLivePolygonCount())}, {"mode", mode}, {"timestampUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
             {"sceneItems", visible}, {"undoEntries", UBApplication::undoStack->count()},
             {"pdfRenderers", PDFRenderer::liveRendererCount()},
             {"pdfReferences", PDFRenderer::totalReferenceCount()}, {"cycle", cycle}, {"pid", int(GetCurrentProcessId())},
@@ -1551,6 +1556,17 @@ bool checkMemoryCycles(QString *error)
             {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
         samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
+        const QString heapTool = qEnvironmentVariable("TEACHING_MEMORY_UMDH");
+        if (!heapTool.isEmpty() && (cycle == 4 || cycle == 39)) {
+            const QString snapshot = QFileInfo(samples).dir().filePath(cycle == 4 ? "heap-warm.txt" : "heap-final.txt");
+            QProcess capture;
+            capture.start(heapTool, QStringList{QString("-p:%1").arg(GetCurrentProcessId()), "-f:" + snapshot});
+            if (!capture.waitForFinished(150000) || capture.exitStatus() != QProcess::NormalExit || capture.exitCode() != 0
+                || !QFileInfo::exists(snapshot)) {
+                capture.kill(); capture.waitForFinished(5000);
+                *error = "UMDH snapshot failed: " + QString::fromLocal8Bit(capture.readAllStandardError()); return false;
+            }
+        }
     }
     // After the growth measurement, destroy only this run's generated fixture.
     // Weak probes do not extend scene lifetimes.
@@ -1561,13 +1577,18 @@ bool checkMemoryCycles(QString *error)
     const int renderersBefore = PDFRenderer::liveRendererCount();
     manager->deleteDocument(doc);
     settle();
+    // Allow ordinary queued cleanup after fixture destruction, without purging heaps.
+    QElapsedTimer idle; idle.start();
+    while (idle.elapsed() < 10000) settle();
     int survivingScenes = 0;
     for (const auto &probe : probes) if (!probe.expired()) ++survivingScenes;
     PROCESS_MEMORY_COUNTERS_EX after = {};
     after.cb = sizeof(after);
     const bool measured = K32GetProcessMemoryInfo(GetCurrentProcess(),
         reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof(after));
-    QJsonObject teardown{{"survivingFixtureScenes", survivingScenes},
+    QJsonObject teardown{{"liveStrokes", teachingLiveStrokeCount()},
+        {"liveStrokePoints", double(teachingLiveStrokePointCount())}, {"livePolygons", double(teachingLivePolygonCount())},
+        {"survivingFixtureScenes", survivingScenes},
         {"pdfReferencesBefore", refsBefore}, {"pdfReferencesAfter", PDFRenderer::totalReferenceCount()},
         {"pdfRenderersBefore", renderersBefore}, {"pdfRenderersAfter", PDFRenderer::liveRendererCount()},
         {"undoEntries", UBApplication::undoStack->count()}, {"memoryMeasured", measured},

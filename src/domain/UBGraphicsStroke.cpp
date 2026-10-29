@@ -28,6 +28,7 @@
 
 
 #include "UBGraphicsStroke.h"
+#include <QSet>
 
 #include "UBGraphicsPolygonItem.h"
 
@@ -41,15 +42,26 @@
 
 typedef QPair<QPointF, qreal> strokePoint;
 
+// Diagnostic registry does not own strokes; all graphics lifetimes run on the GUI thread.
+namespace { QSet<UBGraphicsStroke*> teachingStrokes; }
+int teachingLiveStrokeCount() { return teachingStrokes.size(); }
+qint64 teachingLiveStrokePointCount() {
+    qint64 count = 0;
+    for (auto stroke : teachingStrokes) count += stroke->points().size();
+    return count;
+}
+
 UBGraphicsStroke::UBGraphicsStroke(std::shared_ptr<UBGraphicsScene> scene)
     :mScene(scene)
 {
+    teachingStrokes.insert(this);
     mAntiScaleRatio = 1./(UBApplication::boardController->systemScaleFactor() * UBApplication::boardController->currentZoom());
 }
 
 
 UBGraphicsStroke::~UBGraphicsStroke()
 {
+    teachingStrokes.remove(this);
     foreach(UBGraphicsPolygonItem* poly, mPolygons)
         poly->setStroke(NULL);
 
