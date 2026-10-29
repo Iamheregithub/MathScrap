@@ -68,9 +68,9 @@ jobs:
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Check memory analysis
         run: python OpenBoard/release_scripts/teaching/test-memory-analysis.py
-      - name: Exercise native memory cycles
+      - name: Isolate native memory workloads and capture heap trace
         shell: pwsh
-        run: ./OpenBoard/release_scripts/teaching/test-memory.ps1
+        run: ./OpenBoard/release_scripts/teaching/test-memory-isolation.ps1
       - name: Native drawing, PDF and save/reopen regressions
         if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}
         shell: pwsh
@@ -85,7 +85,8 @@ jobs:
         with:
           name: Windows-memory-diagnostics
           path: |
-            OpenBoard/dist/memory-*
+            OpenBoard/dist/memory/**
+            OpenBoard/dist/app/*.pdb
             OpenBoard/dist/*report.json
             OpenBoard/dist/*.log
             OpenBoard/dist/app/teaching-crash.log

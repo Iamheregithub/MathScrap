@@ -1412,6 +1412,13 @@ bool checkMemoryCycles(QString *error)
     *error = "Memory cycling requires Windows";
     return false;
 #else
+    const QString mode = qEnvironmentVariable("TEACHING_MEMORY_MODE", "full");
+    if (!QStringList{"baseline", "ink", "pdf", "save", "full"}.contains(mode)) {
+        *error = "Unknown memory workload mode"; return false;
+    }
+    const bool usePdf = mode == "pdf" || mode == "full";
+    const bool useInk = mode == "ink" || mode == "full";
+    const bool useSave = mode == "save" || mode == "full";
     auto board = UBApplication::boardController;
     auto manager = UBPersistenceManager::persistenceManager();
     const auto anchor = board->selectedDocument();
@@ -1423,7 +1430,7 @@ bool checkMemoryCycles(QString *error)
     QDir().mkpath(path);
     const QUuid uuid = QUuid::createUuid();
     const QString pdf = path + "/" + uuid.toString() + ".pdf";
-    {
+    if (usePdf) {
         QPdfWriter writer(pdf); writer.setResolution(72);
         QPainter painter(&writer);
         for (int page = 0; page < 3; ++page) {
@@ -1447,13 +1454,20 @@ bool checkMemoryCycles(QString *error)
     for (int cycle = 0; cycle < 40; ++cycle) {
         {
             UBImportPDF importer;
-            const auto imported = importer.import(uuid, pdf);
-            if (imported.size() != 3) { *error = "Memory fixture PDF import failed"; return false; }
+            QList<UBGraphicsItem*> imported;
+            if (usePdf) imported = importer.import(uuid, pdf);
+            if (usePdf && imported.size() != 3) { *error = "Memory fixture PDF import failed"; return false; }
             for (int page = 0; page < 3; ++page) {
                 board->setActiveDocumentScene(doc, page);
                 auto scene = board->activeScene();
-                importer.placeImportedItemToScene(scene, imported[page]);
+                if (usePdf) importer.placeImportedItemToScene(scene, imported[page]);
                 scene->setURStackEnable(true);
+                if (mode == "save") {
+                    auto item = scene->addSvg(QUrl(), QPointF(0,0), QByteArray(
+                        "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='blue'/></svg>"));
+                    if (!item) { *error = "Save-only fixture insertion failed"; return false; }
+                }
+                if (useInk) {
                 auto dc = UBDrawingController::drawingController();
                 dc->setStylusTool(UBStylusTool::Pen);
                 dc->setPenColor(false, QColor(Qt::black), 0);
@@ -1490,6 +1504,8 @@ bool checkMemoryCycles(QString *error)
                 UBApplication::mainWindow->actionEraser->trigger();
                 scene->inputDevicePress(QPointF(0, 0));
                 scene->inputDeviceMove(QPointF(0, 120)); scene->inputDeviceRelease();
+                }
+                if (useSave) {
                 manager->persistDocumentScene(doc, scene, page, true, true);
                 {
                     auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
@@ -1497,10 +1513,11 @@ bool checkMemoryCycles(QString *error)
                         *error = "Memory workload could not reopen saved page"; return false;
                     }
                 }
+                }
                 scene->clearContent();
                 scene->clearContent(UBGraphicsScene::clearBackground);
                 board->ClearUndoStack();
-                manager->persistDocumentScene(doc, scene, page, true, true);
+                if (useSave) manager->persistDocumentScene(doc, scene, page, true, true);
                 // Return to the anchor; production scene-cache retention remains observable.
                 board->setActiveDocumentScene(anchor, anchorPage);
                 scene.reset();
@@ -1526,7 +1543,7 @@ bool checkMemoryCycles(QString *error)
                 visible += cached->items().size();
             }
         }
-        QJsonObject sample{{"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
+        QJsonObject sample{{"mode", mode}, {"timestampUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
             {"sceneItems", visible}, {"undoEntries", UBApplication::undoStack->count()},
             {"pdfRenderers", PDFRenderer::liveRendererCount()},
             {"pdfReferences", PDFRenderer::totalReferenceCount()}, {"cycle", cycle}, {"pid", int(GetCurrentProcessId())},

@@ -162,3 +162,19 @@ releases removed graphics while preserving clipboard sources. Its measured
 retention therefore cannot be attributed directly to normal page switching.
 The corrected workload uses the controller cleanup path before switching
 lessons. Compare its results before changing application ownership behavior.
+
+### Isolation and heap recording
+
+The diagnostic workflow runs baseline, ink, PDF, save/reopen and combined lanes
+in fresh native processes. All retain page switching and its automatic saves;
+ink excludes explicit serialization/reload, PDF excludes ink and explicit
+serialization/reload, and save/reopen uses one bounded SVG object per page.
+Each lane records its mode and 40 measurements under `dist/memory/<mode>`.
+Growth in baseline would implicate common infrastructure, not a specific lane.
+
+A separate combined run enables Windows Performance Recorder heap tracing
+for MathScrap.exe and captures `heap.etl`, with staged application PDBs.
+Trace availability, start and stop status are recorded explicitly. The trace
+run is instrumented and must not be used as the uninstrumented memory baseline.
+The ETL requires heap analysis with matching symbols; merely recording it is
+not identification of a leak. WPR configuration is removed in finally.
