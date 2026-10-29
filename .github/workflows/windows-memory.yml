@@ -57,6 +57,7 @@ jobs:
             native-${{ env.VCToolsVersion }}-qt683-${{ hashFiles('OpenBoard/**/*.pro', 'OpenBoard/**/*.pri', 'OpenBoard/release_scripts/teaching/build-windows.ps1') }}-
             native-${{ env.VCToolsVersion }}-qt683-
       - name: Build and stage application
+        id: native_build
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/build-windows.ps1
       - name: Save native compilation
@@ -71,9 +72,11 @@ jobs:
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-memory.ps1
       - name: Native drawing, PDF and save/reopen regressions
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
       - name: Exploratory object movement and Undo/Redo regressions
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-exploratory.ps1
       - name: Upload memory diagnostics
