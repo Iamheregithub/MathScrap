@@ -70,6 +70,12 @@ jobs:
       - name: Exercise native memory cycles
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-memory.ps1
+      - name: Native drawing, PDF and save/reopen regressions
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-windows.ps1
+      - name: Exploratory object movement and Undo/Redo regressions
+        shell: pwsh
+        run: ./OpenBoard/release_scripts/teaching/test-exploratory.ps1
       - name: Upload memory diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,6 +83,8 @@ jobs:
           name: Windows-memory-diagnostics
           path: |
             OpenBoard/dist/memory-*
+            OpenBoard/dist/*report.json
+            OpenBoard/dist/*.log
             OpenBoard/dist/app/teaching-crash.log
           if-no-files-found: warn
           retention-days: 30

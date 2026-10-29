@@ -1467,11 +1467,15 @@ bool checkMemoryCycles(QString *error)
                 };
                 const int inkBefore = strokeCount();
                 const int before = UBApplication::undoStack->index();
+                const int detachedBeforeDrawing = scene->detachedRootCount();
                 for (int stroke = 0; stroke < 30; ++stroke) {
                     scene->inputDevicePress(QPointF(-120, stroke * 4));
                     for (int x = -110; x <= 120; x += 10)
                         scene->inputDeviceMove(QPointF(x, stroke * 4));
                     scene->inputDeviceRelease();
+                }
+                if (scene->detachedRootCount() > detachedBeforeDrawing) {
+                    *error = "Stroke simplification retained superseded input polygons"; return false;
                 }
                 const int inkAfter = strokeCount();
                 if (inkAfter != inkBefore + 30 || UBApplication::undoStack->index() <= before) {

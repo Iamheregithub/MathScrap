@@ -3240,12 +3240,20 @@ void UBGraphicsScene::simplifyCurrentStroke()
     if (!simplerStroke)
         return;
 
-    foreach(UBGraphicsPolygonItem* poly, mCurrentStroke->polygons()){
-        mPreviousPolygonItems.removeAll(poly);
-        removeItem(poly);
-    }
-
+    // The simplified stroke owns new polygons. The originals have never been
+    // published to Undo: release them now instead of retaining every input
+    // segment until the cached scene is destroyed. Copy the list because the
+    // last polygon destructor also destroys its original UBGraphicsStroke.
+    const auto originalPolygons = mCurrentStroke->polygons();
     mCurrentStroke = simplerStroke;
+    for (auto poly : originalPolygons) {
+        mPreviousPolygonItems.removeAll(poly);
+        mAddedItems.remove(poly);
+        if (mCurrentPolygon == poly) mCurrentPolygon = nullptr;
+        if (mpLastPolygon == poly) mpLastPolygon = nullptr;
+        removeItem(poly);
+        UBCoreGraphicsScene::deleteItem(poly);
+    }
 
     foreach(UBGraphicsPolygonItem* poly, mCurrentStroke->polygons()) {
         addItem(poly);
