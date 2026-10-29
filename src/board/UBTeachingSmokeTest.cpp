@@ -1410,6 +1410,50 @@ bool checkPdfSelection(QString *error)
 
 // A bounded workload: the same three pages, PDF asset and undo budget every cycle.
 // Samples are taken only after content, history and deferred deletes are cleared.
+#ifdef Q_OS_WIN
+QJsonObject inspectTeachingHeaps()
+{
+    // No Qt calls or allocation while a heap is locked. Enumerate into stack counters.
+    HANDLE heaps[256] = {};
+    const DWORD heapCount = GetProcessHeaps(256, heaps);
+    quint64 busyBytes = 0, busyBlocks = 0, freeBytes = 0;
+    int completed = 0, failed = 0;
+    const DWORD available = heapCount <= 256 ? heapCount : 0;
+    for (DWORD i = 0; i < available; ++i) {
+        if (!HeapLock(heaps[i])) { ++failed; continue; }
+        PROCESS_HEAP_ENTRY entry = {};
+        while (HeapWalk(heaps[i], &entry)) {
+            if (entry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+                busyBytes += entry.cbData; ++busyBlocks;
+            } else if (!(entry.wFlags & (PROCESS_HEAP_REGION | PROCESS_HEAP_UNCOMMITTED_RANGE))) {
+                freeBytes += entry.cbData;
+            }
+        }
+        const DWORD walkError = GetLastError();
+        const BOOL unlocked = HeapUnlock(heaps[i]);
+        if (walkError == ERROR_NO_MORE_ITEMS && unlocked) ++completed; else ++failed;
+    }
+    quint64 privateCommit = 0, privateReserve = 0, mappedCommit = 0;
+    quintptr address = 0;
+    MEMORY_BASIC_INFORMATION region = {};
+    while (VirtualQuery(reinterpret_cast<void*>(address), &region, sizeof(region))) {
+        if (region.Type == MEM_PRIVATE) {
+            if (region.State == MEM_COMMIT) privateCommit += region.RegionSize;
+            else if (region.State == MEM_RESERVE) privateReserve += region.RegionSize;
+        } else if (region.State == MEM_COMMIT && region.Type == MEM_MAPPED) mappedCommit += region.RegionSize;
+        const quintptr next = reinterpret_cast<quintptr>(region.BaseAddress) + region.RegionSize;
+        if (next <= address) break;
+        address = next;
+    }
+    return QJsonObject{{"heapBusyBytes", double(busyBytes)}, {"heapBusyBlocks", double(busyBlocks)},
+        {"heapFreeBytes", double(freeBytes)}, {"heapsReported", int(heapCount)},
+        {"heapsWalked", completed}, {"heapsFailed", failed},
+        {"heapEnumerationComplete", heapCount > 0 && heapCount <= 256 && failed == 0},
+        {"virtualPrivateCommitted", double(privateCommit)}, {"virtualPrivateReserved", double(privateReserve)},
+        {"virtualMappedCommitted", double(mappedCommit)}};
+}
+#endif
+
 bool checkMemoryCycles(QString *error)
 {
 #ifndef Q_OS_WIN
@@ -1593,6 +1637,8 @@ bool checkMemoryCycles(QString *error)
             {"privateBytes", double(counters.PrivateUsage)}, {"workingSetBytes", double(counters.WorkingSetSize)},
             {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
+        if (cycle == 0 || cycle == 4 || cycle == 19 || cycle == 39)
+            sample["heapInspection"] = inspectTeachingHeaps();
         samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
         if (teachingLiveStrokeCount() != initialStrokes || teachingLiveStrokePointCount() != initialPoints
             || teachingLivePolygonCount() != initialPolygons) {
@@ -1637,6 +1683,31 @@ bool checkMemoryCycles(QString *error)
         {"pdfRenderersBefore", renderersBefore}, {"pdfRenderersAfter", PDFRenderer::liveRendererCount()},
         {"undoEntries", UBApplication::undoStack->count()}, {"memoryMeasured", measured},
         {"privateBytesAfter", double(after.PrivateUsage)}};
+    teardown["heapBeforeTrim"] = inspectTeachingHeaps();
+    const bool trimRequested = qEnvironmentVariable("TEACHING_MEMORY_TRIM_HEAP") == "1";
+    teardown["trimRequested"] = trimRequested;
+    bool trimSupported = false, trimSucceeded = false;
+    DWORD trimError = 0;
+#ifdef HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION
+    trimSupported = true;
+    if (trimRequested) {
+        HEAP_OPTIMIZE_RESOURCES_INFORMATION options = {};
+        options.Version = HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION;
+        trimSucceeded = HeapSetInformation(nullptr, HeapOptimizeResources, &options, sizeof(options));
+        if (!trimSucceeded) trimError = GetLastError();
+    }
+#endif
+    teardown["trimSupported"] = trimSupported;
+    teardown["trimSucceeded"] = trimSucceeded;
+    teardown["trimError"] = int(trimError);
+    if (trimRequested && trimSucceeded) {
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX trimmed = {}; trimmed.cb = sizeof(trimmed);
+        teardown["trimMemoryMeasured"] = bool(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&trimmed), sizeof(trimmed)));
+        teardown["privateBytesAfterTrim"] = double(trimmed.PrivateUsage);
+        teardown["heapAfterTrim"] = inspectTeachingHeaps();
+    }
     QFile teardownFile(QFileInfo(samples).dir().filePath("memory-teardown-report.json"));
     if (!teardownFile.open(QIODevice::WriteOnly)) { *error = "Cannot write teardown report"; return false; }
     teardownFile.write(QJsonDocument(teardown).toJson());

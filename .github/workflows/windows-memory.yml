@@ -68,7 +68,9 @@ jobs:
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
       - name: Check memory analysis
         run: python OpenBoard/release_scripts/teaching/test-memory-analysis.py
-      - name: Isolate native memory workloads and capture heap trace
+      - name: Isolate native memory workloads and inspect heap retention
+        env:
+          TEACHING_MEMORY_TRIM_HEAP: '1'
         shell: pwsh
         run: ./OpenBoard/release_scripts/teaching/test-memory-isolation.ps1 -SkipTrace
       - name: Native drawing, PDF and save/reopen regressions

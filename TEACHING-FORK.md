@@ -178,3 +178,18 @@ Trace availability, start and stop status are recorded explicitly. The trace
 run is instrumented and must not be used as the uninstrumented memory baseline.
 The ETL requires heap analysis with matching symbols; merely recording it is
 not identification of a leak. WPR configuration is removed in finally.
+
+### Heap retention experiment
+
+Diagnostic samples at cycles 0, 4, 19 and 39 include HeapWalk busy/free bytes
+and block counts plus VirtualQuery committed/private/mapped totals. Heap
+enumeration locks each heap, performs no Qt allocation or logging under the
+lock, and reports incomplete/unsupported walks explicitly. Custom allocators
+that use VirtualAlloc directly are outside HeapWalk accounting.
+
+Only after workload measurement and ordinary fixture/idle cleanup, the CI
+experiment requests HeapOptimizeResources when supported. Before/after
+private bytes and heap counts are recorded separately. No working-set purge
+is used. A successful trim can demonstrate releasable heap retention but does
+not establish that every remaining allocation is necessary or leak-free.
+No production heap-trimming policy is introduced.
