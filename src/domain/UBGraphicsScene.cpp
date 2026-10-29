@@ -664,6 +664,7 @@ bool UBGraphicsScene::inputDeviceMove(const QPointF& scenePos, const qreal& pres
 
                     if (mTempPolygon) {
                         removeItem(mTempPolygon);
+                        UBCoreGraphicsScene::deleteItem(mTempPolygon);
                         mTempPolygon = NULL;
                     }
 
@@ -782,6 +783,7 @@ bool UBGraphicsScene::inputDeviceRelease(int tool, Qt::KeyboardModifiers modifie
             if (mTempPolygon) {
                 UBGraphicsPolygonItem * poly = dynamic_cast<UBGraphicsPolygonItem*>(mTempPolygon->deepCopy());
                 removeItem(mTempPolygon);
+                UBCoreGraphicsScene::deleteItem(mTempPolygon);
                 mTempPolygon = NULL;
                 addPolygonItemToCurrentStroke(poly);
             }
