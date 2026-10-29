@@ -126,3 +126,83 @@ CodeQL scans both branches and runs weekly. Dependabot security updates propose 
 MathScrap is an independent OpenBoard fork. Its original fork base was OpenBoard commit `30d120cec100e97e6675d1b9be0c67eafb4c502b`. Upstream: https://github.com/OpenBoard-org/OpenBoard.
 
 Retain the [GPLv3 licence](LICENSE), [COPYRIGHT](COPYRIGHT), and applicable third-party notices when modifying or distributing the application.
+
+## Repeated-cycle Windows memory screen
+
+`release_scripts/teaching/test-memory.ps1` runs 40 cycles in one native process,
+using one fixed three-page PDF lesson. Each cycle imports the PDF, writes 30
+strokes per page, exercises Undo/Redo and erasing, saves and independently
+reopens pages, clears content/background and undo history, and returns to the
+anchor lesson. Five warm-up cycles are excluded. Samples follow 500 ms of
+event processing and deferred-delete delivery; production scene caches are
+not forcibly purged. The fixed fixture remains in the disposable CI profile.
+Run this script only in a disposable Windows account/profile, not a classroom
+installation containing personal lessons.
+
+The analyzer compares first/last five-sample medians and a least-squares trend.
+It flags private-byte growth above 32 MiB AND 0.5 MiB/cycle; handle growth above
+100 AND 2/cycle; GDI or USER object growth above 50 AND 1/cycle. These are initial
+regression-screen budgets, not calibrated leak guarantees. Both conditions
+must hold for a counter. Missing cycles, restarts, workload errors and timeouts
+fail validation separately. Working set is recorded for context. JSONL samples,
+JSON assessment and stdout/stderr logs are uploaded even on failure.
+
+Scope is the main native process, not QtWebEngine child processes, GPU memory,
+GraphDesk interactions or long classroom sessions. Scene-cache and allocator
+retention can trigger investigation without being an allocation leak. A clean
+run does not prove leak freedom. Suspicious growth needs allocation profiling
+on Windows. `windows-memory.yml` runs diagnostics without publishing installers;
+release-workflow integration is kept local pending diagnostic validation.
+
+### Memory-test cleanup correction
+
+The initial cycling harness called `QUndoStack::clear()` directly, bypassing
+`UBBoardController::ClearUndoStack()`, which enumerates history items and
+releases removed graphics while preserving clipboard sources. Its measured
+retention therefore cannot be attributed directly to normal page switching.
+The corrected workload uses the controller cleanup path before switching
+lessons. Compare its results before changing application ownership behavior.
+
+### Isolation and heap recording
+
+The diagnostic workflow runs baseline, ink, PDF, save/reopen and combined lanes
+in fresh native processes. All retain page switching and its automatic saves;
+ink excludes explicit serialization/reload, PDF excludes ink and explicit
+serialization/reload, and save/reopen uses one bounded SVG object per page.
+Each lane records its mode and 40 measurements under `dist/memory/<mode>`.
+Growth in baseline would implicate common infrastructure, not a specific lane.
+
+A separate combined run enables Windows Performance Recorder heap tracing
+for MathScrap.exe and captures `heap.etl`, with staged application PDBs.
+Trace availability, start and stop status are recorded explicitly. The trace
+run is instrumented and must not be used as the uninstrumented memory baseline.
+The ETL requires heap analysis with matching symbols; merely recording it is
+not identification of a leak. WPR configuration is removed in finally.
+
+### Heap retention experiment
+
+Diagnostic samples at cycles 0, 4, 19 and 39 include HeapWalk busy/free bytes
+and block counts plus VirtualQuery committed/private/mapped totals. Heap
+enumeration locks each heap, performs no Qt allocation or logging under the
+lock, and reports incomplete/unsupported walks explicitly. Custom allocators
+that use VirtualAlloc directly are outside HeapWalk accounting.
+
+Only after workload measurement and ordinary fixture/idle cleanup, the CI
+experiment requests HeapOptimizeResources when supported. Before/after
+private bytes and heap counts are recorded separately. No working-set purge
+is used. A successful trim can demonstrate releasable heap retention but does
+not establish that every remaining allocation is necessary or leak-free.
+No production heap-trimming policy is introduced.
+
+### Bounded pixmap-cache hypothesis
+
+The application configures Qt's pixmap cache to 102400 KiB (100 MiB). The
+next diagnostic uses four workload repeats per recorded sample: 40 samples
+cover 160 complete three-page workloads. A slope per sample is therefore
+per four workloads, not directly comparable to the earlier per-workload rate.
+The JSONL records both repeats and total completed workloads explicitly.
+
+After measurement, fixture destruction and idle cleanup, an optional
+diagnostic-only QPixmapCache::clear precedes the heap trim. Separate heap
+and private-byte measurements distinguish cache allocation from allocator
+retention. Neither action is introduced into normal application behavior.

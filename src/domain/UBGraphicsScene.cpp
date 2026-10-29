@@ -664,6 +664,7 @@ bool UBGraphicsScene::inputDeviceMove(const QPointF& scenePos, const qreal& pres
 
                     if (mTempPolygon) {
                         removeItem(mTempPolygon);
+                        UBCoreGraphicsScene::deleteItem(mTempPolygon);
                         mTempPolygon = NULL;
                     }
 
@@ -782,6 +783,7 @@ bool UBGraphicsScene::inputDeviceRelease(int tool, Qt::KeyboardModifiers modifie
             if (mTempPolygon) {
                 UBGraphicsPolygonItem * poly = dynamic_cast<UBGraphicsPolygonItem*>(mTempPolygon->deepCopy());
                 removeItem(mTempPolygon);
+                UBCoreGraphicsScene::deleteItem(mTempPolygon);
                 mTempPolygon = NULL;
                 addPolygonItemToCurrentStroke(poly);
             }
@@ -816,6 +818,19 @@ bool UBGraphicsScene::inputDeviceRelease(int tool, Qt::KeyboardModifiers modifie
                 mCurrentStroke = 0;
             }
             mCurrentPolygon = 0;
+        }
+    }
+
+    // A scrub can replace an ink fragment several times within one gesture.
+    // The undo command excludes the added/removed intersection. Those detached
+    // intermediate polygons must therefore be reclaimed here, while retaining
+    // the pre-gesture originals and the final fragments for Undo/Redo.
+    const auto intermediateInk = mAddedItems & mRemovedItems;
+    for (auto item : intermediateInk) {
+        if (item->type() == UBGraphicsPolygonItem::Type && !item->scene() && !item->parentItem()) {
+            mAddedItems.remove(item);
+            mRemovedItems.remove(item);
+            if (!UBCoreGraphicsScene::deleteItem(item)) delete item;
         }
     }
 
@@ -3240,12 +3255,20 @@ void UBGraphicsScene::simplifyCurrentStroke()
     if (!simplerStroke)
         return;
 
-    foreach(UBGraphicsPolygonItem* poly, mCurrentStroke->polygons()){
-        mPreviousPolygonItems.removeAll(poly);
-        removeItem(poly);
-    }
-
+    // The simplified stroke owns new polygons. The originals have never been
+    // published to Undo: release them now instead of retaining every input
+    // segment until the cached scene is destroyed. Copy the list because the
+    // last polygon destructor also destroys its original UBGraphicsStroke.
+    const auto originalPolygons = mCurrentStroke->polygons();
     mCurrentStroke = simplerStroke;
+    for (auto poly : originalPolygons) {
+        mPreviousPolygonItems.removeAll(poly);
+        mAddedItems.remove(poly);
+        if (mCurrentPolygon == poly) mCurrentPolygon = nullptr;
+        if (mpLastPolygon == poly) mpLastPolygon = nullptr;
+        removeItem(poly);
+        UBCoreGraphicsScene::deleteItem(poly);
+    }
 
     foreach(UBGraphicsPolygonItem* poly, mCurrentStroke->polygons()) {
         addItem(poly);

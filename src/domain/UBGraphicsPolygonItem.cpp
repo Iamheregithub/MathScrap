@@ -36,6 +36,9 @@
 
 #include "core/memcheck.h"
 
+namespace { qint64 teachingPolygons = 0; }
+qint64 teachingLivePolygonCount() { return teachingPolygons; }
+
 UBGraphicsPolygonItem::UBGraphicsPolygonItem (QGraphicsItem * parent)
     : QGraphicsPolygonItem(parent)
     , mHasAlpha(false)
@@ -88,6 +91,7 @@ UBGraphicsPolygonItem::UBGraphicsPolygonItem (const QLineF& pLine, qreal pStartW
 
 void UBGraphicsPolygonItem::initialize()
 {
+    ++teachingPolygons;
     setData(UBGraphicsItemData::itemLayerType, QVariant(itemLayerType::DrawingItem)); //Necessary to set if we want z value to be assigned correctly
     setUuid(QUuid::createUuid());
 }
@@ -111,6 +115,7 @@ void UBGraphicsPolygonItem::clearStroke()
 
 UBGraphicsPolygonItem::~UBGraphicsPolygonItem()
 {
+    --teachingPolygons;
     clearStroke();
 }
 

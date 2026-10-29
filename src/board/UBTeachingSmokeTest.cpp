@@ -50,6 +50,7 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <psapi.h>
 #include <dbghelp.h>
 #include <cstdio>
 #pragma comment(lib, "dbghelp.lib")
@@ -96,6 +97,10 @@ void installTeachingCrashDiagnostics() {
     AddVectoredExceptionHandler(1, recordTeachingCrash);
 #endif
 }
+
+int teachingLiveStrokeCount();
+qint64 teachingLiveStrokePointCount();
+qint64 teachingLivePolygonCount();
 
 namespace {
 bool checkPreferencesRedesign(QString *error)
@@ -1402,6 +1407,332 @@ bool checkPdfSelection(QString *error)
     return true;
 }
 
+
+// A bounded workload: the same three pages, PDF asset and undo budget every cycle.
+// Samples are taken only after content, history and deferred deletes are cleared.
+#ifdef Q_OS_WIN
+QJsonObject inspectTeachingHeaps()
+{
+    // No Qt calls or allocation while a heap is locked. Enumerate into stack counters.
+    HANDLE heaps[256] = {};
+    const DWORD heapCount = GetProcessHeaps(256, heaps);
+    quint64 busyBytes = 0, busyBlocks = 0, freeBytes = 0;
+    int completed = 0, failed = 0;
+    const DWORD available = heapCount <= 256 ? heapCount : 0;
+    for (DWORD i = 0; i < available; ++i) {
+        if (!HeapLock(heaps[i])) { ++failed; continue; }
+        PROCESS_HEAP_ENTRY entry = {};
+        while (HeapWalk(heaps[i], &entry)) {
+            if (entry.wFlags & PROCESS_HEAP_ENTRY_BUSY) {
+                busyBytes += entry.cbData; ++busyBlocks;
+            } else if (!(entry.wFlags & (PROCESS_HEAP_REGION | PROCESS_HEAP_UNCOMMITTED_RANGE))) {
+                freeBytes += entry.cbData;
+            }
+        }
+        const DWORD walkError = GetLastError();
+        const BOOL unlocked = HeapUnlock(heaps[i]);
+        if (walkError == ERROR_NO_MORE_ITEMS && unlocked) ++completed; else ++failed;
+    }
+    quint64 privateCommit = 0, privateReserve = 0, mappedCommit = 0;
+    quintptr address = 0;
+    MEMORY_BASIC_INFORMATION region = {};
+    while (VirtualQuery(reinterpret_cast<void*>(address), &region, sizeof(region))) {
+        if (region.Type == MEM_PRIVATE) {
+            if (region.State == MEM_COMMIT) privateCommit += region.RegionSize;
+            else if (region.State == MEM_RESERVE) privateReserve += region.RegionSize;
+        } else if (region.State == MEM_COMMIT && region.Type == MEM_MAPPED) mappedCommit += region.RegionSize;
+        const quintptr next = reinterpret_cast<quintptr>(region.BaseAddress) + region.RegionSize;
+        if (next <= address) break;
+        address = next;
+    }
+    return QJsonObject{{"heapBusyBytes", double(busyBytes)}, {"heapBusyBlocks", double(busyBlocks)},
+        {"heapFreeBytes", double(freeBytes)}, {"heapsReported", int(heapCount)},
+        {"heapsWalked", completed}, {"heapsFailed", failed},
+        {"heapEnumerationComplete", heapCount > 0 && heapCount <= 256 && failed == 0},
+        {"virtualPrivateCommitted", double(privateCommit)}, {"virtualPrivateReserved", double(privateReserve)},
+        {"virtualMappedCommitted", double(mappedCommit)}};
+}
+#endif
+
+bool checkMemoryCycles(QString *error)
+{
+#ifndef Q_OS_WIN
+    *error = "Memory cycling requires Windows";
+    return false;
+#else
+    const QString mode = qEnvironmentVariable("TEACHING_MEMORY_MODE", "full");
+    if (!QStringList{"baseline", "ink", "pdf", "save", "full"}.contains(mode)) {
+        *error = "Unknown memory workload mode"; return false;
+    }
+    const bool usePdf = mode == "pdf" || mode == "full";
+    const bool useInk = mode == "ink" || mode == "full";
+    const bool useSave = mode == "save" || mode == "full";
+    bool repeatsOk = false;
+    const int repeats = qEnvironmentVariable("TEACHING_MEMORY_REPEATS", "1").toInt(&repeatsOk);
+    if (!repeatsOk || repeats < 1 || repeats > 8) { *error = "Invalid memory workload repeat count"; return false; }
+    const int initialStrokes = teachingLiveStrokeCount();
+    const qint64 initialPoints = teachingLiveStrokePointCount();
+    const qint64 initialPolygons = teachingLivePolygonCount();
+    auto board = UBApplication::boardController;
+    auto manager = UBPersistenceManager::persistenceManager();
+    const auto anchor = board->selectedDocument();
+    const int anchorPage = board->activeSceneIndex();
+    auto doc = manager->createNewDocument(UBPersistenceManager::myDocumentsName,
+                                         "Memory regression fixture", true);
+    if (!doc) { *error = "Cannot create memory fixture"; return false; }
+    const QString path = doc->persistencePath() + "/objects";
+    QDir().mkpath(path);
+    const QUuid uuid = QUuid::createUuid();
+    const QString pdf = path + "/" + uuid.toString() + ".pdf";
+    if (usePdf) {
+        QPdfWriter writer(pdf); writer.setResolution(72);
+        QPainter painter(&writer);
+        for (int page = 0; page < 3; ++page) {
+            if (page) writer.newPage();
+            painter.drawText(QPoint(40, 80), QString("Memory fixture page %1").arg(page));
+        }
+    }
+    for (int page = 1; page < 3; ++page) manager->createDocumentSceneAt(doc, page, true);
+    QFile samples(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("memory-samples.jsonl"));
+    if (!samples.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        *error = "Cannot write memory samples"; return false;
+    }
+    auto settle = [] {
+        QElapsedTimer timer; timer.start();
+        while (timer.elapsed() < 500) {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+            QThread::msleep(10);
+        }
+    };
+    for (int cycle = 0; cycle < 40; ++cycle) {
+        for (int repeat = 0; repeat < repeats; ++repeat) {
+            UBImportPDF importer;
+            QList<UBGraphicsItem*> imported;
+            if (usePdf) imported = importer.import(uuid, pdf);
+            if (usePdf && imported.size() != 3) { *error = "Memory fixture PDF import failed"; return false; }
+            for (int page = 0; page < 3; ++page) {
+                board->setActiveDocumentScene(doc, page);
+                auto scene = board->activeScene();
+                if (usePdf) importer.placeImportedItemToScene(scene, imported[page]);
+                scene->setURStackEnable(true);
+                if (mode == "save") {
+                    auto item = scene->addSvg(QUrl(), QPointF(0,0), QByteArray(
+                        "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='blue'/></svg>"));
+                    if (!item) { *error = "Save-only fixture insertion failed"; return false; }
+                }
+                if (useInk) {
+                auto dc = UBDrawingController::drawingController();
+                dc->setStylusTool(UBStylusTool::Pen);
+                dc->setPenColor(false, QColor(Qt::black), 0);
+                dc->setColorIndex(0);
+                dc->setLineWidthIndex(2);
+                auto strokeCount = [scene] {
+                    int count = 0;
+                    for (auto item : scene->items())
+                        if (dynamic_cast<UBGraphicsStrokesGroup*>(item)) ++count;
+                    return count;
+                };
+                const int inkBefore = strokeCount();
+                const int before = UBApplication::undoStack->index();
+                const int detachedBeforeDrawing = scene->detachedRootCount();
+                for (int stroke = 0; stroke < 30; ++stroke) {
+                    scene->inputDevicePress(QPointF(-120, stroke * 4));
+                    for (int x = -110; x <= 120; x += 10)
+                        scene->inputDeviceMove(QPointF(x, stroke * 4));
+                    scene->inputDeviceRelease();
+                }
+                if (scene->detachedRootCount() > detachedBeforeDrawing) {
+                    *error = "Stroke simplification retained superseded input polygons"; return false;
+                }
+                const int inkAfter = strokeCount();
+                if (inkAfter != inkBefore + 30 || UBApplication::undoStack->index() <= before) {
+                    *error = QString("Memory workload cycle %1 page %2: strokes %3 -> %4, undo %5 -> %6")
+                        .arg(cycle).arg(page).arg(inkBefore).arg(inkAfter)
+                        .arg(before).arg(UBApplication::undoStack->index()); return false;
+                }
+                UBApplication::undoStack->undo();
+                if (strokeCount() != inkAfter - 1) { *error = "Memory workload ink Undo failed"; return false; }
+                UBApplication::undoStack->redo();
+                if (strokeCount() != inkAfter) { *error = "Memory workload ink Redo failed"; return false; }
+                auto renderInk = [scene] {
+                    QImage image(320,180,QImage::Format_ARGB32_Premultiplied); image.fill(Qt::white);
+                    QPainter painter(&image);
+                    const auto context = scene->renderingContext();
+                    // Compare annotations independently of asynchronous PDF raster caches.
+                    auto background = scene->backgroundObject();
+                    const bool backgroundVisible = background && background->isVisible();
+                    if (background) background->setVisible(false);
+                    scene->setRenderingContext(UBGraphicsScene::NonScreen);
+                    scene->render(&painter,QRectF(0,0,320,180),QRectF(-160,-30,320,180));
+                    scene->setRenderingContext(context);
+                    if (background) background->setVisible(backgroundVisible);
+                    painter.end();
+                    return image;
+                };
+                const auto inkBeforeErase = renderInk();
+                const int beforeEraseUndo = UBApplication::undoStack->index();
+                UBApplication::mainWindow->actionEraser->trigger();
+                scene->inputDevicePress(QPointF(0, 0));
+                // Multiple scrub segments exercise transient replacement fragments.
+                for (int y = 10; y <= 120; y += 10) scene->inputDeviceMove(QPointF(0, y));
+                scene->inputDeviceRelease();
+                dc->setStylusTool(UBStylusTool::Pen);
+                const auto inkAfterErase = renderInk();
+                if (inkBeforeErase == inkAfterErase || UBApplication::undoStack->index() <= beforeEraseUndo) {
+                    *error = "Scrub eraser did not change ink and history"; return false;
+                }
+                UBApplication::undoStack->undo();
+                const auto inkAfterUndo = renderInk();
+                if (inkAfterUndo != inkBeforeErase) {
+                    const QDir diagnostics = QFileInfo(samples).dir();
+                    inkBeforeErase.save(diagnostics.filePath("scrub-before.png"));
+                    inkAfterErase.save(diagnostics.filePath("scrub-erased.png"));
+                    inkAfterUndo.save(diagnostics.filePath("scrub-undo.png"));
+                    *error = "Scrub eraser Undo changed original ink"; return false;
+                }
+                UBApplication::undoStack->redo();
+                if (renderInk() != inkAfterErase) { *error = "Scrub eraser Redo changed clipped ink"; return false; }
+                }
+                if (useSave) {
+                manager->persistDocumentScene(doc, scene, page, true, true);
+                {
+                    auto reopened = UBSvgSubsetAdaptor::loadScene(doc, page);
+                    if (!reopened || reopened->items().isEmpty()) {
+                        *error = "Memory workload could not reopen saved page"; return false;
+                    }
+                }
+                }
+                scene->clearContent();
+                scene->clearContent(UBGraphicsScene::clearBackground);
+                board->ClearUndoStack();
+                if (useSave) manager->persistDocumentScene(doc, scene, page, true, true);
+                // Return to the anchor; production scene-cache retention remains observable.
+                board->setActiveDocumentScene(anchor, anchorPage);
+                scene.reset();
+                board->setActiveDocumentScene(doc, page, true);
+            }
+        }
+        board->setActiveDocumentScene(anchor, anchorPage);
+        board->ClearUndoStack();
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX counters = {};
+        counters.cb = sizeof(counters);
+        DWORD handles = 0;
+        if (!K32GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&counters), sizeof(counters))
+            || !GetProcessHandleCount(GetCurrentProcess(), &handles)) {
+            *error = "Windows memory counters unavailable"; return false;
+        }
+        int tracked = 0, detached = 0, visible = 0;
+        for (int page = 0; page < 3; ++page) {
+            auto cached = manager->getDocumentScene(doc, page);
+            if (cached) {
+                tracked += cached->trackedItemCount();
+                detached += cached->detachedRootCount();
+                visible += cached->items().size();
+            }
+        }
+        QJsonObject sample{{"workloadRepeatsPerSample", repeats}, {"workloadCyclesCompleted", (cycle + 1) * repeats},
+            {"pixmapCacheLimitKiB", QPixmapCache::cacheLimit()}, {"liveStrokes", teachingLiveStrokeCount()},
+            {"liveStrokePoints", double(teachingLiveStrokePointCount())}, {"livePolygons", double(teachingLivePolygonCount())}, {"mode", mode}, {"timestampUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
+            {"sceneItems", visible}, {"undoEntries", UBApplication::undoStack->count()},
+            {"pdfRenderers", PDFRenderer::liveRendererCount()},
+            {"pdfReferences", PDFRenderer::totalReferenceCount()}, {"cycle", cycle}, {"pid", int(GetCurrentProcessId())},
+            {"privateBytes", double(counters.PrivateUsage)}, {"workingSetBytes", double(counters.WorkingSetSize)},
+            {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
+            {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
+        if (cycle == 0 || cycle == 4 || cycle == 19 || cycle == 39)
+            sample["heapInspection"] = inspectTeachingHeaps();
+        samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
+        if (teachingLiveStrokeCount() != initialStrokes || teachingLiveStrokePointCount() != initialPoints
+            || teachingLivePolygonCount() != initialPolygons) {
+            *error = QString("Ink object lifetime regression at cycle %1: strokes=%2, points=%3, polygons=%4")
+                .arg(cycle).arg(teachingLiveStrokeCount()).arg(teachingLiveStrokePointCount()).arg(teachingLivePolygonCount());
+            return false;
+        }
+        const QString heapTool = qEnvironmentVariable("TEACHING_MEMORY_UMDH");
+        if (!heapTool.isEmpty() && (cycle == 4 || cycle == 39)) {
+            const QString snapshot = QFileInfo(samples).dir().filePath(cycle == 4 ? "heap-warm.txt" : "heap-final.txt");
+            QProcess capture;
+            capture.start(heapTool, QStringList{QString("-p:%1").arg(GetCurrentProcessId()), "-f:" + snapshot});
+            if (!capture.waitForFinished(150000) || capture.exitStatus() != QProcess::NormalExit || capture.exitCode() != 0
+                || !QFileInfo::exists(snapshot)) {
+                capture.kill(); capture.waitForFinished(5000);
+                *error = "UMDH snapshot failed: " + QString::fromLocal8Bit(capture.readAllStandardError()); return false;
+            }
+        }
+    }
+    // After the growth measurement, destroy only this run's generated fixture.
+    // Weak probes do not extend scene lifetimes.
+    QList<std::weak_ptr<UBGraphicsScene>> probes;
+    for (int page = 0; page < 3; ++page)
+        probes.append(manager->getDocumentScene(doc, page));
+    const int refsBefore = PDFRenderer::totalReferenceCount();
+    const int renderersBefore = PDFRenderer::liveRendererCount();
+    manager->deleteDocument(doc);
+    settle();
+    // Allow ordinary queued cleanup after fixture destruction, without purging heaps.
+    QElapsedTimer idle; idle.start();
+    while (idle.elapsed() < 10000) settle();
+    int survivingScenes = 0;
+    for (const auto &probe : probes) if (!probe.expired()) ++survivingScenes;
+    PROCESS_MEMORY_COUNTERS_EX after = {};
+    after.cb = sizeof(after);
+    const bool measured = K32GetProcessMemoryInfo(GetCurrentProcess(),
+        reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&after), sizeof(after));
+    QJsonObject teardown{{"liveStrokes", teachingLiveStrokeCount()},
+        {"liveStrokePoints", double(teachingLiveStrokePointCount())}, {"livePolygons", double(teachingLivePolygonCount())},
+        {"survivingFixtureScenes", survivingScenes},
+        {"pdfReferencesBefore", refsBefore}, {"pdfReferencesAfter", PDFRenderer::totalReferenceCount()},
+        {"pdfRenderersBefore", renderersBefore}, {"pdfRenderersAfter", PDFRenderer::liveRendererCount()},
+        {"undoEntries", UBApplication::undoStack->count()}, {"memoryMeasured", measured},
+        {"privateBytesAfter", double(after.PrivateUsage)}};
+    teardown["heapAfterIdle"] = inspectTeachingHeaps();
+    teardown["pixmapCacheLimitKiB"] = QPixmapCache::cacheLimit();
+    const bool clearCache = qEnvironmentVariable("TEACHING_MEMORY_CLEAR_PIXMAP_CACHE") == "1";
+    teardown["pixmapCacheClearRequested"] = clearCache;
+    if (clearCache) {
+        QPixmapCache::clear();
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX uncached = {}; uncached.cb = sizeof(uncached);
+        teardown["cacheClearMemoryMeasured"] = bool(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&uncached), sizeof(uncached)));
+        teardown["privateBytesAfterCacheClear"] = double(uncached.PrivateUsage);
+        teardown["heapAfterCacheClear"] = inspectTeachingHeaps();
+    }
+    teardown["heapBeforeTrim"] = inspectTeachingHeaps();
+    const bool trimRequested = qEnvironmentVariable("TEACHING_MEMORY_TRIM_HEAP") == "1";
+    teardown["trimRequested"] = trimRequested;
+    bool trimSupported = false, trimSucceeded = false;
+    DWORD trimError = 0;
+#ifdef HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION
+    trimSupported = true;
+    if (trimRequested) {
+        HEAP_OPTIMIZE_RESOURCES_INFORMATION options = {};
+        options.Version = HEAP_OPTIMIZE_RESOURCES_CURRENT_VERSION;
+        trimSucceeded = HeapSetInformation(nullptr, HeapOptimizeResources, &options, sizeof(options));
+        if (!trimSucceeded) trimError = GetLastError();
+    }
+#endif
+    teardown["trimSupported"] = trimSupported;
+    teardown["trimSucceeded"] = trimSucceeded;
+    teardown["trimError"] = int(trimError);
+    if (trimRequested && trimSucceeded) {
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX trimmed = {}; trimmed.cb = sizeof(trimmed);
+        teardown["trimMemoryMeasured"] = bool(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&trimmed), sizeof(trimmed)));
+        teardown["privateBytesAfterTrim"] = double(trimmed.PrivateUsage);
+        teardown["heapAfterTrim"] = inspectTeachingHeaps();
+    }
+    QFile teardownFile(QFileInfo(samples).dir().filePath("memory-teardown-report.json"));
+    if (!teardownFile.open(QIODevice::WriteOnly)) { *error = "Cannot write teardown report"; return false; }
+    teardownFile.write(QJsonDocument(teardown).toJson());
+    qWarning().noquote() << "Memory fixture teardown:" << QJsonDocument(teardown).toJson(QJsonDocument::Compact);
+    return true;
+#endif
+}
+
 void finish(bool passed, const QString &detail) {
     const QString path = qEnvironmentVariable("TEACHING_SMOKE_REPORT");
     QFile file(path);
@@ -1440,12 +1771,18 @@ void finish(bool passed, const QString &detail) {
 }
 void scheduleTeachingSmokeTest(QObject *context)
 {
-    QTimer::singleShot(120000, context, [] { finish(false, "Native test timed out"); });
+    QTimer::singleShot(qEnvironmentVariable("TEACHING_MEMORY_ONLY") == "1" ? 480000 : 120000, context, [] { finish(false, "Native test timed out"); });
     QTimer::singleShot(7000, context, [] {
         qWarning("Teaching check: board initialized");
         auto board = UBApplication::boardController;
         if (!board || !board->activeScene() || !UBApplication::mainWindow) {
             finish(false, "Board failed to initialize"); return;
+        }
+        if (qEnvironmentVariable("TEACHING_MEMORY_ONLY") == "1") {
+            QString detail;
+            const bool passed = checkMemoryCycles(&detail);
+            finish(passed, passed ? "Memory workload completed; see memory analysis for growth assessment" : detail);
+            return;
         }
         if (qEnvironmentVariable("TEACHING_EXPLORE_ONLY") == "1") {
             QString detail;
