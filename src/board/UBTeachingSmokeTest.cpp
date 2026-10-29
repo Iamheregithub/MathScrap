@@ -1423,6 +1423,9 @@ bool checkMemoryCycles(QString *error)
     const bool usePdf = mode == "pdf" || mode == "full";
     const bool useInk = mode == "ink" || mode == "full";
     const bool useSave = mode == "save" || mode == "full";
+    const int initialStrokes = teachingLiveStrokeCount();
+    const qint64 initialPoints = teachingLiveStrokePointCount();
+    const qint64 initialPolygons = teachingLivePolygonCount();
     auto board = UBApplication::boardController;
     auto manager = UBPersistenceManager::persistenceManager();
     const auto anchor = board->selectedDocument();
@@ -1556,6 +1559,12 @@ bool checkMemoryCycles(QString *error)
             {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
         samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
+        if (teachingLiveStrokeCount() != initialStrokes || teachingLiveStrokePointCount() != initialPoints
+            || teachingLivePolygonCount() != initialPolygons) {
+            *error = QString("Ink object lifetime regression at cycle %1: strokes=%2, points=%3, polygons=%4")
+                .arg(cycle).arg(teachingLiveStrokeCount()).arg(teachingLiveStrokePointCount()).arg(teachingLivePolygonCount());
+            return false;
+        }
         const QString heapTool = qEnvironmentVariable("TEACHING_MEMORY_UMDH");
         if (!heapTool.isEmpty() && (cycle == 4 || cycle == 39)) {
             const QString snapshot = QFileInfo(samples).dir().filePath(cycle == 4 ? "heap-warm.txt" : "heap-final.txt");

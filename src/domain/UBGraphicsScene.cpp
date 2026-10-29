@@ -821,6 +821,19 @@ bool UBGraphicsScene::inputDeviceRelease(int tool, Qt::KeyboardModifiers modifie
         }
     }
 
+    // A scrub can replace an ink fragment several times within one gesture.
+    // The undo command excludes the added/removed intersection. Those detached
+    // intermediate polygons must therefore be reclaimed here, while retaining
+    // the pre-gesture originals and the final fragments for Undo/Redo.
+    const auto intermediateInk = mAddedItems & mRemovedItems;
+    for (auto item : intermediateInk) {
+        if (item->type() == UBGraphicsPolygonItem::Type && !item->scene() && !item->parentItem()) {
+            mAddedItems.remove(item);
+            mRemovedItems.remove(item);
+            if (!UBCoreGraphicsScene::deleteItem(item)) delete item;
+        }
+    }
+
     if (mRemovedItems.size() > 0 || mAddedItems.size() > 0)
     {
         if (mUndoRedoStackEnabled) { //should be deleted after scene own undo stack implemented
