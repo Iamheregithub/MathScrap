@@ -24,7 +24,23 @@ jobs:
           Get-ChildItem diagnostics -Recurse -Filter heap-trace-status.json | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Raw }
           Get-ChildItem diagnostics -Recurse -Filter heap.etl | Select-Object FullName, Length | Format-List
           Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10" -Recurse -Include umdh.exe,gflags.exe,xperf.exe,wpaexporter.exe -ErrorAction SilentlyContinue | Select-Object FullName | Format-List
+      - name: Analyze captured heap allocations
+        timeout-minutes: 12
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $xperf = "${env:ProgramFiles(x86)}/Windows Kits/10/Windows Performance Toolkit/xperf.exe"
+          $trace = Get-ChildItem diagnostics -Recurse -Filter heap.etl | Select-Object -First 1
+          $samplesFile = Get-ChildItem diagnostics -Recurse -Filter memory-samples.jsonl | Where-Object { $_.FullName -match 'full-trace' } | Select-Object -First 1
+          $sample = Get-Content $samplesFile.FullName -First 1 | ConvertFrom-Json
+          New-Item -ItemType Directory -Force diagnostics/analysis | Out-Null
+          $symbolDir = (Resolve-Path diagnostics/app).Path
+          $env:_NT_SYMBOL_PATH = "$symbolDir;srv*$PWD/symbols*https://msdl.microsoft.com/download/symbols"
+          & $xperf -i $trace.FullName -symbols -o "$PWD/diagnostics/analysis/heap-top.txt" -a heap -pid $sample.pid -stacks -top 40 *> diagnostics/analysis/xperf.log
+          @{ exitCode=$LASTEXITCODE; processId=$sample.pid; inputTrace=$trace.Name } | ConvertTo-Json | Set-Content diagnostics/analysis/heap-analysis-status.json
+          if ($LASTEXITCODE -ne 0) { throw 'Heap trace analysis failed; inspect xperf.log' }
       - name: Upload small memory reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Memory-isolation-reports
@@ -32,5 +48,6 @@ jobs:
             diagnostics/**/*.json
             diagnostics/**/*.jsonl
             diagnostics/**/*.log
+            diagnostics/analysis/*.txt
           if-no-files-found: error
           retention-days: 30
