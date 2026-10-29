@@ -20,6 +20,16 @@ class MemoryAnalysis(unittest.TestCase):
         s = self.samples()
         for i in range(40): s[i]['handles'] += i*5
         self.assertTrue(a.analyze(s)['counters']['handles']['suspicious'])
+    def test_repeated_workload_units(self):
+        s = self.samples()
+        for i, sample in enumerate(s):
+            sample['workloadRepeatsPerSample'] = 4
+            sample['privateBytes'] += i*4*1024**2
+        result = a.analyze(s)
+        self.assertEqual(result['workloadCycles'], 160)
+        self.assertAlmostEqual(result['counters']['privateBytes']['slopePerWorkloadCycle'], 1024**2)
+        s[-1]['workloadRepeatsPerSample'] = 1
+        with self.assertRaises(ValueError): a.analyze(s)
     def test_incomplete_and_restarted(self):
         with self.assertRaises(ValueError): a.analyze(self.samples()[:-1])
         s = self.samples(); s[-1]['pid'] = 456

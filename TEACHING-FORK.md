@@ -193,3 +193,16 @@ private bytes and heap counts are recorded separately. No working-set purge
 is used. A successful trim can demonstrate releasable heap retention but does
 not establish that every remaining allocation is necessary or leak-free.
 No production heap-trimming policy is introduced.
+
+### Bounded pixmap-cache hypothesis
+
+The application configures Qt's pixmap cache to 102400 KiB (100 MiB). The
+next diagnostic uses four workload repeats per recorded sample: 40 samples
+cover 160 complete three-page workloads. A slope per sample is therefore
+per four workloads, not directly comparable to the earlier per-workload rate.
+The JSONL records both repeats and total completed workloads explicitly.
+
+After measurement, fixture destruction and idle cleanup, an optional
+diagnostic-only QPixmapCache::clear precedes the heap trim. Separate heap
+and private-byte measurements distinguish cache allocation from allocator
+retention. Neither action is introduced into normal application behavior.

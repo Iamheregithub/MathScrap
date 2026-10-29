@@ -71,8 +71,10 @@ jobs:
       - name: Isolate native memory workloads and inspect heap retention
         env:
           TEACHING_MEMORY_TRIM_HEAP: '1'
+          TEACHING_MEMORY_CLEAR_PIXMAP_CACHE: '1'
+          TEACHING_MEMORY_REPEATS: '4'
         shell: pwsh
-        run: ./OpenBoard/release_scripts/teaching/test-memory-isolation.ps1 -SkipTrace
+        run: ./OpenBoard/release_scripts/teaching/test-memory.ps1 -Mode full
       - name: Native drawing, PDF and save/reopen regressions
         if: ${{ !cancelled() && steps.native_build.outcome == 'success' }}
         shell: pwsh

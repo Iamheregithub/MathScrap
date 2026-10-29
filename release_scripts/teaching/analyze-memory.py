@@ -10,6 +10,9 @@ def analyze(samples):
         raise ValueError('Expected 40 complete, ordered cycles')
     if len({s['pid'] for s in samples}) != 1:
         raise ValueError('All cycles must run in one process')
+    repeats = samples[0].get('workloadRepeatsPerSample', 1)
+    if not isinstance(repeats, int) or repeats < 1 or any(s.get('workloadRepeatsPerSample', 1) != repeats for s in samples):
+        raise ValueError('Workload repeat count must be positive and constant')
     limits = {'privateBytes': (32 * 1024**2, 512 * 1024),
               'handles': (100, 2), 'gdiObjects': (50, 1), 'userObjects': (50, 1)}
     measured = samples[5:]  # Discard five warm-up cycles.
@@ -22,11 +25,12 @@ def analyze(samples):
         center = (len(values) - 1) / 2
         mean = statistics.mean(values)
         slope = sum((i-center)*(v-mean) for i, v in enumerate(values)) / sum((i-center)**2 for i in range(len(values)))
-        result[key] = dict(growth=growth, slopePerCycle=slope,
+        result[key] = dict(growth=growth, slopePerCycle=slope, slopePerWorkloadCycle=slope/repeats,
                            growthLimit=growth_limit, slopeLimit=slope_limit,
                            suspicious=growth > growth_limit and slope > slope_limit)
     return dict(status='suspicious-growth' if any(v['suspicious'] for v in result.values()) else 'no-growth-flag',
-                cycles=40, warmupCycles=5, counters=result,
+                cycles=40, warmupCycles=5, workloadRepeatsPerSample=repeats,
+                workloadCycles=40*repeats, counters=result,
                 scope='Main native process only; excludes QtWebEngine children and GPU memory.',
                 interpretation='Heuristic regression screen, not proof of a leak or absence of leaks.')
 

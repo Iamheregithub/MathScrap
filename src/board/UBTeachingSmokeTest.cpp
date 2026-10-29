@@ -1467,6 +1467,9 @@ bool checkMemoryCycles(QString *error)
     const bool usePdf = mode == "pdf" || mode == "full";
     const bool useInk = mode == "ink" || mode == "full";
     const bool useSave = mode == "save" || mode == "full";
+    bool repeatsOk = false;
+    const int repeats = qEnvironmentVariable("TEACHING_MEMORY_REPEATS", "1").toInt(&repeatsOk);
+    if (!repeatsOk || repeats < 1 || repeats > 8) { *error = "Invalid memory workload repeat count"; return false; }
     const int initialStrokes = teachingLiveStrokeCount();
     const qint64 initialPoints = teachingLiveStrokePointCount();
     const qint64 initialPolygons = teachingLivePolygonCount();
@@ -1503,7 +1506,7 @@ bool checkMemoryCycles(QString *error)
         }
     };
     for (int cycle = 0; cycle < 40; ++cycle) {
-        {
+        for (int repeat = 0; repeat < repeats; ++repeat) {
             UBImportPDF importer;
             QList<UBGraphicsItem*> imported;
             if (usePdf) imported = importer.import(uuid, pdf);
@@ -1629,7 +1632,8 @@ bool checkMemoryCycles(QString *error)
                 visible += cached->items().size();
             }
         }
-        QJsonObject sample{{"liveStrokes", teachingLiveStrokeCount()},
+        QJsonObject sample{{"workloadRepeatsPerSample", repeats}, {"workloadCyclesCompleted", (cycle + 1) * repeats},
+            {"pixmapCacheLimitKiB", QPixmapCache::cacheLimit()}, {"liveStrokes", teachingLiveStrokeCount()},
             {"liveStrokePoints", double(teachingLiveStrokePointCount())}, {"livePolygons", double(teachingLivePolygonCount())}, {"mode", mode}, {"timestampUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}, {"trackedGraphics", tracked}, {"detachedGraphicsRoots", detached},
             {"sceneItems", visible}, {"undoEntries", UBApplication::undoStack->count()},
             {"pdfRenderers", PDFRenderer::liveRendererCount()},
@@ -1683,6 +1687,19 @@ bool checkMemoryCycles(QString *error)
         {"pdfRenderersBefore", renderersBefore}, {"pdfRenderersAfter", PDFRenderer::liveRendererCount()},
         {"undoEntries", UBApplication::undoStack->count()}, {"memoryMeasured", measured},
         {"privateBytesAfter", double(after.PrivateUsage)}};
+    teardown["heapAfterIdle"] = inspectTeachingHeaps();
+    teardown["pixmapCacheLimitKiB"] = QPixmapCache::cacheLimit();
+    const bool clearCache = qEnvironmentVariable("TEACHING_MEMORY_CLEAR_PIXMAP_CACHE") == "1";
+    teardown["pixmapCacheClearRequested"] = clearCache;
+    if (clearCache) {
+        QPixmapCache::clear();
+        settle();
+        PROCESS_MEMORY_COUNTERS_EX uncached = {}; uncached.cb = sizeof(uncached);
+        teardown["cacheClearMemoryMeasured"] = bool(K32GetProcessMemoryInfo(GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&uncached), sizeof(uncached)));
+        teardown["privateBytesAfterCacheClear"] = double(uncached.PrivateUsage);
+        teardown["heapAfterCacheClear"] = inspectTeachingHeaps();
+    }
     teardown["heapBeforeTrim"] = inspectTeachingHeaps();
     const bool trimRequested = qEnvironmentVariable("TEACHING_MEMORY_TRIM_HEAP") == "1";
     teardown["trimRequested"] = trimRequested;
