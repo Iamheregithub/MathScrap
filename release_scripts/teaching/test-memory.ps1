@@ -31,6 +31,8 @@ try {
         & $gflags /i MathScrap.exe +ust *> "$output/gflags-enable.log"
         if ($LASTEXITCODE -ne 0) { throw 'Allocation stack database configuration failed' }
         $heapConfigured = $true
+        & $gflags /i MathScrap.exe /tracedb 512 *> "$output/gflags-size.log"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not enlarge allocation stack database' }
         $heap.status = 'configured'
         $env:TEACHING_MEMORY_UMDH = $umdh
         $env:OANOCACHE = '1'
@@ -71,6 +73,7 @@ try {
             & $umdh -v "$output/heap-warm.txt" "$output/heap-final.txt" *> "$output/heap-diff.txt"
             $heap.status = if ($LASTEXITCODE -eq 0) { 'compared' } else { 'comparison-failed' }
         } else { $heap.status = 'snapshots-incomplete' }
+        & $gflags /i MathScrap.exe /tracedb 0 *> "$output/gflags-size-reset.log"
         & $gflags /i MathScrap.exe -ust *> "$output/gflags-disable.log"
     } elseif ($HeapSnapshots) { $heap.status = 'configuration-failed' }
     $heap | ConvertTo-Json | Set-Content "$output/heap-snapshot-status.json"
