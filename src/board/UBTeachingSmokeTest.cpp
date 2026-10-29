@@ -1508,9 +1508,31 @@ bool checkMemoryCycles(QString *error)
                 if (strokeCount() != inkAfter - 1) { *error = "Memory workload ink Undo failed"; return false; }
                 UBApplication::undoStack->redo();
                 if (strokeCount() != inkAfter) { *error = "Memory workload ink Redo failed"; return false; }
+                auto renderInk = [scene] {
+                    QImage image(320,180,QImage::Format_ARGB32_Premultiplied); image.fill(Qt::white);
+                    QPainter painter(&image);
+                    const auto context = scene->renderingContext();
+                    scene->setRenderingContext(UBGraphicsScene::NonScreen);
+                    scene->render(&painter,QRectF(0,0,320,180),QRectF(-160,-30,320,180));
+                    scene->setRenderingContext(context);
+                    return image;
+                };
+                const auto inkBeforeErase = renderInk();
+                const int beforeEraseUndo = UBApplication::undoStack->index();
                 UBApplication::mainWindow->actionEraser->trigger();
                 scene->inputDevicePress(QPointF(0, 0));
-                scene->inputDeviceMove(QPointF(0, 120)); scene->inputDeviceRelease();
+                // Multiple scrub segments exercise transient replacement fragments.
+                for (int y = 10; y <= 120; y += 10) scene->inputDeviceMove(QPointF(0, y));
+                scene->inputDeviceRelease();
+                dc->setStylusTool(UBStylusTool::Pen);
+                const auto inkAfterErase = renderInk();
+                if (inkBeforeErase == inkAfterErase || UBApplication::undoStack->index() <= beforeEraseUndo) {
+                    *error = "Scrub eraser did not change ink and history"; return false;
+                }
+                UBApplication::undoStack->undo();
+                if (renderInk() != inkBeforeErase) { *error = "Scrub eraser Undo changed original ink"; return false; }
+                UBApplication::undoStack->redo();
+                if (renderInk() != inkAfterErase) { *error = "Scrub eraser Redo changed clipped ink"; return false; }
                 }
                 if (useSave) {
                 manager->persistDocumentScene(doc, scene, page, true, true);
