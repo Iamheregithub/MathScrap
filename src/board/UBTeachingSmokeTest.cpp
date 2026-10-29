@@ -1551,6 +1551,17 @@ bool checkMemoryCycles(QString *error)
             {"handles", int(handles)}, {"gdiObjects", int(GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS))},
             {"userObjects", int(GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS))}};
         samples.write(QJsonDocument(sample).toJson(QJsonDocument::Compact) + '\n'); samples.flush();
+        const QString heapTool = qEnvironmentVariable("TEACHING_MEMORY_UMDH");
+        if (!heapTool.isEmpty() && (cycle == 4 || cycle == 39)) {
+            const QString snapshot = QFileInfo(samples).dir().filePath(cycle == 4 ? "heap-warm.txt" : "heap-final.txt");
+            QProcess capture;
+            capture.start(heapTool, QStringList{QString("-p:%1").arg(GetCurrentProcessId()), "-f:" + snapshot});
+            if (!capture.waitForFinished(150000) || capture.exitStatus() != QProcess::NormalExit || capture.exitCode() != 0
+                || !QFileInfo::exists(snapshot)) {
+                capture.kill(); capture.waitForFinished(5000);
+                *error = "UMDH snapshot failed: " + QString::fromLocal8Bit(capture.readAllStandardError()); return false;
+            }
+        }
     }
     // After the growth measurement, destroy only this run's generated fixture.
     // Weak probes do not extend scene lifetimes.
