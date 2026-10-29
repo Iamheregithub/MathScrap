@@ -1,0 +1,36 @@
+name: Export existing memory reports
+on:
+  push:
+    branches: [memory-report-export]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reports:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Windows-memory-diagnostics
+          run-id: 40795349083
+          github-token: ${{ github.token }}
+          path: diagnostics
+      - name: Report isolation results and available analysis tools
+        shell: pwsh
+        run: |
+          Get-ChildItem diagnostics -Recurse -Filter isolation-report.json | ForEach-Object { Get-Content $_.FullName -Raw }
+          Get-ChildItem diagnostics -Recurse -Filter heap-trace-status.json | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Raw }
+          Get-ChildItem diagnostics -Recurse -Filter heap.etl | Select-Object FullName, Length | Format-List
+          Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10" -Recurse -Include umdh.exe,gflags.exe,xperf.exe,wpaexporter.exe -ErrorAction SilentlyContinue | Select-Object FullName | Format-List
+      - name: Upload small memory reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: Memory-isolation-reports
+          path: |
+            diagnostics/**/*.json
+            diagnostics/**/*.jsonl
+            diagnostics/**/*.log
+          if-no-files-found: error
+          retention-days: 30
