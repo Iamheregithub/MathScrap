@@ -153,3 +153,12 @@ retention can trigger investigation without being an allocation leak. A clean
 run does not prove leak freedom. Suspicious growth needs allocation profiling
 on Windows. `windows-memory.yml` runs diagnostics without publishing installers;
 release-workflow integration is kept local pending diagnostic validation.
+
+### Memory-test cleanup correction
+
+The initial cycling harness called `QUndoStack::clear()` directly, bypassing
+`UBBoardController::ClearUndoStack()`, which enumerates history items and
+releases removed graphics while preserving clipboard sources. Its measured
+retention therefore cannot be attributed directly to normal page switching.
+The corrected workload uses the controller cleanup path before switching
+lessons. Compare its results before changing application ownership behavior.

@@ -1495,7 +1495,7 @@ bool checkMemoryCycles(QString *error)
                 }
                 scene->clearContent();
                 scene->clearContent(UBGraphicsScene::clearBackground);
-                UBApplication::undoStack->clear();
+                board->ClearUndoStack();
                 manager->persistDocumentScene(doc, scene, page, true, true);
                 // Return to the anchor; production scene-cache retention remains observable.
                 board->setActiveDocumentScene(anchor, anchorPage);
@@ -1504,7 +1504,7 @@ bool checkMemoryCycles(QString *error)
             }
         }
         board->setActiveDocumentScene(anchor, anchorPage);
-        UBApplication::undoStack->clear();
+        board->ClearUndoStack();
         settle();
         PROCESS_MEMORY_COUNTERS_EX counters = {};
         counters.cb = sizeof(counters);
