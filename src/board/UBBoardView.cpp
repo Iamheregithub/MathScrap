@@ -1357,7 +1357,15 @@ void UBBoardView::mouseMoveEvent (QMouseEvent *event)
 
             //          QTime startTime = QTime::currentTime();
             //          QTime testTime = QTime::currentTime();
-            QList<QGraphicsItem *> rubberItems = items(bandRect);
+            QList<QGraphicsItem *> rubberItems;
+            for (auto item : items(bandRect)) {
+                if (auto polygon = dynamic_cast<UBGraphicsPolygonItem*>(item))
+                    if (polygon->strokesGroup()) item = polygon->strokesGroup();
+                // Select whole strokes/objects only when the full geometry is enclosed.
+                const QRect bounds = mapFromScene(item->mapToScene(item->boundingRect())).boundingRect();
+                if (bandRect.contains(bounds) && !rubberItems.contains(item))
+                    rubberItems.append(item);
+            }
             //          qDebug() << "==================";
             //          qDebug() << "| ====rubber items" << testTime.msecsTo(QTime::currentTime());
             //          testTime = QTime::currentTime();
@@ -1372,7 +1380,7 @@ void UBBoardView::mouseMoveEvent (QMouseEvent *event)
 
             int counter = 0;
             if (currentTool == UBStylusTool::Selector) {
-                foreach (QGraphicsItem *item, items(bandRect)) {
+                foreach (QGraphicsItem *item, rubberItems) {
 
                     if(item->type() == UBGraphicsItemType::PolygonItemType && item->parentItem())
                         item = item->parentItem();

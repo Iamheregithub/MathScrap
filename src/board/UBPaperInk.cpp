@@ -195,7 +195,7 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     connect(mDock,&QWidget::customContextMenuRequested,this,[this]{mWindow->findChild<QAction*>("actionTeachingCustomize")->trigger();});auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
     mPenPanel=new QFrame(view);mPenPanel->setObjectName("paperPenPanel");mPenPanel->setStyleSheet(panelStyle());auto penLayout=new QVBoxLayout(mPenPanel);penLayout->setContentsMargins(14,12,14,12);penLayout->setSpacing(9);
     auto colours=new QGridLayout;colours->setSpacing(7);penLayout->addLayout(colours);
-    for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBDrawingController::drawingController()->setColorIndex(i);});}
+    for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBApplication::boardController->setColorIndex(i);});}
     auto widths=new QHBoxLayout;penLayout->addLayout(widths);
     for(int i=0;i<3;++i){auto b=new QToolButton;b->setObjectName(QString("paperWidth%1").arg(i));b->setCheckable(true);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setIconSize(QSize(48,18));b->setText(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);widths->addWidget(b);mWidths<<b;
         connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();auto dc=UBDrawingController::drawingController();if(dc->stylusTool()==UBStylusTool::Eraser)dc->setEraserWidthIndex(i);else dc->setLineWidthIndex(i);refreshPen();});}
@@ -282,7 +282,7 @@ void UBPaperInk::rebuild()
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){continue;}
         auto b=button(source,labels.value(id,source->text()),mDock);const bool showLabels=UBSettings::settings()->value("Teaching/ToolLabels",true).toBool();b->setToolButtonStyle(showLabels?Qt::ToolButtonTextUnderIcon:Qt::ToolButtonIconOnly);b->setFixedSize(showLabels?(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64)):(touch?64:48),showLabels?(touch?76:62):(touch?64:48));b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
-        const bool tray=id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
+        const bool tray=id=="actionSelector"||id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
     }
@@ -299,7 +299,7 @@ void UBPaperInk::refreshPen()
     const int colourIndex=tool==UBStylusTool::Marker?s->markerColorIndex():s->penColorIndex();
     const QString colourKey=colours.value(colourIndex).name(QColor::HexRgb).mid(1);
     const int remembered=s->value("Teaching/ColourWidths/"+mode+"/"+colourKey,s->value("Teaching/ColourWidthDefaults/"+mode,0)).toInt();
-    for(int i=0;i<mWidths.size();++i){mWidths[i]->setFixedSize(touch?80:66,touch?62:48);mWidths[i]->setText((tool==UBStylusTool::Eraser?QStringList{tr("Small"),tr("Medium"),tr("Large")}:QStringList{tr("Thin"),tr("Medium"),tr("Thick")})[i]);QPixmap pix(96,36);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#273b3b"),2.+i*3,Qt::SolidLine,Qt::RoundCap));QPainterPath path;path.moveTo(10,24);path.cubicTo(32,2,60,34,86,12);p.drawPath(path);p.end();mWidths[i]->setIcon(QIcon(pix));mWidths[i]->setChecked((tool==UBStylusTool::Eraser?s->eraserWidthIndex():remembered)==i);}
+    for(int i=0;i<mWidths.size();++i){mWidths[i]->setVisible(tool!=UBStylusTool::Selector);mWidths[i]->setFixedSize(touch?80:66,touch?62:48);mWidths[i]->setText((tool==UBStylusTool::Eraser?QStringList{tr("Small"),tr("Medium"),tr("Large")}:QStringList{tr("Thin"),tr("Medium"),tr("Thick")})[i]);QPixmap pix(96,36);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#273b3b"),2.+i*3,Qt::SolidLine,Qt::RoundCap));QPainterPath path;path.moveTo(10,24);path.cubicTo(32,2,60,34,86,12);p.drawPath(path);p.end();mWidths[i]->setIcon(QIcon(pix));mWidths[i]->setChecked((tool==UBStylusTool::Eraser?s->eraserWidthIndex():remembered)==i);}
     mPenPanel->adjustSize();scheduleLayout();
 }
 void UBPaperInk::goToPage(int index)
@@ -332,7 +332,7 @@ void UBPaperInk::sync()
     if(lesson){UBApplication::boardController->paletteManager()->leftPalette()->hide();UBApplication::boardController->paletteManager()->rightPalette()->setVisible(mLibraryOpen);}
     auto dc=UBDrawingController::drawingController();const int tool=trayTool();
     const bool contextual=mWindow->findChild<QAction*>("actionTeachingShapes")->isChecked()||mWindow->findChild<QAction*>("actionLessonCover")->isChecked();
-    mPenPanel->setVisible(mTrayOpen&&lesson&&!contextual&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+    mPenPanel->setVisible(mTrayOpen&&lesson&&!contextual&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser||tool==UBStylusTool::Selector));
     refreshPen();layoutPanels();
 }
 void UBPaperInk::scheduleLayout()
@@ -371,10 +371,11 @@ void UBPaperInk::layoutPanels()
             context=true;
             bar->setMaximumWidth(available);bar->adjustSize();auto anchor=mDock->findChild<QToolButton*>(name=="lessonShapeToolbar"?"paper-actionTeachingShapes":"paper-actionLessonCover");const int centre=anchor&&!anchor->isHidden()?anchor->mapTo(view,QPoint(anchor->width()/2,0)).x():mDock->x()+mDock->width()/2;bar->move(qBound(left,centre-bar->width()/2,qMax(left,view->width()-bar->width()-12)),mDock->y()-bar->height()-9);bar->raise();}
     }
-    mPenPanel->setVisible(mTrayOpen&&lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+    mPenPanel->setVisible(mTrayOpen&&lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser||tool==UBStylusTool::Selector));
 }
 int UBPaperInk::trayTool() const
 {
+    if(mTrayAction=="actionSelector")return UBStylusTool::Selector;
     if(mTrayAction=="actionMarker")return UBStylusTool::Marker;
     if(mTrayAction=="actionEraser")return UBStylusTool::Eraser;
     if(mTrayAction=="actionLine")return UBStylusTool::Line;

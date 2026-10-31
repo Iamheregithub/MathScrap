@@ -20,6 +20,7 @@
 #include "domain/UBGraphicsTextItem.h"
 #include "domain/UBGraphicsSvgItem.h"
 #include "domain/UBGraphicsStrokesGroup.h"
+#include "domain/UBGraphicsPolygonItem.h"
 #include "domain/UBGraphicsItemDelegate.h"
 #include "adaptors/UBSvgSubsetAdaptor.h"
 #ifdef Q_OS_WIN
@@ -80,6 +81,74 @@ bool colourMemory(bool seed, QString *error)
         if(dc->currentToolWidthIndex()!=2)return fail("Highlighter opacity split its colour thickness memory");
         dc->setMarkerAlpha(alpha);
     }
+    return true;
+}
+bool selectionColourWorkflow(QString *error)
+{
+    auto fail=[error](const QString &message){*error=message;return false;};
+    auto board=UBApplication::boardController;auto window=UBApplication::mainWindow;
+    auto dc=UBDrawingController::drawingController();auto settings=UBSettings::settings();
+    auto document=UBPersistenceManager::persistenceManager()->createNewDocument(UBPersistenceManager::myDocumentsName,"Selection recolouring regression",true);
+    board->setActiveDocumentScene(document,0);auto scene=board->activeScene();scene->setBackground(false,plain);
+    scene->setURStackEnable(true);
+    for(int mode=0;mode<4;++mode){
+        if(mode==0)dc->setStylusTool(UBStylusTool::Pen);
+        else if(mode==1)dc->setStylusTool(UBStylusTool::Marker);
+        else dc->setLineTool(mode==3);
+        dc->setColorIndex(mode%2);dc->setLineWidthIndex(mode%3);
+        scene->inputDevicePress(QPointF(-200,-150+mode*60));
+        scene->inputDeviceMove(QPointF(-160,-140+mode*60));
+        scene->inputDeviceMove(QPointF(-100,-150+mode*60));scene->inputDeviceRelease();
+    }
+    const QByteArray data="<svg xmlns='http://www.w3.org/2000/svg' width='100' height='80' viewBox='0 0 100 80'><metadata id='teaching-shape'>0</metadata><g stroke='#000000' stroke-width='3' fill='#ffdd00'><rect x='12' y='12' width='76' height='56'/></g></svg>";
+    auto shape=scene->addSvg(QUrl(),QPointF(100,0),data);shape->setTransform(QTransform().scale(1.4,.8));
+    const auto shapeBefore=shape->fileData();const auto shapeTransform=shape->sceneTransform();
+    auto picture=scene->addSvg(QUrl(),QPointF(250,0),QByteArray("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#abcdef'/></svg>"));
+    const auto pictureBefore=picture->fileData();
+    struct Snapshot {UBGraphicsPolygonItem *item;QPolygonF geometry;QColor color,light,dark;};QList<Snapshot> ink;
+    for(auto item:scene->items())if(auto polygon=dynamic_cast<UBGraphicsPolygonItem*>(item))
+        ink.append({polygon,polygon->polygon(),polygon->color(),polygon->colorOnLightBackground(),polygon->colorOnDarkBackground()});
+    if(ink.isEmpty())return fail("Recolour test did not create ink");
+    dc->setStylusTool(UBStylusTool::Selector);scene->clearSelection();
+    for(auto item:scene->items())if(item->type()==UBGraphicsStrokesGroup::Type)item->setSelected(true);
+    shape->setSelected(true);picture->setSelected(true);const auto selected=scene->selectedItems();
+    // Use the same swatch handler as the bottom toolbar, including its tool routing.
+    auto select=window->findChild<QToolButton*>("paper-actionSelector");auto swatch=window->findChild<QToolButton*>("paperColour8");
+    if(!select||!swatch)return fail("Select colour tray is missing");
+    select->click();QApplication::processEvents();
+    if(!swatch->isVisible())return fail("Select did not expose colour swatches");
+    const int undoIndex=UBApplication::undoStack->index();swatch->click();
+    const auto light=settings->penColors(false).at(8),dark=settings->penColors(true).at(8);
+    const auto afterSelection=scene->selectedItems();
+    if(dc->stylusTool()!=UBStylusTool::Selector||QSet<QGraphicsItem*>(afterSelection.begin(),afterSelection.end())!=QSet<QGraphicsItem*>(selected.begin(),selected.end())||UBApplication::undoStack->index()!=undoIndex+1)
+        return fail("Recolour switched tools, lost selection, or created multiple undo steps");
+    for(const auto &entry:ink){auto expected=light;expected.setAlpha(entry.color.alpha());
+        if(entry.item->color()!=expected||entry.item->polygon()!=entry.geometry)return fail("Recolour changed ink geometry, opacity, or the wrong colour");}
+    QDomDocument changed;changed.setContent(shape->fileData());const auto group=changed.elementsByTagName("g").at(0).toElement();
+    if(group.attribute("stroke")!=light.name()||group.attribute("fill")!="#ffdd00"||group.attribute("stroke-width")!="3"||shape->sceneTransform()!=shapeTransform||picture->fileData()!=pictureBefore)
+        return fail("Recolour changed shape fill/geometry or an ordinary image");
+    board->setColorIndex(8);if(UBApplication::undoStack->index()!=undoIndex+1)return fail("Identical recolour added an undo step");
+    UBApplication::undoStack->undo();
+    for(const auto &entry:ink)if(entry.item->color()!=entry.color||entry.item->colorOnLightBackground()!=entry.light||entry.item->colorOnDarkBackground()!=entry.dark)return fail("Undo did not restore individual original ink colours");
+    if(shape->fileData()!=shapeBefore)return fail("Undo did not restore shape outline");
+    UBApplication::undoStack->redo();
+    scene->setBackground(true,plain);
+    for(const auto &entry:ink){auto expected=dark;expected.setAlpha(entry.color.alpha());if(entry.item->color()!=expected)return fail("Dark background lost recoloured ink");}
+    UBApplication::undoStack->undo();
+    for(const auto &entry:ink){const auto expected=(entry.color==entry.light||entry.color==entry.dark)?entry.dark:entry.color;if(entry.item->color()!=expected)return fail("Undo on dark background restored a light-only colour");}
+    UBApplication::undoStack->redo();
+    for(const auto &entry:ink){auto expected=dark;expected.setAlpha(entry.color.alpha());if(entry.item->color()!=expected)return fail("Redo on dark background restored a light-only colour");}
+    scene->setBackground(false,plain);
+    UBSvgSubsetAdaptor::persistScene(document,scene,0);auto reopened=UBSvgSubsetAdaptor::loadScene(document,0);
+    if(!reopened)return fail("Recoloured lesson did not reopen");
+    int count=0,shapes=0;
+    for(auto item:reopened->items()){
+        if(auto polygon=dynamic_cast<UBGraphicsPolygonItem*>(item)){++count;if(polygon->color().rgb()!=light.rgb())return fail("Saved ink lost its recolour");}
+        if(auto svg=dynamic_cast<UBGraphicsSvgItem*>(item);svg&&svg->isTeachingShape()){++shapes;QDomDocument doc;doc.setContent(svg->fileData());if(doc.elementsByTagName("g").at(0).toElement().attribute("stroke")!=light.name())return fail("Saved shape lost its recolour");}
+    }
+    if(count!=ink.size()||shapes!=1)return fail("Saving recoloured objects lost content");
+    scene->clearSelection();const int emptyIndex=UBApplication::undoStack->index();board->setColorIndex(1);
+    if(dc->stylusTool()!=UBStylusTool::Selector||UBApplication::undoStack->index()!=emptyIndex)return fail("Empty selection changed tools or undo history");
     return true;
 }
 bool coverWorkflow(UBLessonTools *tools,QString *error)
@@ -375,8 +444,8 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
     if(mode=="exercise"){
         if(!colourMemory(true,&error)){done(false,error);return;}
         report["colourWidthMemoryChecked"]=true;
-        if(!coverWorkflow(tools,&error)||!penToolbarWorkflow(&error)){done(false,error);return;}
-        report["coverToolbarChecked"]=true;report["penToolbarCustomizationChecked"]=true;
+        if(!selectionColourWorkflow(&error)||!coverWorkflow(tools,&error)||!penToolbarWorkflow(&error)){done(false,error);return;}
+        report["selectionColourChecked"]=true;report["coverToolbarChecked"]=true;report["penToolbarCustomizationChecked"]=true;
         auto dc=UBDrawingController::drawingController();
         auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Lesson tools regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setBackground(false,plain);scene->setNominalSize(800,600);
         auto text=scene->addText("Version one",QPointF(-250,-200));auto cover=tools->addCover();auto second=tools->addCover();if(!cover||!second){done(false,"Cover creation failed");return;}cover->setCoverLocked(false);cover->setPos(-180,-80);cover->setScale(1);cover->setTransform(QTransform());second->setCoverLocked(false);second->setPos(180,100);second->setScale(.5);second->setRotation(15);tools->setCoverRevealed(second,true);

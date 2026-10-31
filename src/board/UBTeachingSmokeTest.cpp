@@ -197,6 +197,7 @@ bool checkSelectionOrigin(QString *error)
             const QByteArray svg="<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#147d92'/></svg>";
             auto inside=scene->addSvg(QUrl(),view->mapToScene(QPoint(280,200)),svg);
             auto outside=scene->addSvg(QUrl(),view->mapToScene(QPoint(80,200)),svg);
+            auto partial=scene->addSvg(QUrl(),view->mapToScene(QPoint(360,200)),svg);
             for(bool reverse : {false,true}) {
                 window->actionSelector->trigger();scene->deselectAllItems();
                 const QPoint start=reverse?last:first,end=reverse?first:last;
@@ -206,7 +207,7 @@ bool checkSelectionOrigin(QString *error)
                 QApplication::sendEvent(view->viewport(),&move);
                 QRubberBand *band=nullptr;for(auto candidate:view->findChildren<QRubberBand*>())if(candidate->isVisible())band=candidate;
                 const QRect expected=QRect(start,end).normalized();
-                if(!band||band->mapToGlobal(QPoint())!=view->viewport()->mapToGlobal(expected.topLeft())||band->size()!=expected.size()||!inside->isSelected()||outside->isSelected()) {
+                if(!band||band->mapToGlobal(QPoint())!=view->viewport()->mapToGlobal(expected.topLeft())||band->size()!=expected.size()||!inside->isSelected()||outside->isSelected()||partial->isSelected()) {
                     good=false;failure=QString("Selection rectangle origin or hit test mismatch (Pages=%1, zoom=%2, reverse=%3)").arg(pages).arg(zoom).arg(reverse);
                 }
                 if(pages&&zoom==1.0&&!reverse)window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("selection-origin-window.png"));
@@ -215,7 +216,7 @@ bool checkSelectionOrigin(QString *error)
                 if(view->findChild<QRubberBand*>()) {good=false;failure="Selection rectangle remained after pointer release";}
             }
             // UBCoreGraphicsScene owns detached items until scene teardown.
-            scene->removeItem(inside);scene->removeItem(outside);
+            scene->removeItem(inside);scene->removeItem(outside);scene->removeItem(partial);
         }
     }
     scene->setURStackEnable(undoEnabled);
