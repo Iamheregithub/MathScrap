@@ -139,6 +139,23 @@ bool selectionColourWorkflow(QString *error)
     UBApplication::undoStack->redo();
     for(const auto &entry:ink){auto expected=dark;expected.setAlpha(entry.color.alpha());if(entry.item->color()!=expected)return fail("Redo on dark background restored a light-only colour");}
     scene->setBackground(false,plain);
+#if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
+    // A Huion-style tablet event may be delivered to the canvas beneath the tray.
+    // Verify both that route and direct delivery to the swatch widget.
+    for(bool deliveredToCanvas : {true,false}){
+        const int index=UBApplication::undoStack->index();
+        select->click();QApplication::processEvents();
+        if(!swatch->isVisible()){select->click();QApplication::processEvents();}
+        auto target=window->findChild<QToolButton*>("paperColour1");
+        const auto global=target->mapToGlobal(target->rect().center());
+        auto receiver=deliveredToCanvas?board->controlView()->viewport():static_cast<QWidget*>(target);
+        auto send=[&](QEvent::Type type){QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),receiver->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);QApplication::sendEvent(receiver,&event);};
+        send(QEvent::TabletPress);send(QEvent::TabletRelease);QApplication::processEvents();
+        if(dc->stylusTool()!=UBStylusTool::Selector||UBApplication::undoStack->index()!=index+1||!shape->isSelected())return fail("Tablet recolour lost selection, changed tools, or failed to add one undo action");
+        for(const auto &entry:ink){auto expected=settings->penColors(false).at(1);expected.setAlpha(entry.color.alpha());if(entry.item->color()!=expected)return fail("Tablet swatch did not recolour selected ink");}
+        UBApplication::undoStack->undo();
+    }
+#endif
     UBSvgSubsetAdaptor::persistScene(document,scene,0);auto reopened=UBSvgSubsetAdaptor::loadScene(document,0);
     if(!reopened)return fail("Recoloured lesson did not reopen");
     int count=0,shapes=0;
