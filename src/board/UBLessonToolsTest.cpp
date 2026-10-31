@@ -156,6 +156,7 @@ bool selectionColourWorkflow(QString *error)
         UBApplication::undoStack->undo();
     }
 #endif
+    window->grab().save(QFileInfo(qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_REPORT")).dir().filePath("selection-colour-window.png"));
     UBSvgSubsetAdaptor::persistScene(document,scene,0);auto reopened=UBSvgSubsetAdaptor::loadScene(document,0);
     if(!reopened)return fail("Recoloured lesson did not reopen");
     int count=0,shapes=0;
@@ -459,9 +460,12 @@ void run(){const QString mode=qEnvironmentVariable("LESSONBOARD_TOOLS_TEST_MODE"
         done(true,"Normal window close saved text and pen strokes; restart found a clean session and no recovery prompt condition");return;
     }
     if(mode=="exercise"){
+        // Recolour fixtures exercise several drawing widths. Run them before
+        // seeding the per-colour favourites that the crash/restart test checks.
+        if(!selectionColourWorkflow(&error)){done(false,error);return;}
         if(!colourMemory(true,&error)){done(false,error);return;}
         report["colourWidthMemoryChecked"]=true;
-        if(!selectionColourWorkflow(&error)||!coverWorkflow(tools,&error)||!penToolbarWorkflow(&error)){done(false,error);return;}
+        if(!coverWorkflow(tools,&error)||!penToolbarWorkflow(&error)){done(false,error);return;}
         report["selectionColourChecked"]=true;report["coverToolbarChecked"]=true;report["penToolbarCustomizationChecked"]=true;
         auto dc=UBDrawingController::drawingController();
         auto doc=manager->createNewDocument(UBPersistenceManager::myDocumentsName,"Lesson tools regression",true);board->setActiveDocumentScene(doc,0);auto scene=board->activeScene();scene->setBackground(false,plain);scene->setNominalSize(800,600);
