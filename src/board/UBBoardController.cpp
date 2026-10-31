@@ -30,6 +30,7 @@
 #include "UBBoardController.h"
 #include "core/UBInputActivity.h"
 #include "UBTeachingTools.h"
+#include "domain/UBSelectionColorUndoCommand.h"
 
 #include <QtWidgets>
 
@@ -2157,14 +2158,15 @@ void UBBoardController::setColorIndex(int pColorIndex)
         mPenColorOnDarkBackground = UBSettings::settings()->penColors(true).at(pColorIndex);
         mPenColorOnLightBackground = UBSettings::settings()->penColors(false).at(pColorIndex);
 
-        if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector)
+        if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector && mActiveScene)
         {
-            // If we are in mode board, then do that
-            if(UBApplication::applicationController->displayMode() == UBApplicationController::Board)
-            {
-                UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Pen);
-                mMainWindow->actionPen->setChecked(true);
-            }
+            auto command = new UBSelectionColorUndoCommand(mActiveScene,
+                mPenColorOnLightBackground, mPenColorOnDarkBackground);
+            if (command->hasChanges()) {
+                if (mActiveScene->isURStackIsEnabled() && UBApplication::undoStack)
+                    UBApplication::undoStack->push(command);
+                else { command->redo(); delete command; }
+            } else delete command;
         }
 
         emit penColorChanged();
