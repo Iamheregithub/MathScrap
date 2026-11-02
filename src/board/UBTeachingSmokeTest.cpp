@@ -936,7 +936,7 @@ bool checkEraseAll(QString *error)
     auto eraser=window->findChild<QToolButton*>("paper-actionEraser");auto viewport=board->controlView()->viewport();
     if(!eraser||!eraser->isVisible())return fail("Erase All regression cannot reach Eraser");
     auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
-    auto tap=[&]{const QPoint global=eraser->mapToGlobal(eraser->rect().center());
+    auto tap=[&](QToolButton *target){const QPoint global=target->mapToGlobal(target->rect().center());
         for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
             QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);
@@ -961,14 +961,16 @@ bool checkEraseAll(QString *error)
     auto overlaysPreserved=[&]{return protectedCover->scene()==scene&&protectedShade->scene()==scene&&protectedCover->fileData()==coverData&&protectedShade->fileData()==shadeData&&protectedCover->pos()==coverPos&&protectedShade->pos()==shadePos&&protectedCover->Delegate()->isLocked()&&protectedShade->Delegate()->isLocked();};
     const auto before=render();const int strokeCount=strokes(),undo=UBApplication::undoStack->index();
     if(strokeCount<2)return fail("Erase All fixture did not create ink and highlighting");
-    tap();tap();settle(QApplication::doubleClickInterval()+80);
-    if(eraser->text()!=QObject::tr("Erase All")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Stylus double-tap to Erase All modified the page");
-    tap();settle(QApplication::doubleClickInterval()+80);const auto after=render();
+    tap(eraser);tap(eraser);settle(QApplication::doubleClickInterval()+80);
+    if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Double-tapping Eraser changed its mode or modified the page");
+    auto eraseAll=window->findChild<QToolButton*>("paper-actionPaperEraseAll");
+    if(!eraseAll||!eraseAll->isVisible())return fail("Separate Erase All button is missing");
+    tap(eraseAll);settle(80);const auto after=render();
     if(!overlaysPreserved()||strokes()!=0||shape->scene()!=scene||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
     UBApplication::undoStack->undo();if(render()!=before||strokes()!=strokeCount)return fail("Erase All Undo did not restore handwriting and highlighting");
     UBApplication::undoStack->redo();if(render()!=after||strokes()!=0)return fail("Erase All Redo did not restore cleared result");
     UBApplication::undoStack->undo();const int restoredUndo=UBApplication::undoStack->index();
-    tap();tap();settle(QApplication::doubleClickInterval()+80);
+    tap(eraser);tap(eraser);settle(QApplication::doubleClickInterval()+80);
     if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=restoredUndo||dc->stylusTool()!=UBStylusTool::Eraser)return fail("Stylus double-tap back to Eraser cleared ink or failed to select Eraser");
     board->clearScene();if(!overlaysPreserved())return fail("Clear Page removed or changed a cover or screen shade");
     window->actionPen->trigger();window->setProperty("eraseAllChecked",true);return true;
