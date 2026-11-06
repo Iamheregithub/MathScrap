@@ -112,7 +112,7 @@ bool UBImportCFF::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocument, 
     UBApplication::showMessage(tr("Importing file %1...").arg(fi.baseName()), true);
 
     QTemporaryDir temporary;
-    const QString contentFile = cffContentFile(pFile, temporary);
+    QString contentFile = cffContentFile(pFile, temporary);
 
     if(!contentFile.length()){
             UBApplication::showMessage(tr("Import of file %1 failed.").arg(fi.baseName()));
@@ -151,7 +151,7 @@ std::shared_ptr<UBDocumentProxy> UBImportCFF::importFile(const QFile& pFile, con
     UBApplication::showMessage(tr("Importing file %1...").arg(fi.baseName()), true);
 
     QTemporaryDir temporary;
-    const QString contentFile = cffContentFile(pFile, temporary);
+    QString contentFile = cffContentFile(pFile, temporary);
 
     if(!contentFile.length()){
             UBApplication::showMessage(tr("Import of file %1 failed.").arg(fi.baseName()));
