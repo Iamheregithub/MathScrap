@@ -49,7 +49,6 @@ class UBImportCFF : public UBDocumentBasedImportAdaptor
         virtual std::shared_ptr<UBDocumentProxy> importFile(const QFile& pFile, const QString& pGroup);
 
     private:
-        QString expandFileToDir(const QFile& pZipFile, const QString& pDir);
 };
 
 #endif // UBIMPORTCFF_H

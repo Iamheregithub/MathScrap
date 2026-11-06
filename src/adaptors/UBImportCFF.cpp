@@ -28,6 +28,8 @@
 
 #include <QDir>
 #include <QList>
+#include <QTemporaryDir>
+#include <QXmlStreamReader>
 
 #include "core/UBApplication.h"
 #include "core/UBPersistenceManager.h"
@@ -42,18 +44,6 @@
 #include "UBImportCFF.h"
 
 #include "globals/UBGlobals.h"
-
-//THIRD_PARTY_WARNINGS_DISABLE
-#ifdef Q_OS_OSX
-    #include <quazip.h>
-    #include <quazipfile.h>
-    #include <quazipfileinfo.h>
-#else
-    #include "quazip.h"
-    #include "quazipfile.h"
-    #include "quazipfileinfo.h"
-#endif
-//THIRD_PARTY_WARNINGS_ENABLE
 
 #include "core/memcheck.h"
 
@@ -97,21 +87,32 @@ QString UBImportCFF::importFileFilter()
     return filter;
 }
 
+namespace
+{
+QString cffContentFile(const QFile &file, const QTemporaryDir &temporary)
+{
+    // Standalone CFF XML is supported alongside packaged IWB files.
+    QFile source(file.fileName());
+    if (source.open(QIODevice::ReadOnly))
+    {
+        QXmlStreamReader xml(&source);
+        if (xml.readNextStartElement())
+            return file.fileName();
+    }
+
+    if (!temporary.isValid() || !UBFileSystemUtils::expandZipToDir(file, QDir(temporary.path())))
+        return {};
+    return QDir(temporary.path()).filePath("content.xml");
+}
+}
+
 bool UBImportCFF::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocument, const QFile& pFile)
 {
     QFileInfo fi(pFile);
     UBApplication::showMessage(tr("Importing file %1...").arg(fi.baseName()), true);
 
-    // first unzip the file to the correct place
-    //TODO create temporary path for iwb file content
-    QString path = QDir::tempPath();
-
-    QString documentRootFolder = expandFileToDir(pFile, path);
-        QString contentFile;
-    if (documentRootFolder.isEmpty()) //if file has failed to unzip it is probably just xml file
-        contentFile = pFile.fileName();
-    else //get path to content xml (according to iwbcff specification)
-        contentFile = documentRootFolder.append("/content.xml");
+    QTemporaryDir temporary;
+    QString contentFile = cffContentFile(pFile, temporary);
 
     if(!contentFile.length()){
             UBApplication::showMessage(tr("Import of file %1 failed.").arg(fi.baseName()));
@@ -126,9 +127,9 @@ bool UBImportCFF::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocument, 
         dir.mkdir(destDocument->persistencePath());
 
         //try to import cff to document
-        if (UBCFFSubsetAdaptor::ConvertCFFFileToUbz(contentFile, destDocument))
+        if (UBCFFSubsetAdaptor::ConvertCFFFileToUbz(contentFile, destDocument) &&
+            UBPersistenceManager::persistenceManager()->addDirectoryContentToDocument(destDocument->persistencePath(), pDocument))
         {
-            UBPersistenceManager::persistenceManager()->addDirectoryContentToDocument(destDocument->persistencePath(), pDocument);
             UBFileSystemUtils::deleteDir(destDocument->persistencePath());
             UBApplication::showMessage(tr("Import successful."));
             return true;
@@ -142,102 +143,6 @@ bool UBImportCFF::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocument, 
     }
 }
 
-QString UBImportCFF::expandFileToDir(const QFile& pZipFile, const QString& pDir)
-{
-    QuaZip zip(pZipFile.fileName());
-
-    if(!zip.open(QuaZip::mdUnzip)) {
-        qWarning() << "Import failed. Cause zip.open(): " << zip.getZipError();
-        return "";
-    }
-
-    zip.setFileNameCodec("UTF-8");
-    QuaZipFileInfo info;
-    QuaZipFile file(&zip);
-
-    //create unique cff document root fodler
-    //use current date/time and temp number for folder name
-    QString documentRootFolder;
-    int tmpNumber = 0;
-    QDir rootDir;
-    while (true) {
-        QString tempPath = QString("%1/sank%2.%3")
-                .arg(pDir)
-                .arg(QDateTime::currentDateTime().toString("dd_MM_yyyy_HH-mm"))
-                .arg(tmpNumber);
-        if (!rootDir.exists(tempPath)) {
-            documentRootFolder = tempPath;
-            break;
-        }
-        tmpNumber++;
-        if (tmpNumber == 100000) {
-            qWarning() << "Import failed. Failed to create temporary directory for iwb file";
-            return "";
-        }
-    }
-    if (!rootDir.mkdir(documentRootFolder)) {
-        qWarning() << "Import failed. Couse: failed to create temp folder for cff package";
-    }
-
-    QFile out;
-    char c;
-    for(bool more=zip.goToFirstFile(); more; more=zip.goToNextFile()) {
-        if(!zip.getCurrentFileInfo(&info)) {
-            //TOD UB 4.3 O display error to user or use crash reporter
-            qWarning() << "Import failed. Cause: getCurrentFileInfo(): " << zip.getZipError();
-            return "";
-        }
-//        if(!file.open(QIODevice::ReadOnly)) {
-//            qWarning() << "Import failed. Cause: file.open(): " << zip.getZipError();
-//            return "";
-//        }
-        file.open(QIODevice::ReadOnly);
-        if(file.getZipError()!= UNZ_OK) {
-            qWarning() << "Import failed. Cause: file.getFileName(): " << zip.getZipError();
-            return "";
-        }
-
-        QString newFileName = documentRootFolder + "/" + file.getActualFileName();
-
-        QFileInfo newFileInfo(newFileName);
-        rootDir.mkpath(newFileInfo.absolutePath());
-
-        out.setFileName(newFileName);
-        out.open(QIODevice::WriteOnly);
-
-        while(file.getChar(&c))
-            out.putChar(c);
-
-        out.close();
-
-        if(file.getZipError()!=UNZ_OK) {
-            qWarning() << "Import failed. Cause: " << zip.getZipError();
-            return "";
-        }
-        if(!file.atEnd()) {
-            qWarning() << "Import failed. Cause: read all but not EOF";
-            return "";
-        }
-
-        file.close();
-
-        if(file.getZipError()!=UNZ_OK) {
-            qWarning() << "Import failed. Cause: file.close(): " <<  file.getZipError();
-            return "";
-        }
-    }
-
-    zip.close();
-
-    if(zip.getZipError()!=UNZ_OK) {
-        qWarning() << "Import failed. Cause: zip.close(): " << zip.getZipError();
-        return "";
-    }
-
-    return documentRootFolder;
-}
-
-
 std::shared_ptr<UBDocumentProxy> UBImportCFF::importFile(const QFile& pFile, const QString& pGroup)
 {
     Q_UNUSED(pGroup); // group is defined in the imported file
@@ -245,18 +150,8 @@ std::shared_ptr<UBDocumentProxy> UBImportCFF::importFile(const QFile& pFile, con
     QFileInfo fi(pFile);
     UBApplication::showMessage(tr("Importing file %1...").arg(fi.baseName()), true);
 
-    // first unzip the file to the correct place
-    //TODO create temporary path for iwb file content
-    QString path = QDir::tempPath();
-
-    QString documentRootFolder = expandFileToDir(pFile, path);
-    QString contentFile;
-    if (documentRootFolder.isEmpty())
-        //if file has failed to umzip it is probably just xml file
-        contentFile = pFile.fileName();
-    else
-        //get path to content xml
-        contentFile = QString("%1/content.xml").arg(documentRootFolder);
+    QTemporaryDir temporary;
+    QString contentFile = cffContentFile(pFile, temporary);
 
     if(!contentFile.length()){
             UBApplication::showMessage(tr("Import of file %1 failed.").arg(fi.baseName()));
@@ -295,8 +190,6 @@ std::shared_ptr<UBDocumentProxy> UBImportCFF::importFile(const QFile& pFile, con
             UBApplication::showMessage(tr("Import failed."));
         }
 
-        if (documentRootFolder.length() != 0)
-            UBFileSystemUtils::deleteDir(documentRootFolder);
         return newDocument;
     }
 }

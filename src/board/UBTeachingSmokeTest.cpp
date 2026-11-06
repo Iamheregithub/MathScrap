@@ -197,6 +197,7 @@ bool checkSelectionOrigin(QString *error)
             const QByteArray svg="<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#147d92'/></svg>";
             auto inside=scene->addSvg(QUrl(),view->mapToScene(QPoint(280,200)),svg);
             auto outside=scene->addSvg(QUrl(),view->mapToScene(QPoint(80,200)),svg);
+            auto partial=scene->addSvg(QUrl(),view->mapToScene(QPoint(360,200)),svg);
             for(bool reverse : {false,true}) {
                 window->actionSelector->trigger();scene->deselectAllItems();
                 const QPoint start=reverse?last:first,end=reverse?first:last;
@@ -206,7 +207,7 @@ bool checkSelectionOrigin(QString *error)
                 QApplication::sendEvent(view->viewport(),&move);
                 QRubberBand *band=nullptr;for(auto candidate:view->findChildren<QRubberBand*>())if(candidate->isVisible())band=candidate;
                 const QRect expected=QRect(start,end).normalized();
-                if(!band||band->mapToGlobal(QPoint())!=view->viewport()->mapToGlobal(expected.topLeft())||band->size()!=expected.size()||!inside->isSelected()||outside->isSelected()) {
+                if(!band||band->mapToGlobal(QPoint())!=view->viewport()->mapToGlobal(expected.topLeft())||band->size()!=expected.size()||!inside->isSelected()||outside->isSelected()||partial->isSelected()) {
                     good=false;failure=QString("Selection rectangle origin or hit test mismatch (Pages=%1, zoom=%2, reverse=%3)").arg(pages).arg(zoom).arg(reverse);
                 }
                 if(pages&&zoom==1.0&&!reverse)window->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("selection-origin-window.png"));
@@ -215,7 +216,7 @@ bool checkSelectionOrigin(QString *error)
                 if(view->findChild<QRubberBand*>()) {good=false;failure="Selection rectangle remained after pointer release";}
             }
             // UBCoreGraphicsScene owns detached items until scene teardown.
-            scene->removeItem(inside);scene->removeItem(outside);
+            scene->removeItem(inside);scene->removeItem(outside);scene->removeItem(partial);
         }
     }
     scene->setURStackEnable(undoEnabled);
@@ -628,6 +629,44 @@ bool checkPaperInk(QString *error)
             if(dialog->findChild<QPushButton*>("workspaceRemove")->text()!=QObject::tr("Remove from toolbar")){dialog->reject();return;}
             preview->item(0)->setSelected(true);dialog->findChild<QPushButton*>("workspaceRemove")->click();cancelled=true;dialog->grab().save(QFileInfo(qEnvironmentVariable("TEACHING_SMOKE_REPORT")).dir().filePath("workspace-customize-window.png"));}if(dialog)dialog->reject();});
     window->findChild<QAction*>("actionTeachingCustomize")->trigger();if(!cancelled||settings->value("Teaching/BottomOrder")!=savedOrder)return fail("Cancel changed the saved workspace arrangement");
+    const QString eraseAllId = "actionPaperEraseAll";
+    const QString eraseAllKey = "Teaching/Bottom/" + eraseAllId;
+    const auto savedEraseAll = settings->value(eraseAllKey, true);
+    auto changeEraseAllVisibility = [&](bool show) {
+        bool moved = false;
+        QTimer::singleShot(0, window, [&] {
+            auto dialog = qobject_cast<QDialog*>(QApplication::activeModalWidget());
+            if (!dialog)
+                return;
+            auto from = dialog->findChild<QListWidget*>(show ? "workspaceAvailableTools" : "workspaceToolbarPreview");
+            auto move = dialog->findChild<QPushButton*>(show ? "workspaceAdd" : "workspaceRemove");
+            if (from && move)
+            {
+                for (int i = 0; i < from->count(); ++i)
+                {
+                    if (from->item(i)->data(Qt::UserRole).toString() == eraseAllId)
+                    {
+                        from->item(i)->setSelected(true);
+                        move->click();
+                        moved = true;
+                        break;
+                    }
+                }
+            }
+            dialog->accept();
+        });
+        window->findChild<QAction*>("actionTeachingCustomize")->trigger();
+        const bool present = dock->findChild<QToolButton*>("paper-" + eraseAllId) != nullptr;
+        return moved && present == show && settings->value(eraseAllKey).toBool() == show;
+    };
+    const bool removedEraseAll = changeEraseAllVisibility(false);
+    const bool restoredEraseAll = changeEraseAllVisibility(true);
+    settings->setValue(eraseAllKey, savedEraseAll);
+    settings->setValue("Teaching/BottomOrder", savedOrder);
+    settings->save();
+    paper->applyPreferences();
+    if (!removedEraseAll || !restoredEraseAll)
+        return fail("Customize workspace could not remove and restore Erase All");
     bool contextOpened=false;
     QTimer::singleShot(0,window,[&]{if(auto dialog=qobject_cast<QDialog*>(QApplication::activeModalWidget())){contextOpened=dialog->objectName()=="customizeWorkspace";dialog->reject();}});
     dock->customContextMenuRequested(QPoint(5,5));if(!contextOpened)return fail("Right-click pen toolbar customization is unavailable");
@@ -935,7 +974,7 @@ bool checkEraseAll(QString *error)
     auto eraser=window->findChild<QToolButton*>("paper-actionEraser");auto viewport=board->controlView()->viewport();
     if(!eraser||!eraser->isVisible())return fail("Erase All regression cannot reach Eraser");
     auto settle=[](int ms){QEventLoop loop;QTimer::singleShot(ms,&loop,&QEventLoop::quit);loop.exec();};
-    auto tap=[&]{const QPoint global=eraser->mapToGlobal(eraser->rect().center());
+    auto tap=[&](QToolButton *target){const QPoint global=target->mapToGlobal(target->rect().center());
         for(auto type:{QEvent::TabletPress,QEvent::TabletRelease}){
 #if QT_VERSION >= QT_VERSION_CHECK(6,0,0)
             QTabletEvent event(type,QPointingDevice::primaryPointingDevice(),viewport->mapFromGlobal(global),global,type==QEvent::TabletRelease?0:.8,0,0,0,0,0,Qt::NoModifier,Qt::LeftButton,type==QEvent::TabletRelease?Qt::NoButton:Qt::LeftButton);
@@ -960,14 +999,16 @@ bool checkEraseAll(QString *error)
     auto overlaysPreserved=[&]{return protectedCover->scene()==scene&&protectedShade->scene()==scene&&protectedCover->fileData()==coverData&&protectedShade->fileData()==shadeData&&protectedCover->pos()==coverPos&&protectedShade->pos()==shadePos&&protectedCover->Delegate()->isLocked()&&protectedShade->Delegate()->isLocked();};
     const auto before=render();const int strokeCount=strokes(),undo=UBApplication::undoStack->index();
     if(strokeCount<2)return fail("Erase All fixture did not create ink and highlighting");
-    tap();tap();settle(QApplication::doubleClickInterval()+80);
-    if(eraser->text()!=QObject::tr("Erase All")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Stylus double-tap to Erase All modified the page");
-    tap();settle(QApplication::doubleClickInterval()+80);const auto after=render();
+    tap(eraser);tap(eraser);settle(QApplication::doubleClickInterval()+80);
+    if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=undo)return fail("Double-tapping Eraser changed its mode or modified the page");
+    auto eraseAll=window->findChild<QToolButton*>("paper-actionPaperEraseAll");
+    if(!eraseAll||!eraseAll->isVisible())return fail("Separate Erase All button is missing");
+    tap(eraseAll);settle(80);const auto after=render();
     if(!overlaysPreserved()||strokes()!=0||shape->scene()!=scene||after==before||UBApplication::undoStack->index()!=undo+1)return fail("Stylus Erase All did not remove only annotations in one undo step");
     UBApplication::undoStack->undo();if(render()!=before||strokes()!=strokeCount)return fail("Erase All Undo did not restore handwriting and highlighting");
     UBApplication::undoStack->redo();if(render()!=after||strokes()!=0)return fail("Erase All Redo did not restore cleared result");
     UBApplication::undoStack->undo();const int restoredUndo=UBApplication::undoStack->index();
-    tap();tap();settle(QApplication::doubleClickInterval()+80);
+    tap(eraser);tap(eraser);settle(QApplication::doubleClickInterval()+80);
     if(eraser->text()!=QObject::tr("Eraser")||render()!=before||UBApplication::undoStack->index()!=restoredUndo||dc->stylusTool()!=UBStylusTool::Eraser)return fail("Stylus double-tap back to Eraser cleared ink or failed to select Eraser");
     board->clearScene();if(!overlaysPreserved())return fail("Clear Page removed or changed a cover or screen shade");
     window->actionPen->trigger();window->setProperty("eraseAllChecked",true);return true;

@@ -261,6 +261,9 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     qApp->installEventFilter(this);
     applyLayout();
     auto paper=new UBPaperInk(mWindow);
+    auto eraseAll = mWindow->findChild<QAction*>("actionPaperEraseAll");
+    mBottom.insert(eraseAll->objectName(), eraseAll);
+    mDefaultBottom.insert(mDefaultBottom.indexOf("actionEraser") + 1, eraseAll->objectName());
     // Toolbar tablet routing goes first, then on-cover controls, then shape
     // drawing. A full-page shade must never swallow taps on the pen toolbar.
     if(auto lesson=mWindow->findChild<UBLessonTools*>()){qApp->removeEventFilter(lesson);qApp->installEventFilter(lesson);}
@@ -409,7 +412,7 @@ void UBTeachingTools::customize()
     auto search=new QLineEdit;search->setPlaceholderText(tr("Find a tool…"));search->setClearButtonEnabled(true);toolLayout->addWidget(search);
     auto available=new QListWidget;available->setObjectName("workspaceAvailableTools");available->setSelectionMode(QAbstractItemView::ExtendedSelection);available->setIconSize(QSize(26,26));available->setSpacing(4);toolLayout->addWidget(available,1);
     auto add=new QPushButton(tr("Add to toolbar"));add->setObjectName("workspaceAdd");toolLayout->addWidget(add,0,Qt::AlignRight);
-    auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out. Eraser: double-click or double-tap to switch to / from Erase All."));note->setWordWrap(true);toolLayout->addWidget(note);
+    auto note=new QLabel(tr("Line: double-click to switch solid / dashed. Zoom: double-click to switch in / out. Erase All has its own button beside Eraser."));note->setWordWrap(true);toolLayout->addWidget(note);
     auto covers=new QWidget;covers->setObjectName("workspaceCoverControls");auto coversLayout=new QVBoxLayout(covers);tabs->addTab(covers,tr("Covers"));
     auto coverHint=new QLabel(tr("Choose the default cover colour. Select a cover first to change its colour too."));coverHint->setWordWrap(true);coversLayout->addWidget(coverHint);
     for(const auto &id:{"lessonCoverColour"}){

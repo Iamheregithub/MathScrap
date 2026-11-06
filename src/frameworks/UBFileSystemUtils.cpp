@@ -30,6 +30,8 @@
 #include "UBFileSystemUtils.h"
 
 #include <QtGui>
+#include <QRegularExpression>
+#include <QSaveFile>
 
 #include "core/UBApplication.h"
 
@@ -745,101 +747,86 @@ bool UBFileSystemUtils::compressDirInZip(const QDir& pDir, const QString& pDestP
 
 bool UBFileSystemUtils::expandZipToDir(const QFile& pZipFile, const QDir& pTargetDir)
 {
-    QuaZip zip(pZipFile.fileName());
-
-    if(!zip.open(QuaZip::mdUnzip))
-    {
-        qWarning() << "ZIP expand failed. Cause zip.open(): " << zip.getZipError();
+    const QFileInfo rootInfo(pTargetDir.absolutePath());
+    if (!rootInfo.isDir() || rootInfo.isSymLink() || rootInfo.isJunction())
         return false;
-    }
 
+    QuaZip zip(pZipFile.fileName());
     zip.setFileNameCodec("UTF-8");
-    QuaZipFileInfo info;
+    if (!zip.open(QuaZip::mdUnzip) || !zip.goToFirstFile())
+        return false;
+
     QuaZipFile file(&zip);
-
-    QString documentRootFolder = pTargetDir.absolutePath();
-
-    if(!pTargetDir.exists())
-        pTargetDir.mkpath(documentRootFolder);
-
-    QFile out;
-    char c;
-    for(bool more = zip.goToFirstFile(); more; more = zip.goToNextFile())
+    do
     {
-        if(!zip.getCurrentFileInfo(&info))
-        {
-            //TOD UB 4.3 O display error to user or use crash reporter
-            qWarning() << "ZIP expand failed. Cause: getCurrentFileInfo(): " << zip.getZipError();
+        QuaZipFileInfo info;
+        if (!zip.getCurrentFileInfo(&info) || ((info.externalAttr >> 16) & 0170000) == 0120000)
             return false;
-        }
 
-        if(!file.open(QIODevice::ReadOnly))
+        QString name = info.name;
+        name.replace('\\', '/');
+        const bool directory = name.endsWith('/');
+        if (directory)
+            name.chop(1);
+
+        // Check each component before passing it to the filesystem. In
+        // particular, a ZIP can use Windows separators even on other systems.
+        const auto parts = name.split('/');
+        QDir parent = pTargetDir;
+        for (qsizetype i = 0; i < parts.size(); ++i)
         {
-            qWarning() << "ZIP expand failed. Cause: file.open(): " << zip.getZipError();
-            return false;
+            const QString &part = parts.at(i);
+            if (part.isEmpty() || part == "." || part == ".." ||
+                part.contains(':') || part.contains(QChar::Null))
+                return false;
+#ifdef Q_OS_WIN
+            static const QRegularExpression deviceName(
+                QStringLiteral("^(CON|PRN|AUX|NUL|CONIN\\$|CONOUT\\$|COM[0-9\u00b9\u00b2\u00b3]|LPT[0-9\u00b9\u00b2\u00b3])$"),
+                QRegularExpression::CaseInsensitiveOption);
+            if (part.endsWith('.') || part.endsWith(' ') ||
+                deviceName.match(part.section('.', 0, 0).trimmed()).hasMatch())
+                return false;
+#endif
+            const QFileInfo target(parent.filePath(part));
+            if (target.isSymLink() || target.isJunction())
+                return false;
+
+            if (directory || i + 1 < parts.size())
+            {
+                if ((!target.isDir() && !parent.mkdir(part)) || !parent.cd(part))
+                    return false;
+                continue;
+            }
+
+            if (target.exists() || !file.open(QIODevice::ReadOnly))
+                return false;
+
+            QSaveFile out(target.filePath());
+            if (!out.open(QIODevice::WriteOnly))
+                return false;
+
+            char buffer[64 * 1024];
+            qint64 size;
+            while ((size = file.read(buffer, sizeof(buffer))) > 0)
+            {
+                if (out.write(buffer, size) != size)
+                    return false;
+            }
+
+            if (size < 0 || file.getZipError() != UNZ_OK)
+                return false;
+            file.close();
+            if (file.getZipError() != UNZ_OK || !out.commit())
+                return false;
         }
+    } while (zip.goToNextFile());
 
-        if(file.getZipError()!= UNZ_OK)
-        {
-            qWarning() << "ZIP expand failed. Cause: file.getFileName(): " << zip.getZipError();
-            return false;
-        }
-
-        QString newFileName = documentRootFolder + "/" + file.getActualFileName();
-        QFileInfo newFileInfo(newFileName);
-        QDir root(documentRootFolder);
-        root.mkpath(newFileInfo.absolutePath());
-
-        out.setFileName(newFileName);
-        out.open(QIODevice::WriteOnly);
-
-        // Slow like hell (on GNU/Linux at least), but it is not my fault.
-        // Not ZIP/UNZIP package's fault either.
-        // The slowest thing here is out.putChar(c).
-        QByteArray outFileContent = file.readAll();
-        if (out.write(outFileContent) == -1)
-        {
-            // qWarning() << "ZIP expand failed. Cause: Unable to write file";
-            // this may happen if we are decompressing a directory
-        }
-
-        while(file.getChar(&c))
-            out.putChar(c);
-
-        out.close();
-
-        if(file.getZipError()!= UNZ_OK)
-        {
-            qWarning() << "ZIP expand failed. Cause: " << zip.getZipError();
-            return false;
-        }
-
-        if(!file.atEnd())
-        {
-            qWarning() << "ZIP expand failed. Cause: read all but not EOF";
-            return false;
-        }
-
-        file.close();
-
-        if(file.getZipError()!= UNZ_OK)
-        {
-            qWarning() << "ZIP expand failed. Cause: file.close(): " <<  file.getZipError();
-            return false;
-        }
-
-    }
-
+    if (zip.getZipError() != UNZ_OK && zip.getZipError() != UNZ_END_OF_LIST_OF_FILE)
+        return false;
     zip.close();
-
-    if(zip.getZipError()!= UNZ_OK)
-    {
-      qWarning() << "ZIP expand failed. Cause: zip.close(): " << zip.getZipError();
-      return false;
-    }
-
-    return true;
+    return zip.getZipError() == UNZ_OK;
 }
+
 
 QString UBFileSystemUtils::readTextFile(QString path)
 {

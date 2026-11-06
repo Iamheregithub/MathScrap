@@ -27,7 +27,7 @@ QIcon inkIcon(const QString &name)
         {"actionPen","M5 19l1-5L17 3l4 4L10 18z M14 6l4 4 M5 19l5-1"},
         {"actionMarker","M5 16l10-11 5 5-10 11z M3 21h8 M12 8l5 5"},
         {"actionEraser","M4 12l9-9 8 8-9 10H9z M8 17l8-8 M12 21h10"},
-        {"eraseAll","M4 10l7-7 7 7-7 7H9z M7 13l7-7 M3 21h18 M17 3l4 4 M21 3l-4 4"},
+        {"actionPaperEraseAll","M4 10l7-7 7 7-7 7H9z M7 13l7-7 M3 21h18 M17 3l4 4 M21 3l-4 4"},
         {"actionSelector","M5 3l14 11-7 1-3 7z"},
         {"actionLine","M4 20L20 4"},{"actionTeachingDash","M4 20l3-3 M10 14l3-3 M16 8l4-4"},
         {"actionTeachingShapes","M3 4h12v12H3z M16 9a6 6 0 1 1-5 7"},
@@ -89,9 +89,9 @@ public:
 };
 QString panelStyle(){return "QFrame#paperDock,QFrame#paperPenPanel {background:#fffdf7;border:1px solid #ddd7cb;border-radius:16px;} QToolButton {background:transparent;border:1px solid transparent;border-radius:9px;color:#273b3b;padding:5px;} QToolButton:hover {background:#eee9dd;} QToolButton:checked {background:#dceae4;border-color:#77a99a;} QToolButton:pressed {background:#c9ded4;} QLabel {color:#56625b;background:transparent;}";}
 }
-QStringList UBPaperInk::defaultTools(){return {"actionSelector","actionPen","actionMarker","actionEraser","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions","actionZoomIn"};}
+QStringList UBPaperInk::defaultTools(){return {"actionSelector","actionPen","actionMarker","actionEraser","actionPaperEraseAll","actionLine","actionTeachingShapes","actionLessonCover","actionText","actionTeachingFunctions","actionZoomIn"};}
 QString UBPaperInk::toolLabel(const QString &id){
-    const QMap<QString,QString> names={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")},{"actionZoomIn",tr("Zoom")}};
+    const QMap<QString,QString> names={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionPaperEraseAll",tr("Erase All")},{"actionLine",tr("Line")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")},{"actionZoomIn",tr("Zoom")}};
     return names.value(id);
 }
 QIcon UBPaperInk::toolIcon(const QString &id){return inkIcon(id);}
@@ -99,7 +99,6 @@ void UBPaperInk::applyPreferences(){
     // Applying customization rebuilds the buttons. Cancel any pending hover
     // before its anchor is destroyed, and close a tray opened by the old setting.
     closeTray();mHoverAnchor=nullptr;
-    if(mEraseAllTimer)mEraseAllTimer->stop();
     mPagesOpen=UBSettings::settings()->value("Teaching/PaperInkPages",true).toBool();
     mPageToggle->setChecked(mPagesOpen);rebuild();sync();
 }
@@ -110,19 +109,16 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
     auto zoom=source->objectName()=="actionZoomIn"?mWindow->actionZoomOut:nullptr;
     auto proxy=new QAction(b);proxy->setText(label);proxy->setToolTip(source->toolTip());
     auto update=[this,source,proxy,label,dash,zoom]{
-        const bool eraseAll=source->objectName()=="actionEraser"&&mEraseAllMode;
         const bool dashed=dash&&UBSettings::settings()->value("Teaching/DashedLines",false).toBool();
         const bool out=zoom&&UBSettings::settings()->value("Teaching/ZoomOutTool",false).toBool();
-        proxy->setText(eraseAll?tr("Erase All"):zoom?(out?tr("Zoom −"):tr("Zoom +")):dash?(dashed?tr("Dashed"):tr("Line")):label);
-        proxy->setIcon(inkIcon(eraseAll?QString("eraseAll"):out?QString("actionZoomOut"):dashed?QString("actionTeachingDash"):source->objectName()));
-        proxy->setToolTip(source->objectName()=="actionEraser"?(eraseAll?tr("Erase all handwriting and highlighting on this page (Undo restores it). Double-click or double-tap to return to Eraser."):tr("Eraser: double-click or double-tap to switch to Erase All")):zoom?tr("Zoom: click again to return to Select; double-click to switch in / out"):source->toolTip());
-        proxy->setEnabled(source->isEnabled());proxy->setCheckable(!eraseAll&&source->isCheckable());
-        proxy->setChecked(!eraseAll&&(source->isChecked()||(dash&&dash->isChecked())||(zoom&&zoom->isChecked())));
+        proxy->setText(zoom?(out?tr("Zoom −"):tr("Zoom +")):dash?(dashed?tr("Dashed"):tr("Line")):label);
+        proxy->setIcon(inkIcon(out?QString("actionZoomOut"):dashed?QString("actionTeachingDash"):source->objectName()));
+        proxy->setToolTip(zoom?tr("Zoom: click again to return to Select; double-click to switch in / out"):source->toolTip());
+        proxy->setEnabled(source->isEnabled());proxy->setCheckable(source->isCheckable());
+        proxy->setChecked((source->isChecked()||(dash&&dash->isChecked())||(zoom&&zoom->isChecked())));
     };
-    if(source->objectName()=="actionEraser")connect(this,&UBPaperInk::eraseAllModeChanged,b,update);
     connect(source,&QAction::changed,b,update);if(dash)connect(dash,&QAction::changed,b,update);if(zoom)connect(zoom,&QAction::changed,b,update);
     connect(proxy,&QAction::triggered,this,[this,source,b,dash,zoom,update]{
-        if(source->objectName()=="actionEraser"&&mEraseAllMode){closeTray();requestEraseAll();return;}
         const bool same=mTrayOpen&&mTrayAction==source->objectName()&&UBDrawingController::drawingController()->stylusTool()==trayTool();
         const int active=UBDrawingController::drawingController()->stylusTool();
         if(zoom&&(active==UBStylusTool::ZoomIn||active==UBStylusTool::ZoomOut))mWindow->actionSelector->trigger();
@@ -137,6 +133,23 @@ QToolButton *UBPaperInk::button(QAction *source,const QString &label,QWidget *pa
 }
 UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
 {
+    auto eraseAll=new QAction(tr("Erase All"),window);
+    eraseAll->setObjectName("actionPaperEraseAll");
+    eraseAll->setIcon(inkIcon("actionPaperEraseAll"));
+    eraseAll->setToolTip(tr("Erase all handwriting and highlighting on this page. Undo restores it."));
+    connect(eraseAll,&QAction::triggered,this,[this]{
+        closeTray();
+        if(auto scene=UBApplication::boardController->activeScene()){
+            scene->cancelCircleErase();
+            UBApplication::boardController->clearSceneAnnotation();
+        }
+    });
+    // Add the new button beside Eraser in existing customized tool orders.
+    auto order=UBSettings::settings()->value("Teaching/BottomOrder",defaultTools()).toStringList();
+    if(!order.contains("actionPaperEraseAll")){
+        order.insert(qMax(0,order.indexOf("actionEraser")+1),"actionPaperEraseAll");
+        UBSettings::settings()->setValue("Teaching/BottomOrder",order);
+    }
     setObjectName("paperInk");mWindow->setProperty("paperInk",true);
     auto settings=UBSettings::settings();mPagesOpen=settings->value("Teaching/PaperInkPages",true).toBool();
     if(!settings->value("Teaching/CombinedLineButton",false).toBool()){
@@ -195,14 +208,13 @@ UBPaperInk::UBPaperInk(UBMainWindow *window):QObject(window),mWindow(window)
     connect(mDock,&QWidget::customContextMenuRequested,this,[this]{mWindow->findChild<QAction*>("actionTeachingCustomize")->trigger();});auto dl=new QHBoxLayout(mDock);dl->setContentsMargins(10,7,10,7);dl->setSpacing(3);
     mPenPanel=new QFrame(view);mPenPanel->setObjectName("paperPenPanel");mPenPanel->setStyleSheet(panelStyle());auto penLayout=new QVBoxLayout(mPenPanel);penLayout->setContentsMargins(14,12,14,12);penLayout->setSpacing(9);
     auto colours=new QGridLayout;colours->setSpacing(7);penLayout->addLayout(colours);
-    for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBDrawingController::drawingController()->setColorIndex(i);});}
+    for(int i=0;i<10;++i){auto b=new QToolButton;b->setObjectName(QString("paperColour%1").arg(i));b->setCheckable(true);b->setFixedSize(34,32);b->setIconSize(QSize(22,22));colours->addWidget(b,i/5,i%5);mColours<<b;connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();UBApplication::boardController->setColorIndex(i);});}
     auto widths=new QHBoxLayout;penLayout->addLayout(widths);
     for(int i=0;i<3;++i){auto b=new QToolButton;b->setObjectName(QString("paperWidth%1").arg(i));b->setCheckable(true);b->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);b->setIconSize(QSize(48,18));b->setText(QStringList{tr("Thin"),tr("Medium"),tr("Thick")}[i]);widths->addWidget(b);mWidths<<b;
         connect(b,&QToolButton::clicked,this,[this,i]{selectTrayTool();auto dc=UBDrawingController::drawingController();if(dc->stylusTool()==UBStylusTool::Eraser)dc->setEraserWidthIndex(i);else dc->setLineWidthIndex(i);refreshPen();});}
     mHoverTimer=new QTimer(this);mHoverTimer->setSingleShot(true);mHoverTimer->setInterval(280);
     connect(mHoverTimer,&QTimer::timeout,this,[this]{if(UBSettings::settings()->value("Teaching/PenTrayHover",false).toBool()&&mHoverAnchor&&mHoverAnchor->underMouse())openTray(mHoverAnchor);});
     mCloseTimer=new QTimer(this);mCloseTimer->setSingleShot(true);mCloseTimer->setInterval(350);
-    mEraseAllTimer=new QTimer(this);mEraseAllTimer->setSingleShot(true);
     connect(mCloseTimer,&QTimer::timeout,this,[this]{if(!mTabletUiGesture&&!mPenPanel->underMouse()&&(!mTrayAnchor||!mTrayAnchor->underMouse()))closeTray();});
     for(auto bar:mWindow->findChildren<UBDockPalette*>())bar->setBackgroundBrush(QColor("#f1ecdf"));
     connect(mWindow->boardToolBar,&QToolBar::visibilityChanged,this,[this](bool){sync();});
@@ -275,14 +287,14 @@ void UBPaperInk::rebuild()
     auto layout=qobject_cast<QHBoxLayout*>(mDock->layout());while(auto item=layout->takeAt(0)){delete item->widget();delete item;}
     const QStringList defaults=defaultTools();
     QStringList order=UBSettings::settings()->value("Teaching/BottomOrder",defaults).toStringList();order.removeDuplicates();for(const auto &id:defaults)if(!order.contains(id))order<<id;
-    const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionLine",tr("Line")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")}};
+    const QMap<QString,QString> labels={{"actionSelector",tr("Select")},{"actionPen",tr("Pen")},{"actionMarker",tr("Highlight")},{"actionEraser",tr("Eraser")},{"actionPaperEraseAll",tr("Erase All")},{"actionLine",tr("Line")},{"actionTeachingShapes",tr("Shapes")},{"actionLessonCover",tr("Cover")},{"actionText",tr("Text")},{"actionTeachingFunctions",tr("Functions")}};
     const bool touch=UBSettings::settings()->value("Teaching/TouchFriendly",false).toBool();
     mHeader->setMaximumHeight(touch?70:58);mHeader->setStyleSheet(mHeader->property("paperBaseStyle").toString()+(touch?QString(" QToolButton{height:40px;min-height:40px;max-height:44px;min-width:36px;}"):QString()));
     for(const auto &id:order){if(id=="actionTeachingDash"||id=="actionZoomOut"||id=="actionPointer")continue;auto source=mWindow->findChild<QAction*>(id);if(!source)continue;
         const bool show=UBSettings::settings()->value("Teaching/Bottom/"+id,defaults.contains(id)).toBool();
         if(!show||!defaults.contains(id)&&!UBSettings::settings()->value("Teaching/Bottom/"+id).isValid()){continue;}
         auto b=button(source,labels.value(id,source->text()),mDock);const bool showLabels=UBSettings::settings()->value("Teaching/ToolLabels",true).toBool();b->setToolButtonStyle(showLabels?Qt::ToolButtonTextUnderIcon:Qt::ToolButtonIconOnly);b->setFixedSize(showLabels?(id=="actionTeachingFunctions"?(touch?94:84):(touch?76:64)):(touch?64:48),showLabels?(touch?76:62):(touch?64:48));b->setIconSize(touch?QSize(34,34):QSize(26,26));layout->addWidget(b);
-        const bool tray=id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
+        const bool tray=id=="actionSelector"||id=="actionPen"||id=="actionMarker"||id=="actionEraser"||id=="actionLine";
         b->setProperty("paperTray",tray);b->setProperty("paperSource",id);
         if(source==mWindow->actionLine)b->setToolTip(tr("Line: double-click to switch solid / dashed"));
     }
@@ -299,7 +311,7 @@ void UBPaperInk::refreshPen()
     const int colourIndex=tool==UBStylusTool::Marker?s->markerColorIndex():s->penColorIndex();
     const QString colourKey=colours.value(colourIndex).name(QColor::HexRgb).mid(1);
     const int remembered=s->value("Teaching/ColourWidths/"+mode+"/"+colourKey,s->value("Teaching/ColourWidthDefaults/"+mode,0)).toInt();
-    for(int i=0;i<mWidths.size();++i){mWidths[i]->setFixedSize(touch?80:66,touch?62:48);mWidths[i]->setText((tool==UBStylusTool::Eraser?QStringList{tr("Small"),tr("Medium"),tr("Large")}:QStringList{tr("Thin"),tr("Medium"),tr("Thick")})[i]);QPixmap pix(96,36);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#273b3b"),2.+i*3,Qt::SolidLine,Qt::RoundCap));QPainterPath path;path.moveTo(10,24);path.cubicTo(32,2,60,34,86,12);p.drawPath(path);p.end();mWidths[i]->setIcon(QIcon(pix));mWidths[i]->setChecked((tool==UBStylusTool::Eraser?s->eraserWidthIndex():remembered)==i);}
+    for(int i=0;i<mWidths.size();++i){mWidths[i]->setVisible(tool!=UBStylusTool::Selector);mWidths[i]->setFixedSize(touch?80:66,touch?62:48);mWidths[i]->setText((tool==UBStylusTool::Eraser?QStringList{tr("Small"),tr("Medium"),tr("Large")}:QStringList{tr("Thin"),tr("Medium"),tr("Thick")})[i]);QPixmap pix(96,36);pix.fill(Qt::transparent);QPainter p(&pix);p.setRenderHint(QPainter::Antialiasing);p.setPen(QPen(QColor("#273b3b"),2.+i*3,Qt::SolidLine,Qt::RoundCap));QPainterPath path;path.moveTo(10,24);path.cubicTo(32,2,60,34,86,12);p.drawPath(path);p.end();mWidths[i]->setIcon(QIcon(pix));mWidths[i]->setChecked((tool==UBStylusTool::Eraser?s->eraserWidthIndex():remembered)==i);}
     mPenPanel->adjustSize();scheduleLayout();
 }
 void UBPaperInk::goToPage(int index)
@@ -332,7 +344,7 @@ void UBPaperInk::sync()
     if(lesson){UBApplication::boardController->paletteManager()->leftPalette()->hide();UBApplication::boardController->paletteManager()->rightPalette()->setVisible(mLibraryOpen);}
     auto dc=UBDrawingController::drawingController();const int tool=trayTool();
     const bool contextual=mWindow->findChild<QAction*>("actionTeachingShapes")->isChecked()||mWindow->findChild<QAction*>("actionLessonCover")->isChecked();
-    mPenPanel->setVisible(mTrayOpen&&lesson&&!contextual&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+    mPenPanel->setVisible(mTrayOpen&&lesson&&!contextual&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser||tool==UBStylusTool::Selector));
     refreshPen();layoutPanels();
 }
 void UBPaperInk::scheduleLayout()
@@ -371,10 +383,11 @@ void UBPaperInk::layoutPanels()
             context=true;
             bar->setMaximumWidth(available);bar->adjustSize();auto anchor=mDock->findChild<QToolButton*>(name=="lessonShapeToolbar"?"paper-actionTeachingShapes":"paper-actionLessonCover");const int centre=anchor&&!anchor->isHidden()?anchor->mapTo(view,QPoint(anchor->width()/2,0)).x():mDock->x()+mDock->width()/2;bar->move(qBound(left,centre-bar->width()/2,qMax(left,view->width()-bar->width()-12)),mDock->y()-bar->height()-9);bar->raise();}
     }
-    mPenPanel->setVisible(mTrayOpen&&lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser));
+    mPenPanel->setVisible(mTrayOpen&&lesson&&!context&&(tool==UBStylusTool::Pen||tool==UBStylusTool::Marker||tool==UBStylusTool::Line||tool==UBStylusTool::Eraser||tool==UBStylusTool::Selector));
 }
 int UBPaperInk::trayTool() const
 {
+    if(mTrayAction=="actionSelector")return UBStylusTool::Selector;
     if(mTrayAction=="actionMarker")return UBStylusTool::Marker;
     if(mTrayAction=="actionEraser")return UBStylusTool::Eraser;
     if(mTrayAction=="actionLine")return UBStylusTool::Line;
@@ -383,7 +396,6 @@ int UBPaperInk::trayTool() const
 void UBPaperInk::openTray(QToolButton *anchor)
 {
     if(!anchor||mClosing)return;
-    if(mEraseAllMode&&anchor->property("paperSource").toString()=="actionEraser")return;
     mCloseTimer->stop();mTrayAnchor=anchor;mTrayAction=anchor->property("paperSource").toString();mTrayOpen=true;
     refreshPen();layoutPanels();
 }
@@ -391,21 +403,6 @@ void UBPaperInk::closeTray()
 {
     mTrayOpen=false;if(mHoverTimer)mHoverTimer->stop();if(mCloseTimer)mCloseTimer->stop();
     if(mPenPanel)mPenPanel->hide();
-}
-void UBPaperInk::requestEraseAll()
-{
-    // Delay the destructive single-click action until a possible double-click
-    // has been resolved. A second tap switches modes and cancels this timer.
-    mEraseAllTimer->stop();mEraseAllTimer->disconnect(this);
-    std::weak_ptr<UBGraphicsScene> scene=UBApplication::boardController->activeScene();
-    connect(mEraseAllTimer,&QTimer::timeout,this,[this,scene]{
-        auto target=scene.lock();
-        if(!mClosing&&mEraseAllMode&&target&&target==UBApplication::boardController->activeScene()){
-            target->cancelCircleErase();
-            UBApplication::boardController->clearSceneAnnotation();
-        }
-    });
-    mEraseAllTimer->start(QApplication::doubleClickInterval()+20);
 }
 void UBPaperInk::selectTrayTool()
 {
@@ -489,7 +486,7 @@ bool UBPaperInk::routeTabletEvent(QWidget *receiver,QTabletEvent *event)
     if(auto popup=QApplication::activePopupWidget();popup&&popup->rect().contains(popup->mapFromGlobal(global.toPoint())))
         target=popup->childAt(popup->mapFromGlobal(global.toPoint()))?popup->childAt(popup->mapFromGlobal(global.toPoint())):popup;
     auto mouseType=type==QEvent::TabletPress?QEvent::MouseButtonPress:type==QEvent::TabletRelease?QEvent::MouseButtonRelease:QEvent::MouseMove;
-    const bool combined=target&&(target->property("paperSource").toString()=="actionLine"||target->property("paperSource").toString()=="actionEraser"||target->objectName()=="paper-actionZoomIn");
+    const bool combined=target&&(target->property("paperSource").toString()=="actionLine"||target->objectName()=="paper-actionZoomIn");
     if(type==QEvent::TabletPress&&event->button()==Qt::LeftButton&&combined&&target==mLastTabletTap&&mTabletTapTimer.isValid()&&mTabletTapTimer.elapsed()<QApplication::doubleClickInterval()){
         mouseType=QEvent::MouseButtonDblClick;mTabletDoubleClick=true;mLastTabletTap=nullptr;mTabletTapTimer.invalidate();
     }
@@ -535,13 +532,7 @@ bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
     }
     auto tool=qobject_cast<QToolButton*>(object);
     if(tool&&tool->property("paperTray").toBool()){
-        if(event->type()==QEvent::MouseButtonDblClick&&tool->property("paperSource").toString()=="actionEraser"&&static_cast<QMouseEvent*>(event)->button()==Qt::LeftButton){
-            mEraseAllTimer->stop();closeTray();mEraseAllMode=!mEraseAllMode;
-            if(mEraseAllMode)mWindow->actionSelector->trigger();else mWindow->actionEraser->trigger();
-            emit eraseAllModeChanged();
-            tool->setDown(false);tool->setProperty("paperIgnoreRelease",true);return true;
-        }
-        else if(event->type()==QEvent::Enter){
+        if(event->type()==QEvent::Enter){
             mCloseTimer->stop();
             if(UBSettings::settings()->value("Teaching/PenTrayHover",false).toBool()){mHoverAnchor=tool;mHoverTimer->start();}
             else {mHoverTimer->stop();mHoverAnchor=nullptr;}
@@ -572,11 +563,9 @@ bool UBPaperInk::eventFilter(QObject *object,QEvent *event)
         else if(event->type()==QEvent::Leave)mCloseTimer->start();
     }
     if(event->type()==QEvent::KeyPress&&static_cast<QKeyEvent*>(event)->key()==Qt::Key_Escape){
-        mEraseAllTimer->stop();
         closeTray();if(auto scene=UBApplication::boardController->activeScene())scene->cancelCircleErase();
     }
     if((event->type()==QEvent::MouseButtonPress||event->type()==QEvent::TabletPress||event->type()==QEvent::TouchBegin)&&widget){
-        if(!tool||tool->property("paperSource").toString()!="actionEraser")mEraseAllTimer->stop();
         const bool inside=widget==mPenPanel||mPenPanel->isAncestorOf(widget)||(tool&&tool->property("paperTray").toBool());
         if(!inside){closeTray();}
         // Never consume this event: it is also the beginning of the drawing stroke.

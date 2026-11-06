@@ -2,7 +2,7 @@ name: Windows teaching installer
 on:
   workflow_dispatch:
   push:
-    branches: [graphdesk-teaching-fork]
+    branches: [graphdesk-teaching-fork, selection-recolour]
 permissions:
   contents: write
 concurrency:

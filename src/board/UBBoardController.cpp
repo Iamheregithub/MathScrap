@@ -30,6 +30,7 @@
 #include "UBBoardController.h"
 #include "core/UBInputActivity.h"
 #include "UBTeachingTools.h"
+#include "domain/UBSelectionColorUndoCommand.h"
 
 #include <QtWidgets>
 
@@ -1388,6 +1389,9 @@ UBItem *UBBoardController::downloadFinished(bool pSuccess, QUrl sourceUrl, QUrl 
             widgetUrl = expandWidgetToTempDir(pData, "wdgt");
         }
 
+        if (!widgetUrl.isValid())
+            return nullptr;
+
         UBGraphicsWidgetItem* appleWidgetItem = mActiveScene->addAppleWidget(widgetUrl, pPos);
 
         appleWidgetItem->setSourceUrl(sourceUrl);
@@ -1413,7 +1417,12 @@ UBItem *UBBoardController::downloadFinished(bool pSuccess, QUrl sourceUrl, QUrl 
             widgetUrl = expandWidgetToTempDir(pData);
         }
 
+        if (!widgetUrl.isValid())
+            return nullptr;
+
         UBGraphicsWidgetItem *w3cWidgetItem = addW3cWidget(widgetUrl, pPos);
+        if (!w3cWidgetItem)
+            return nullptr;
 
         if (isBackground)
         {
@@ -2157,14 +2166,15 @@ void UBBoardController::setColorIndex(int pColorIndex)
         mPenColorOnDarkBackground = UBSettings::settings()->penColors(true).at(pColorIndex);
         mPenColorOnLightBackground = UBSettings::settings()->penColors(false).at(pColorIndex);
 
-        if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector)
+        if (UBDrawingController::drawingController()->stylusTool() == UBStylusTool::Selector && mActiveScene)
         {
-            // If we are in mode board, then do that
-            if(UBApplication::applicationController->displayMode() == UBApplicationController::Board)
-            {
-                UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Pen);
-                mMainWindow->actionPen->setChecked(true);
-            }
+            auto command = new UBSelectionColorUndoCommand(mActiveScene,
+                mPenColorOnLightBackground, mPenColorOnDarkBackground);
+            if (command->hasChanges()) {
+                if (mActiveScene->isURStackIsEnabled() && UBApplication::undoStack)
+                    UBApplication::undoStack->push(command);
+                else { command->redo(); delete command; }
+            } else delete command;
         }
 
         emit penColorChanged();
@@ -2360,24 +2370,24 @@ void UBBoardController::stylusToolChanged(int tool)
 
 QUrl UBBoardController::expandWidgetToTempDir(const QByteArray& pZipedData, const QString& ext)
 {
-    QUrl widgetUrl;
     QTemporaryFile tmp;
+    if (!tmp.open() || tmp.write(pZipedData) != pZipedData.size() || !tmp.flush())
+        return {};
+    tmp.close();
 
-    if (tmp.open())
+    const QDir temporary(UBFileSystemUtils::createTempDir());
+    const QString widgetName = QStringLiteral("widget.") + ext;
+    if (!temporary.mkdir(widgetName))
+        return {};
+
+    const QString path = temporary.filePath(widgetName);
+    if (!UBFileSystemUtils::expandZipToDir(tmp, QDir(path)))
     {
-        tmp.write(pZipedData);
-        tmp.flush();
-        tmp.close();
-
-        QString tmpDir = UBFileSystemUtils::createTempDir() + "." + ext;
-
-        if (UBFileSystemUtils::expandZipToDir(tmp, tmpDir))
-        {
-            widgetUrl = QUrl::fromLocalFile(tmpDir);
-        }
+        QDir(path).removeRecursively();
+        return {};
     }
 
-    return widgetUrl;
+    return QUrl::fromLocalFile(path);
 }
 
 
