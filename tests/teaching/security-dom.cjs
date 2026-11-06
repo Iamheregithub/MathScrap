@@ -113,6 +113,18 @@ async function main(){
   const frame=w.document.querySelector('iframe');assert.ok(frame);assert.equal(frame.getAttribute('sandbox'),'allow-scripts allow-forms');assert.equal(frame.srcdoc,payload);noInjection(w);
   const generic=w.$.fn.oembed.getGenericCode('https://example.com/',{title:payload});w.$('#data').empty().append(generic);assert.equal(w.$('#data a').text(),payload);noInjection(w);dom.window.close();checks++;
  }
+ {
+  const dom=new JSDOM('<span id="field"></span>',{runScripts:'outside-only',pretendToBeVisual:true});
+  const w=dom.window;
+  w.eval(read('resources/library/applications/FunctionCalculator.wgt/vendor/mathquill/mathquill.js'));
+  const field=w.MathQuill.getInterface(3).MathField(w.document.querySelector('#field'));
+  field.latex('\\text{x}');
+  field.moveToRightEnd();
+  field.keystroke('Left');
+  field.typedText('\\alpha{}\\\\{y}\\');
+  assert.equal(field.latex(),'\\text{x\\backslash alpha\\{\\}\\backslash\\backslash\\{y\\}\\backslash}');
+  w.close();checks++;
+ }
  console.log('PASS: '+checks+' widget, library, injection and persistence checks');
 }
 main().catch(e=>{console.error(e);process.exit(1)});
