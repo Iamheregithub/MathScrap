@@ -5989,9 +5989,10 @@ var __assign = (this && this.__assign) || function () {
             var contents = this.textContents();
             if (contents.length > 0) {
                 ctx.uncleanedLatex += this.ctrlSeq + '{';
-                ctx.uncleanedLatex += contents
-                    .replace(/\\/g, '\\backslash ')
-                    .replace(/[{}]/g, '\\$&');
+                // Encode each input character once, including literal backslashes.
+                ctx.uncleanedLatex += contents.replace(/[\\{}]/g, function (character) {
+                    return character === '\\' ? '\\backslash ' : '\\' + character;
+                });
                 ctx.uncleanedLatex += '}';
             }
             this.checkCursorContextClose(ctx);
