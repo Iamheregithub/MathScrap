@@ -28,6 +28,8 @@
 
 
 #include "UBImportDocument.h"
+
+#include <QTemporaryDir>
 #include "document/UBDocumentProxy.h"
 
 #include "frameworks/UBFileSystemUtils.h"
@@ -37,16 +39,6 @@
 #include "core/UBPersistenceManager.h"
 
 #include "globals/UBGlobals.h"
-
-#ifdef Q_OS_WIN
-    #include <quazip.h>
-    #include <quazipfile.h>
-    #include <quazipfileinfo.h>
-#else
-    #include "quazip.h"
-    #include "quazipfile.h"
-    #include "quazipfileinfo.h"
-#endif
 
 #include "core/memcheck.h"
 
@@ -76,101 +68,20 @@ QString UBImportDocument::importFileFilter()
 
 bool UBImportDocument::extractFileToDir(const QFile& pZipFile, const QString& pDir, QString& documentRoot)
 {
+    const QString path = UBPersistenceManager::persistenceManager()->generateUniqueDocumentPath(pDir);
+    if (!QDir().mkdir(path))
+        return false;
 
-    QDir rootDir(pDir);
-    QuaZip zip(pZipFile.fileName());
-
-    if(!zip.open(QuaZip::mdUnzip))
+    if (!UBFileSystemUtils::expandZipToDir(pZipFile, QDir(path)))
     {
-        qWarning() << "Import failed. Cause zip.open(): " << zip.getZipError();
+        UBFileSystemUtils::deleteDir(path);
         return false;
     }
 
-    zip.setFileNameCodec("UTF-8");
-    QuaZipFileInfo info;
-    QuaZipFile file(&zip);
-
-    QFile out;
-    char c;
-    documentRoot = UBPersistenceManager::persistenceManager()->generateUniqueDocumentPath(pDir);
-    for(bool more=zip.goToFirstFile(); more; more=zip.goToNextFile())
-    {
-        if(!zip.getCurrentFileInfo(&info))
-        {
-            //TOD UB 4.3 O display error to user or use crash reporter
-            qWarning() << "Import failed. Cause: getCurrentFileInfo(): " << zip.getZipError();
-            return false;
-        }
-
-        if(!file.open(QIODevice::ReadOnly))
-        {
-            qWarning() << "Import failed. Cause: file.open(): " << zip.getZipError();
-            return false;
-        }
-
-        if(file.getZipError()!= UNZ_OK)
-        {
-            qWarning() << "Import failed. Cause: file.getFileName(): " << zip.getZipError();
-            return false;
-        }
-
-        QString newFileName = documentRoot + "/" + file.getActualFileName();
-        QFileInfo newFileInfo(newFileName);
-        if (!rootDir.mkpath(newFileInfo.absolutePath()))
-            return false;
-
-        out.setFileName(newFileName);
-        if (!out.open(QIODevice::WriteOnly))
-            return false;
-
-        // Slow like hell (on GNU/Linux at least), but it is not my fault.
-        // Not ZIP/UNZIP package's fault either.
-        // The slowest thing here is out.putChar(c).
-        QByteArray outFileContent = file.readAll();
-        if (out.write(outFileContent) == -1)
-        {
-            qWarning() << "Import failed. Cause: Unable to write file";
-            out.close();
-            return false;
-        }
-
-        while(file.getChar(&c))
-            out.putChar(c);
-
-        out.close();
-
-        if(file.getZipError()!=UNZ_OK)
-        {
-            qWarning() << "Import failed. Cause: " << zip.getZipError();
-            return false;
-        }
-
-        if(!file.atEnd())
-        {
-            qWarning() << "Import failed. Cause: read all but not EOF";
-            return false;
-        }
-
-        file.close();
-
-        if(file.getZipError()!=UNZ_OK)
-        {
-            qWarning() << "Import failed. Cause: file.close(): " <<  file.getZipError();
-            return false;
-        }
-
-    }
-
-    zip.close();
-
-    if(zip.getZipError()!=UNZ_OK)
-    {
-      qWarning() << "Import failed. Cause: zip.close(): " << zip.getZipError();
-      return false;
-    }
-
+    documentRoot = path;
     return true;
 }
+
 
 std::shared_ptr<UBDocumentProxy> UBImportDocument::importFile(const QFile& pFile, const QString& pGroup)
 {
@@ -201,7 +112,10 @@ bool UBImportDocument::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocum
     QFileInfo fi(pFile);
     UBApplication::showMessage(tr("Importing file %1...").arg(fi.baseName()), true);
 
-    QString path = UBFileSystemUtils::createTempDir();
+    QTemporaryDir temporary;
+    if (!temporary.isValid())
+        return false;
+    const QString path = temporary.path();
 
     QString documentRootFolder;
     if (!extractFileToDir(pFile, path, documentRootFolder))
@@ -216,11 +130,7 @@ bool UBImportDocument::addFileToDocument(std::shared_ptr<UBDocumentProxy> pDocum
         return false;
     }
 
-    UBFileSystemUtils::deleteDir(path);
-
     UBApplication::showMessage(tr("Import successful."));
 
     return true;
 }
-
-

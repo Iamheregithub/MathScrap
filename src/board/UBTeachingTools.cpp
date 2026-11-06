@@ -261,6 +261,9 @@ UBTeachingTools::UBTeachingTools(UBMainWindow *window) : QObject(window), mWindo
     qApp->installEventFilter(this);
     applyLayout();
     auto paper=new UBPaperInk(mWindow);
+    auto eraseAll = mWindow->findChild<QAction*>("actionPaperEraseAll");
+    mBottom.insert(eraseAll->objectName(), eraseAll);
+    mDefaultBottom.insert(mDefaultBottom.indexOf("actionEraser") + 1, eraseAll->objectName());
     // Toolbar tablet routing goes first, then on-cover controls, then shape
     // drawing. A full-page shade must never swallow taps on the pen toolbar.
     if(auto lesson=mWindow->findChild<UBLessonTools*>()){qApp->removeEventFilter(lesson);qApp->installEventFilter(lesson);}

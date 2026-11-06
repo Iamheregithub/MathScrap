@@ -1,7 +1,7 @@
 name: MathScrap CodeQL
 on:
   push:
-    branches: [master, graphdesk-teaching-fork]
+    branches: [master, graphdesk-teaching-fork, selection-recolour]
   pull_request:
     branches: [master, graphdesk-teaching-fork]
   schedule:
