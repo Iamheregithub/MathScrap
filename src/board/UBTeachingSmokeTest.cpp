@@ -1635,6 +1635,31 @@ bool checkMemoryCycles(QString *error)
                 UBApplication::undoStack->redo();
                 if (renderInk() != inkAfterErase) { *error = "Scrub eraser Redo changed clipped ink"; return false; }
                 }
+                if (mode == "full") {
+                    const QByteArray shapeData = "<svg xmlns='http://www.w3.org/2000/svg' width='100' height='80' viewBox='0 0 100 80'>"
+                        "<metadata id='teaching-shape'>0</metadata><g stroke='#000000' stroke-width='3' fill='#ffdd00'>"
+                        "<rect x='12' y='12' width='76' height='56'/></g></svg>";
+                    auto shape = scene->addSvg(QUrl(), QPointF(180, 0), shapeData);
+                    if (!shape) { *error = "Cannot create recolour fixture"; return false; }
+                    const auto originalShape = shape->fileData();
+                    UBDrawingController::drawingController()->setStylusTool(UBStylusTool::Selector);
+                    scene->clearSelection();
+                    for (auto item : scene->items())
+                        if (item->type() == UBGraphicsStrokesGroup::Type) item->setSelected(true);
+                    shape->setSelected(true);
+                    auto history = UBApplication::undoStack;
+                    const int previousIndex = history->index();
+                    board->setColorIndex(8);
+                    const auto recolouredShape = shape->fileData();
+                    if (history->index() != previousIndex + 1 || recolouredShape == originalShape) {
+                        *error = "Selection recolour did not change the fixture"; return false;
+                    }
+                    history->undo();
+                    if (shape->fileData() != originalShape) { *error = "Recolour Undo failed"; return false; }
+                    history->redo();
+                    if (shape->fileData() != recolouredShape) { *error = "Recolour Redo failed"; return false; }
+                    scene->clearSelection();
+                }
                 if (useSave) {
                 manager->persistDocumentScene(doc, scene, page, true, true);
                 {
@@ -1643,6 +1668,25 @@ bool checkMemoryCycles(QString *error)
                         *error = "Memory workload could not reopen saved page"; return false;
                     }
                 }
+                }
+                if (mode == "full") {
+                    auto eraseAll = UBApplication::mainWindow->findChild<QAction*>("actionPaperEraseAll");
+                    auto history = UBApplication::undoStack;
+                    const int previousIndex = history->index();
+                    auto hasInk = [&scene] {
+                        for (auto item : scene->items())
+                            if (item->type() == UBGraphicsStrokesGroup::Type) return true;
+                        return false;
+                    };
+                    if (!eraseAll || !hasInk()) { *error = "Erase All fixture unavailable"; return false; }
+                    eraseAll->trigger();
+                    if (hasInk() || history->index() != previousIndex + 1) {
+                        *error = "Erase All did not remove the fixture ink"; return false;
+                    }
+                    history->undo();
+                    if (!hasInk()) { *error = "Erase All Undo did not restore ink"; return false; }
+                    history->redo();
+                    if (hasInk()) { *error = "Erase All Redo left ink behind"; return false; }
                 }
                 scene->clearContent();
                 scene->clearContent(UBGraphicsScene::clearBackground);
